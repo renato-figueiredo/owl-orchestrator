@@ -1,0 +1,13 @@
+{
+  "name": "OWL dev",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:22",
+  "postCreateCommand": "corepack enable && pnpm install --frozen-lockfile",
+  "forwardPorts": [4317, 5173],
+  "portsAttributes": {
+    "4317": { "label": "OWL server" },
+    "5173": { "label": "OWL web" }
+  },
+  "customizations": {
+    "vscode": { "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode"] }
+  }
+}

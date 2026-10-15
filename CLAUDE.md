@@ -51,7 +51,7 @@ scripts/             repo tooling
 | Agents, teams, board | `docs/04-agents-and-board/agents-teams-board.md` |
 | Linear-style model | `docs/04-agents-and-board/linear-model-notes.md` |
 | Motion | `docs/05-ui/motion-and-animation.md` |
-| Ollama (optional) / references | `docs/06-research/` |
+| Ollama (optional) / containers / references | `docs/06-research/` |
 | Remote access & backup | `docs/03-data/sync-and-access.md` |
 | Roadmap | `docs/roadmap.md` |
 

@@ -26,6 +26,8 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] 18 Adaptador Ollama (`build/prompts/18-ollama.md`)
 
 ## Futuro
+- [x] Dev container (`.devcontainer/`, `docs/06-research/containers.md`)
+- [ ] Sandbox opcional de agentes em container (junto ao prompt 14)
 - [ ] GitHub Issues como quadro
 - [ ] Adaptadores de API e Ollama
 - [ ] Embeddings opcionais
