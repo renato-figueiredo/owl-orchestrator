@@ -1,9 +1,9 @@
-import { statSync } from 'node:fs';
 import { listAdapters, type RunEvent } from '@owl/core';
 import type { createRepos } from '@owl/db';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z, ZodError } from 'zod';
 import type { Executor } from './executor.js';
+import { FolderError, registerGuards, resolveWorkspace } from './security.js';
 
 type Repos = ReturnType<typeof createRepos>;
 
@@ -12,6 +12,10 @@ export interface AppDeps {
   executor: Executor;
   /** Working folder for sessions that belong to no project. */
   defaultCwd?: string;
+  /** Folders projects and runs may use (see `resolveWorkspace`). */
+  workspaceRoots: string[];
+  /** Extra browser origins allowed to call the API (e.g. the Vite dev server). */
+  allowedOrigins?: string[];
 }
 
 /** Error with an HTTP status, rendered as `{ error: { code, message } }`. */
@@ -24,14 +28,6 @@ export class HttpError extends Error {
     super(message);
   }
 }
-
-const isDir = (p: string) => {
-  try {
-    return statSync(p).isDirectory();
-  } catch {
-    return false;
-  }
-};
 
 const createProject = z.object({
   nome: z.string().trim().min(1).max(200),
@@ -67,6 +63,17 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   const { repos, executor } = deps;
   const app = Fastify({ logger: false });
 
+  registerGuards(app, deps.allowedOrigins);
+
+  const folder = (dir: string) => {
+    try {
+      return resolveWorkspace(dir, deps.workspaceRoots);
+    } catch (e) {
+      if (e instanceof FolderError) throw new HttpError(e.code === 'invalid_folder' ? 400 : 403, e.code, e.message);
+      throw e;
+    }
+  };
+
   app.setErrorHandler((err: unknown, _req, reply) => {
     if (err instanceof ZodError) {
       const message = err.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; ');
@@ -97,10 +104,9 @@ export function buildApp(deps: AppDeps): FastifyInstance {
 
   app.post('/projects', async (req, reply) => {
     const body = createProject.parse(req.body);
-    if (!isDir(body.pasta)) throw new HttpError(400, 'invalid_folder', 'pasta must be an existing directory');
     const project = repos.projects.create({
       nome: body.nome,
-      pasta: body.pasta,
+      pasta: folder(body.pasta),
       ...(body.instrucoes ? { config: { instrucoes: body.instrucoes } } : {}),
     });
     return reply.status(201).send({ project });
@@ -142,8 +148,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     if (project && body.cwd) {
       throw new HttpError(400, 'cwd_not_allowed', 'cwd cannot be set for a session that belongs to a project');
     }
-    const cwd = project?.pasta ?? body.cwd ?? deps.defaultCwd ?? process.cwd();
-    if (!isDir(cwd)) throw new HttpError(400, 'invalid_folder', `Working folder does not exist: ${cwd}`);
+    // Checked on every run, not only at creation: the folder may have been removed or replaced by a symlink since.
+    const cwd = folder(project?.pasta ?? body.cwd ?? deps.defaultCwd ?? process.cwd());
 
     const systemAppend = project ? projectInstructions(project.configJson) : undefined;
     const run = executor.submit({

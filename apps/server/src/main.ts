@@ -11,7 +11,7 @@ const db = openDb(join(config.dataDir, 'owl.sqlite'));
 migrate(db);
 const repos = createRepos(db);
 const executor = new Executor({ repos, concurrency: config.concurrency });
-const app = buildApp({ repos, executor });
+const app = buildApp({ repos, executor, workspaceRoots: config.workspaceRoots, allowedOrigins: config.allowedOrigins });
 
 const stop = async () => {
   await executor.shutdown();

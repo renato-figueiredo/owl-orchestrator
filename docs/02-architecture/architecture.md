@@ -120,3 +120,13 @@ O prompt melhorado aparece na interface e pode ser editado antes de seguir (opci
   devolve só `start` + desfecho guardado no banco. Cancelar run na fila o marca `cancelado` sem iniciar processo.
 - Erros sempre `{ error: { code, message } }`; entrada validada com zod (`model` não pode começar com `-`).
 - Sem `DELETE /sessions` ainda (prompt 09). Uso por sessão: somar `runs.tokens_*`/`custo_estimado` (interface, mais adiante).
+
+## Segurança da API local (correções da revisão dos prompts 03 e 04)
+- **DNS rebinding / CSRF** (`apps/server/src/security.ts`): todo request passa por um hook que exige `Host` de loopback
+  (`127.0.0.1`, `localhost`, `[::1]`) e, se o navegador mandou `Origin`, que seja o próprio servidor ou esteja em
+  `OWL_ALLOWED_ORIGINS` (ex.: Vite em dev). Origin `null` ou de outro site → 403. Sem `Origin` (curl, scripts) passa.
+- **Pastas** (`OWL_WORKSPACE_ROOTS`, separadas por `:`, padrão = home): `pasta` do projeto e `cwd` precisam estar dentro de uma raiz,
+  sem pasta oculta no caminho (`~/.ssh`, `~/.config`...), com symlinks resolvidos. Valida na criação **e a cada run**. Fora → 403.
+  A aprovação humana para sair das raízes entra com o quadro/portões (prompt 13).
+- **Adaptador nunca lança:** byte NUL em `systemAppend`/ferramentas vira `error`; `spawn` que lança (NUL no `cwd`) também.
+- **Acesso remoto (Tailscale):** exigirá permitir o nome do host Tailscale no guard; não é possível hoje por padrão (de propósito).

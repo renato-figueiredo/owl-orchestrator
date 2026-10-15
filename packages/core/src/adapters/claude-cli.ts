@@ -13,7 +13,7 @@ export interface ClaudeCliOptions extends CliAdapterOptions {
 }
 
 const SAFE_ID = /^[\w.:/[\]@-]+$/;
-const SAFE_TOOL = /^[^\s-][^\n\r]*$/;
+const SAFE_TOOL = /^[^\s\0-][^\n\r\0]*$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -31,7 +31,11 @@ export function buildClaudeArgs(req: RunRequest, opts: Pick<ClaudeCliOptions, 'i
     if (!UUID.test(req.resumeSessionId)) throw new Error(`Invalid resumeSessionId: ${JSON.stringify(req.resumeSessionId)}`);
     args.push(`--resume=${req.resumeSessionId}`);
   }
-  if (req.systemAppend) args.push(`--append-system-prompt=${req.systemAppend}`);
+  if (req.systemAppend) {
+    // A NUL byte cannot be part of an argv entry: spawn() would throw instead of the run reporting an error.
+    if (req.systemAppend.includes('\0')) throw new Error('Invalid systemAppend: contains a NUL byte');
+    args.push(`--append-system-prompt=${req.systemAppend}`);
+  }
   if (req.mcpConfigPath) args.push(`--mcp-config=${assertSafeArg('mcpConfigPath', req.mcpConfigPath, /^[^\0]+$/)}`);
   if (req.allowedTools?.length) {
     for (const t of req.allowedTools) assertSafeArg('allowed tool', t, SAFE_TOOL);

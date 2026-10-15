@@ -36,7 +36,7 @@ async function setup(concurrency = 1) {
         env: { ...process.env, FAKE_SCENARIO: scenario, FAKE_RECORD: join(dir, 'rec.json') },
       }),
   });
-  app = buildApp({ repos, executor, defaultCwd: dir });
+  app = buildApp({ repos, executor, defaultCwd: dir, workspaceRoots: [tmpdir()] });
   base = await app.listen({ host: '127.0.0.1', port: 0 });
 }
 

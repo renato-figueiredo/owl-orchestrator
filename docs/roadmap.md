@@ -37,7 +37,9 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 **Próximo passo:** prompt 05 (interface de chat), que consome as rotas do prompt 04.
 
 **Revisão**
-- [ ] Rodar `qa-testes` e `revisor` nos prompts 02, 03 e 04 (sessão aberta na raiz do repositório); corrigir bloqueantes em commits `fix(...)`.
+- [x] `qa-testes` e `revisor` nos prompts 02, 03 e 04 rodados em 2026-10-15; 3 bloqueantes corrigidos (NUL no adaptador, Host/Origin, raízes de pastas).
+- [ ] Revisão ainda sem registro para os prompts 02 (banco): confirmar se não houve bloqueantes.
+- [ ] Permitir o host Tailscale no guard quando o acesso remoto for implementado.
 
 **Repositório / GitHub**
 - [ ] Mesclar os 3 PRs do Dependabot (`checkout` 4→7, `setup-node` 4→7, `pnpm/action-setup` 4→6; todos com CI verde). Mesclar em sequência (mexem no `ci.yml`).

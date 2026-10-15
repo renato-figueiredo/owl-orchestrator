@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'node:child_process';
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import type { AuthMode } from './types.js';
 
@@ -51,7 +51,14 @@ export async function* runProcess(
   args: readonly string[],
   opts: RunProcessOptions,
 ): AsyncGenerator<ProcessChunk> {
-  const child = spawn(bin, [...args], { cwd: opts.cwd, env: opts.env, stdio: ['pipe', 'pipe', 'pipe'], shell: false });
+  let child: ChildProcessWithoutNullStreams;
+  try {
+    child = spawn(bin, [...args], { cwd: opts.cwd, env: opts.env, stdio: ['pipe', 'pipe', 'pipe'], shell: false });
+  } catch (e) {
+    // spawn throws synchronously for invalid input (e.g. a NUL byte in an argument or in cwd).
+    yield { kind: 'exit', code: null, signal: null, stderr: '', aborted: false, spawnError: e instanceof Error ? e : new Error(String(e)) };
+    return;
+  }
 
   let spawnError: Error | undefined;
   child.once('error', (e) => (spawnError = e));
