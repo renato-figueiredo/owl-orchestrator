@@ -2,6 +2,7 @@ import type { Db } from './connection.js';
 import { attachmentsRepo, blobsRepo } from './repos/blobs.js';
 import { factsRepo } from './repos/facts.js';
 import { messagesRepo } from './repos/messages.js';
+import { projectsRepo } from './repos/projects.js';
 import { runsRepo } from './repos/runs.js';
 import { sessionsRepo } from './repos/sessions.js';
 
@@ -10,12 +11,14 @@ export { MIGRATIONS_DIR, migrate } from './migrate.js';
 export * from './repos/blobs.js';
 export * from './repos/facts.js';
 export * from './repos/messages.js';
+export * from './repos/projects.js';
 export * from './repos/runs.js';
 export * from './repos/sessions.js';
 
 /** All typed repositories bound to one connection. */
 export function createRepos(db: Db) {
   return {
+    projects: projectsRepo(db),
     sessions: sessionsRepo(db),
     messages: messagesRepo(db),
     runs: runsRepo(db),

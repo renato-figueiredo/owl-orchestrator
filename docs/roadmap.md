@@ -6,7 +6,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [x] 01 Setup do monorepo, licença, CONTRIBUTING, CI básico (`build/prompts/01`)
 - [x] 02 Banco: conexão, migrações, schema (`build/prompts/02`)
 - [x] 03 Adaptadores `claude-cli` e `codex-cli` (Codex só texto, não verificado — ver architecture.md) (`build/prompts/03`)
-- [ ] 04 Servidor Fastify + SSE + executor simples (`build/prompts/04`)
+- [x] 04 Servidor Fastify + SSE + executor simples (`build/prompts/04`)
 - [ ] 05 Interface de chat com stream (`build/prompts/05`)
 - [ ] 06 Pipeline "melhorar prompt" (`build/prompts/06`)
 - [ ] 07 Memória em camadas + resumo incremental (`build/prompts/07`)
@@ -34,15 +34,18 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Pacote de vídeo (ffmpeg, Remotion)
 
 ## Pendências (atualizado em 2026-10-14)
-**Próximo passo:** prompt 04 (servidor Fastify + SSE + executor simples), que usa o adaptador do prompt 03.
+**Próximo passo:** prompt 05 (interface de chat), que consome as rotas do prompt 04.
 
 **Revisão**
-- [ ] Rodar `qa-testes` e `revisor` nos prompts 02 e 03 (sessão aberta na raiz do repositório); corrigir bloqueantes em commits `fix(...)`.
+- [ ] Rodar `qa-testes` e `revisor` nos prompts 02, 03 e 04 (sessão aberta na raiz do repositório); corrigir bloqueantes em commits `fix(...)`.
 
 **Repositório / GitHub**
 - [ ] Mesclar os 3 PRs do Dependabot (`checkout` 4→7, `setup-node` 4→7, `pnpm/action-setup` 4→6; todos com CI verde). Mesclar em sequência (mexem no `ci.yml`).
 - [ ] Conferir em Settings → Security se o relato privado de vulnerabilidades (`SECURITY.md`) está ativo.
 - [ ] Decidir sobre o nome do bot de dependências: manter Dependabot (personalizando prefixo/labels) ou migrar para Renovate com um GitHub App próprio.
+
+**Interface (prompt 05+)**
+- [ ] Mostrar o uso das LLMs por sessão (tokens e custo, somando os `runs`; só para provedores que informam), com parâmetros configuráveis (ex.: limites e alertas).
 
 **Adaptadores**
 - [ ] Instalar o `codex`, rodar `codex exec --help`, capturar a saída real como fixtures e implementar JSON, imagens e resume (hoje: só texto, flags não verificadas).

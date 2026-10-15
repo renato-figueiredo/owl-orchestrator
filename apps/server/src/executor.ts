@@ -1,0 +1,221 @@
+import { getAdapter, type ProviderAdapter, type RunEvent } from '@owl/core';
+import type { createRepos, Run, RunStatus } from '@owl/db';
+
+type Repos = ReturnType<typeof createRepos>;
+
+export interface SubmitInput {
+  sessionId: string;
+  texto: string;
+  provider: string;
+  model?: string;
+  cwd: string;
+  systemAppend?: string;
+}
+
+export interface ExecutorOptions {
+  repos: Repos;
+  /** Maximum runs executing at once. */
+  concurrency?: number;
+  /** Adapter lookup (defaults to the core registry); tests inject fakes here. */
+  resolveAdapter?: (id: string) => ProviderAdapter;
+  /** Finished runs whose events stay replayable from memory. */
+  keepFinished?: number;
+}
+
+type Listener = (event: RunEvent) => void;
+
+interface Entry {
+  run: Run;
+  input: SubmitInput;
+  events: RunEvent[];
+  listeners: Set<Listener>;
+  controller: AbortController;
+  state: 'queued' | 'running' | 'done';
+}
+
+const TERMINAL = new Set(['end', 'error', 'cancelled']);
+
+/**
+ * Simple executor: one user message → one run. Runs wait in a FIFO queue; at most `concurrency` execute
+ * at once and never two of the same session (they share the CLI's native session, so `--resume` needs order).
+ */
+export class Executor {
+  private readonly repos: Repos;
+  private readonly concurrency: number;
+  private readonly resolveAdapter: (id: string) => ProviderAdapter;
+  private readonly keepFinished: number;
+  private readonly entries = new Map<string, Entry>();
+  private readonly queue: Entry[] = [];
+  private readonly activeSessions = new Set<string>();
+  private active = 0;
+  private idleWaiters: Array<() => void> = [];
+
+  constructor(opts: ExecutorOptions) {
+    this.repos = opts.repos;
+    this.concurrency = Math.max(1, opts.concurrency ?? 1);
+    this.resolveAdapter = opts.resolveAdapter ?? getAdapter;
+    this.keepFinished = opts.keepFinished ?? 200;
+  }
+
+  /** Stores the user message, creates the run and queues it. */
+  submit(input: SubmitInput): Run {
+    const { repos } = this;
+    repos.messages.add({ sessionId: input.sessionId, papel: 'usuario', conteudo: input.texto });
+    const run = repos.runs.start({ provedor: input.provider, sessionId: input.sessionId, ...(input.model ? { modelo: input.model } : {}) });
+    const entry: Entry = {
+      run,
+      input,
+      events: [],
+      listeners: new Set(),
+      controller: new AbortController(),
+      state: 'queued',
+    };
+    this.entries.set(run.id, entry);
+    this.queue.push(entry);
+    this.pump();
+    return run;
+  }
+
+  /** Replays the events so far and then follows live ones. Undefined when the run is not in memory. */
+  subscribe(runId: string, listener: Listener): { history: RunEvent[]; done: boolean; unsubscribe(): void } | undefined {
+    const entry = this.entries.get(runId);
+    if (!entry) return undefined;
+    const history = [...entry.events];
+    const done = entry.state === 'done';
+    if (!done) entry.listeners.add(listener);
+    return { history, done, unsubscribe: () => entry.listeners.delete(listener) };
+  }
+
+  /** `cancelled` = stop requested, `finished` = nothing to cancel, `not_found` = unknown run. */
+  cancel(runId: string): 'cancelled' | 'finished' | 'not_found' {
+    const entry = this.entries.get(runId);
+    if (!entry) return this.repos.runs.get(runId) ? 'finished' : 'not_found';
+    if (entry.state === 'done') return 'finished';
+    if (entry.state === 'queued') {
+      this.queue.splice(this.queue.indexOf(entry), 1);
+      this.repos.runs.finish(entry.run.id, { status: 'cancelado' });
+      this.emit(entry, { type: 'cancelled' });
+      this.settle(entry);
+      return 'cancelled';
+    }
+    entry.controller.abort();
+    return 'cancelled';
+  }
+
+  /** Resolves when nothing is queued or running. */
+  idle(): Promise<void> {
+    if (this.active === 0 && this.queue.length === 0) return Promise.resolve();
+    return new Promise((resolve) => this.idleWaiters.push(resolve));
+  }
+
+  /** Cancels everything (server shutdown) and waits for the processes to exit. */
+  async shutdown(): Promise<void> {
+    for (const entry of [...this.queue]) this.cancel(entry.run.id);
+    for (const entry of this.entries.values()) if (entry.state === 'running') entry.controller.abort();
+    await this.idle();
+  }
+
+  private pump(): void {
+    while (this.active < this.concurrency) {
+      const entry = this.queue.find((e) => !this.activeSessions.has(e.input.sessionId));
+      if (!entry) break;
+      this.queue.splice(this.queue.indexOf(entry), 1);
+      this.active++;
+      this.activeSessions.add(entry.input.sessionId);
+      entry.state = 'running';
+      void this.execute(entry).finally(() => {
+        this.active--;
+        this.activeSessions.delete(entry.input.sessionId);
+        this.pump();
+        if (this.active === 0 && this.queue.length === 0) {
+          for (const resolve of this.idleWaiters.splice(0)) resolve();
+        }
+      });
+    }
+  }
+
+  private async execute(entry: Entry): Promise<void> {
+    const { repos } = this;
+    const { run, input } = entry;
+    let text = '';
+    let tokensIn: number | undefined;
+    let tokensOut: number | undefined;
+    let cost: number | undefined;
+    let terminal: RunEvent | undefined;
+
+    try {
+      const adapter = this.resolveAdapter(input.provider);
+      // Read now, not at submit time: a queued run must see the session id the previous run just stored.
+      const session = repos.sessions.get(input.sessionId);
+      const resume = session?.cliProvider === input.provider ? session.cliSessionId : null;
+      const stream = adapter.run(
+        {
+          prompt: input.texto,
+          cwd: input.cwd,
+          runId: run.id,
+          ...(input.model ? { model: input.model } : {}),
+          ...(input.systemAppend ? { systemAppend: input.systemAppend } : {}),
+          ...(resume ? { resumeSessionId: resume } : {}),
+        },
+        entry.controller.signal,
+      );
+      for await (const event of stream) {
+        if (event.type === 'text') text += event.delta;
+        if (event.type === 'usage') {
+          tokensIn = (tokensIn ?? 0) + (event.inputTokens ?? 0);
+          tokensOut = (tokensOut ?? 0) + (event.outputTokens ?? 0);
+          if (event.costUsd !== undefined) cost = (cost ?? 0) + event.costUsd;
+        }
+        if (terminal) continue; // contract: nothing after the terminal event
+        if (TERMINAL.has(event.type)) terminal = event; // emitted only after it is persisted (below)
+        else this.emit(entry, event);
+      }
+    } catch (err) {
+      terminal ??= { type: 'error', message: err instanceof Error ? err.message : String(err) };
+    }
+    terminal ??= { type: 'error', message: 'Provider ended without a result' };
+
+    let status: Exclude<RunStatus, 'rodando'>;
+    let erro: string | undefined;
+    if (terminal.type === 'end') {
+      status = 'ok';
+      repos.messages.add({
+        sessionId: input.sessionId,
+        runId: run.id,
+        papel: 'assistente',
+        conteudo: terminal.result ?? text,
+      });
+      if (terminal.cliSessionId) repos.sessions.setCliSession(input.sessionId, input.provider, terminal.cliSessionId);
+    } else if (terminal.type === 'cancelled') {
+      status = 'cancelado';
+    } else {
+      status = 'erro';
+      erro = terminal.type === 'error' ? terminal.message : undefined;
+    }
+    repos.runs.finish(run.id, {
+      status,
+      ...(tokensIn !== undefined ? { tokensIn } : {}),
+      ...(tokensOut !== undefined ? { tokensOut } : {}),
+      ...(cost !== undefined ? { custoEstimado: cost } : {}),
+      ...(erro !== undefined ? { erro } : {}),
+    });
+    // Persist first, announce after: a client that reacts to the terminal event must find the final state.
+    this.emit(entry, terminal);
+    this.settle(entry);
+  }
+
+  private emit(entry: Entry, event: RunEvent): void {
+    entry.events.push(event);
+    for (const listener of entry.listeners) listener(event);
+  }
+
+  /** Marks the run done, wakes subscribers and trims the oldest finished runs. */
+  private settle(entry: Entry): void {
+    entry.state = 'done';
+    entry.listeners.clear();
+    const finished = [...this.entries.values()].filter((e) => e.state === 'done');
+    for (const old of finished.slice(0, Math.max(0, finished.length - this.keepFinished))) {
+      this.entries.delete(old.run.id);
+    }
+  }
+}

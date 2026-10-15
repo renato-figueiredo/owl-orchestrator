@@ -106,3 +106,17 @@ O prompt melhorado aparece na interface e pode ser editado antes de seguir (opci
 - Testes usam CLIs falsas (`packages/core/test/fake-cli.mjs`) e fixtures **reais sanitizadas** (`test/fixtures/`).
 - Teste manual: `pnpm --filter @owl/core try "olá" [--model haiku] [--only claude-cli] [--resume <id>]`
   (use `-- "<prompt>"` se o prompt começar com `-`).
+
+## Decisões (prompt 04, servidor e executor)
+- **Tudo por projeto.** `POST /projects` (pasta existente + `instrucoes` opcionais em `config_json`); `POST /sessions` aceita `projectId`.
+  Numa sessão de projeto o `cwd` é sempre a `pasta` do projeto (`cwd` no body é recusado) e as instruções entram como `systemAppend`.
+  `GET /sessions?projectId=` lista só as daquele projeto.
+- **Executor em `apps/server/src/executor.ts`** (o executor de pipelines do `core` vem no prompt 12). Fila FIFO, concorrência
+  `OWL_CONCURRENCY` (padrão 1), nunca dois runs da mesma sessão ao mesmo tempo (o `--resume` depende da ordem).
+  O `cli_session_id` é lido quando o run **começa**, não quando é enfileirado.
+- **Grava antes de anunciar:** o evento terminal (`end`/`error`/`cancelled`) só sai pelo SSE depois de mensagem, tokens e status
+  estarem no banco. Quem reage ao `end` já encontra o estado final.
+- **SSE** (`GET /runs/:id/stream`): reenvia o histórico em memória (últimos 200 runs) e segue ao vivo; run antigo ou após reinício
+  devolve só `start` + desfecho guardado no banco. Cancelar run na fila o marca `cancelado` sem iniciar processo.
+- Erros sempre `{ error: { code, message } }`; entrada validada com zod (`model` não pode começar com `-`).
+- Sem `DELETE /sessions` ainda (prompt 09). Uso por sessão: somar `runs.tokens_*`/`custo_estimado` (interface, mais adiante).

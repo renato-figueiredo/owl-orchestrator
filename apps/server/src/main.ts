@@ -1,8 +1,26 @@
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { loadConfig } from '@owl/core';
+import { createRepos, migrate, openDb } from '@owl/db';
 import { buildApp } from './app.js';
+import { Executor } from './executor.js';
 
 const config = loadConfig();
-const app = buildApp();
+mkdirSync(config.dataDir, { recursive: true });
+const db = openDb(join(config.dataDir, 'owl.sqlite'));
+migrate(db);
+const repos = createRepos(db);
+const executor = new Executor({ repos, concurrency: config.concurrency });
+const app = buildApp({ repos, executor });
+
+const stop = async () => {
+  await executor.shutdown();
+  await app.close();
+  db.close();
+  process.exit(0);
+};
+process.on('SIGINT', () => void stop());
+process.on('SIGTERM', () => void stop());
 
 app
   .listen({ host: config.host, port: config.port })
