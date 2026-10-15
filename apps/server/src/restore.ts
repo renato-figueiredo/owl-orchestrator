@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { checkSnapshot } from '@owl/db';
 import { runTool, type Tool } from './backup.js';
@@ -9,6 +9,18 @@ export interface RestoreResult {
   previous?: string;
   sessions: number;
   messages: number;
+}
+
+/** Pid of a live server using this data folder (from `owl.pid`), or undefined. A stale file is ignored. */
+export function serverPid(dataDir: string): number | undefined {
+  try {
+    const pid = Number(readFileSync(join(dataDir, 'owl.pid'), 'utf8').trim());
+    if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) return undefined;
+    process.kill(pid, 0);
+    return pid;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'EPERM' ? -1 : undefined; // EPERM: alive, owned by someone else
+  }
 }
 
 /**
@@ -26,8 +38,11 @@ export async function restoreBackup(o: {
   const src = resolve(o.file);
   if (!existsSync(src)) throw new Error(`File not found: ${src}`);
   mkdirSync(o.dataDir, { recursive: true });
-  const work = join(o.dataDir, `.restore-${process.pid}.tmp`);
-  rmSync(work, { force: true });
+  const running = serverPid(o.dataDir);
+  if (running) throw new Error(`The OWL server is running (pid ${running}): stop it before restoring, or it keeps writing to the old database`);
+  // A private folder (0700): the decrypted database must not be readable by other users while it is being checked.
+  const workDir = mkdtempSync(join(o.dataDir, '.restore-'));
+  const work = join(workDir, 'owl.sqlite');
   try {
     if (src.endsWith('.age')) {
       if (!o.identity) throw new Error('This snapshot is encrypted: pass the private key file with --identity');
@@ -55,6 +70,6 @@ export async function restoreBackup(o: {
     renameSync(work, target);
     return { database: target, ...(previous ? { previous: basename(previous) } : {}), sessions: check.sessions ?? 0, messages: check.messages ?? 0 };
   } finally {
-    rmSync(work, { force: true });
+    rmSync(workDir, { recursive: true, force: true });
   }
 }

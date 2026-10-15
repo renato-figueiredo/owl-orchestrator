@@ -249,7 +249,9 @@ export function buildApp(deps: AppDeps): FastifyInstance {
 
   /** Empties the trash: every trashed conversation, or only those older than `dias`. */
   app.delete('/trash', async (req) => {
-    const q = z.object({ dias: z.coerce.number().int().min(0).max(3650).default(0) }).parse(req.query);
+    const q = z.object({ dias: z.coerce.number().int().min(0).max(3650).default(0), confirmar: z.string().optional() }).parse(req.query);
+    // Golden rule 5: deleting for good needs a human decision. The interface asks; this makes a bare request refuse too.
+    if (q.confirmar !== '1') throw new HttpError(400, 'confirmation_required', 'Emptying the trash is permanent: repeat the request with confirmar=1');
     return { result: needs(deps.cleanup, 'Deletion').purgeTrash(q.dias) };
   });
 

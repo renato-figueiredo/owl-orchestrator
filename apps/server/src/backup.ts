@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { checkSnapshot, snapshotTo, type Db, type createRepos } from '@owl/db';
 import { z } from 'zod';
@@ -70,6 +70,7 @@ export function runTool(tool: Tool, args: string[], timeoutMs = 10 * 60_000): Pr
  */
 export class BackupService {
   private running = false;
+  private current: Promise<unknown> = Promise.resolve();
 
   constructor(
     private readonly deps: {
@@ -83,6 +84,18 @@ export class BackupService {
       now?: () => Date;
     },
   ) {}
+
+  /** Resolves when no snapshot is being taken (the server waits for it before closing the database). */
+  async whenIdle(): Promise<void> {
+    await this.current;
+  }
+
+  /** The error is stored and served by the API: cut it short and never repeat the remote (it may hold credentials). */
+  private safeError(message: string): string {
+    const remote = this.deps.remote;
+    const clean = remote ? message.split(remote).join('<remote>') : message;
+    return clean.length > 300 ? `${clean.slice(0, 300)}…` : clean;
+  }
 
   settings(): BackupSettings {
     const stored = this.deps.repos.settings.get(BACKUP_KEY);
@@ -124,10 +137,12 @@ export class BackupService {
   async run(): Promise<BackupStatus> {
     if (this.running) return { em: new Date().toISOString(), ok: false, erro: 'A backup is already running' };
     this.running = true;
-    const status = await this.take().catch((e: unknown): BackupStatus => ({
+    const attempt = this.take();
+    this.current = attempt.catch(() => undefined);
+    const status = await attempt.catch((e: unknown): BackupStatus => ({
       em: (this.deps.now?.() ?? new Date()).toISOString(),
       ok: false,
-      erro: e instanceof Error ? e.message : String(e),
+      erro: this.safeError(e instanceof Error ? e.message : String(e)),
     }));
     this.running = false;
     this.deps.repos.settings.set(STATUS_KEY, status);
@@ -151,11 +166,14 @@ export class BackupService {
     // Before anything is written: asking for an off-site copy without a key must not leave a plaintext snapshot behind.
     if (remote && !recipient) throw new Error('A remote is set but no age key: refusing to take an unencrypted snapshot for upload');
     mkdirSync(dir, { recursive: true, mode: 0o700 });
+    chmodSync(dir, 0o700); // `mkdir` leaves an existing folder alone
+    this.sweepTemp();
     const base = `owl-${now.toISOString().slice(0, 10)}.db`;
     const plain = join(dir, base);
     const tmp = join(dir, `${base}.${process.pid}.tmp`); // VACUUM INTO refuses an existing file
     rmSync(tmp, { force: true });
     snapshotTo(this.deps.db, tmp);
+    chmodSync(tmp, 0o600); // VACUUM INTO uses the default umask
     const check = checkSnapshot(tmp);
     if (!check.ok) {
       rmSync(tmp, { force: true });
@@ -192,6 +210,15 @@ export class BackupService {
       enviado = true;
     }
     return { em: now.toISOString(), ok: true, arquivo, criptografado: Boolean(recipient), enviado };
+  }
+
+  /** Temp files left by a snapshot that was cut short (crash, kill). */
+  private sweepTemp(): void {
+    for (const n of readdirSync(this.deps.dir)) {
+      if (!/^owl-\d{4}-\d{2}-\d{2}\.db(\.age)?\.[\w-]+\.tmp$/.test(n)) continue;
+      const file = join(this.deps.dir, n);
+      if (Date.now() - statSync(file).mtimeMs > 3_600_000) rmSync(file, { force: true });
+    }
   }
 
   /** Keeps the newest `retencao` snapshots in the local folder. The remote's retention is the user's (rclone). */

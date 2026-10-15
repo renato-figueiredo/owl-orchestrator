@@ -34,7 +34,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Pacote de vídeo (ffmpeg, Remotion)
 
 ## Pendências (atualizado em 2026-10-14)
-**Próximo passo:** prompt 11 (revisão da fase 1). Conferir antes se os itens importantes 1 a 7 do revisor do 08/09 (lista só estava no chat da revisão) já estão cobertos.
+**Próximo passo:** prompt 11 (revisão da fase 1). O 08/09 foi revisado de novo em 2026-10-15 (a lista antiga do revisor se perdeu): 9 itens corrigidos, 1 aberto abaixo.
 
 **Revisão**
 - [x] `qa-testes` e `revisor` nos prompts 02, 03 e 04 rodados em 2026-10-15; 3 bloqueantes corrigidos (NUL no adaptador, Host/Origin, raízes de pastas).
@@ -56,6 +56,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 
 - [ ] Prompt 09: apagar a sessão da CLI ficou só como aviso (decisão em `docs/03-data/deletion-and-backup.md`); reavaliar se as CLIs ganharem comando oficial.
 - [ ] Prompt 09: testar `age`/`rclone` reais de ponta a ponta (os testes usam binários falsos); instalar `age` e `rclone` quando for ligar o backup.
+- [ ] Prompt 09 (revisão): a purga de uma conversa pode apagar um blob que o usuário acabou de reenviar por dedupe (mesmo print de uma conversa na lixeira) antes de ele anexar; o envio falha com 400 `attachment_not_found` e é preciso colar de novo. Estreito; corrigir respeitando `visto_em` na purga exige ajustar os testes que purgam logo após o upload.
 - [ ] Prompt 09: o E2E ainda não cobre lixeira/backup (só testes de componente e de API).
 
 **Adaptadores**

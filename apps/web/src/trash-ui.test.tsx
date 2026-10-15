@@ -54,7 +54,7 @@ beforeEach(() => {
         trashed = [];
         return json({ result: purgeResult });
       }
-      if (path === '/trash' && method === 'DELETE') {
+      if (path === '/trash?confirmar=1' && method === 'DELETE') {
         trashed = [];
         return json({ result: { purged: 1, skipped: 0 } });
       }
@@ -103,7 +103,7 @@ describe('trash', () => {
     render(<App />);
     await user.click(await screen.findByText('Lixeira'));
     await user.click(await screen.findByRole('button', { name: 'Esvaziar lixeira' }));
-    expect(calls.some((c) => c.path === '/trash' && c.method === 'DELETE')).toBe(false);
+    expect(calls.some((c) => c.path === '/trash?confirmar=1' && c.method === 'DELETE')).toBe(false);
     await user.click(screen.getByRole('button', { name: /Confirmar: esvaziar/ }));
     expect(await screen.findByText(/1 conversa\(s\) excluída/)).toBeInTheDocument();
   });

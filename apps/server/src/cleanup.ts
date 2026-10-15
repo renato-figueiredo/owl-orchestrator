@@ -19,7 +19,7 @@ export const DEFAULT_TRASH_SETTINGS: TrashSettings = { diasRetencao: 30, purgaAu
 /** Blobs and files younger than this are never swept: an upload exists before the message that attaches it. */
 export const SWEEP_GRACE_SECONDS = 3600;
 const BLOB_FILE = /^[0-9a-f]{2}\/[0-9a-f]{64}\.webp$/;
-const TMP_FILE = /^[0-9a-f]{2}\/[0-9a-f]{64}\.webp\.\d+\.tmp$/;
+const TMP_FILE = /^[0-9a-f]{2}\/[0-9a-f]{64}\.webp\.[\w-]+\.tmp$/;
 
 export interface PurgeResult {
   sessionId: string;

@@ -6,7 +6,8 @@
    `DELETE FROM sessions WHERE id = ?` → CASCADE apaga runs, mensagens e anexos;
    triggers limpam o FTS5.
    Na mesma transação, apaga os **fatos não fixados** que o resumidor extraiu das runs da sessão
-   (`facts.origem_run_id`). Fatos **fixados** ficam: são curadoria do usuário e valem para o projeto, não só para o chat.
+   (`facts.origem_run_id`). Fatos **fixados** de um projeto ficam: são curadoria do usuário e valem para o projeto, não só para o chat.
+   Os fatos de uma conversa **sem projeto** pertencem àquela conversa (`facts.session_id`, `ON DELETE CASCADE`) e vão embora com ela, fixados ou não.
 3. **Depois do commit**, coleta de órfãos **só dos blobs da própria sessão** (os hashes são lidos antes do cascade).
    Para cada um, em um único `DELETE ... WHERE hash = ? AND hash NOT IN (SELECT blob_hash FROM attachments) RETURNING caminho`
    (sem intervalo entre checar e apagar): se a linha saiu, apaga o arquivo; se outra sessão ainda usa, nada acontece.
@@ -17,6 +18,9 @@
 5. Recuperar espaço: `PRAGMA incremental_vacuum` depois de cada purga e na varredura; `VACUUM` manual opcional.
 
 Ordem importa: **banco primeiro (linha), arquivo depois**. Se o app cair no meio, sobra um arquivo sem linha e a varredura apaga.
+A exclusão em massa (`DELETE /trash`) exige `?confirmar=1`: sem isso o servidor recusa (400), mesmo que o pedido não venha da interface (regra de ouro 5).
+O esvaziamento automático da lixeira (`purgaAutomatica`) vem **ligado** por padrão, depois de `diasRetencao` dias; desligue em Configurações se preferir só manual.
+A purga não alcança backups já feitos (locais ou remotos): eles guardam a conversa até o `retencao` (ou a retenção do seu remote) apagá-los.
 Purga só vale para sessão **já na lixeira** e sem execução em andamento (`409` caso contrário). A lixeira esvazia sozinha após
 `lixeira.diasRetencao` (padrão 30; `lixeira.purgaAutomatica`).
 
@@ -47,6 +51,10 @@ Documentar a restauração e testar.
 `OWL_BACKUP_AGE_RECIPIENT`; o texto simples é apagado, inclusive se o `age` falhar), `rclone copyto` para `OWL_BACKUP_RCLONE_REMOTE`
 (recusa enviar sem criptografia), últimas N cópias locais. Desligado por padrão; configurações em `settings.backup`.
 `owl restore <arquivo> [--identity chave] [--data-dir pasta]` verifica antes e guarda o banco anterior como `.before-restore-…`.
+O `restore` **recusa** rodar com o servidor vivo (`owl.pid` na pasta de dados) e roda numa pasta temporária privada (0700). Depois de restaurar,
+imagens enviadas depois do snapshot não têm linha no banco restaurado e a próxima varredura apaga arquivos de imagem sem linha:
+copie a pasta de anexos antes de subir o servidor (o comando avisa). Snapshots saem com permissão 0600 pasta 0700; o erro guardado do
+rclone é cortado e não repete o remote. O desligamento do servidor espera um snapshot em andamento.
 Anexos e configs ficam fora do snapshot (restic/rclone, ver README); Litestream é alternativa para o banco.
 
 ## Acesso remoto

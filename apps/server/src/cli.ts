@@ -22,6 +22,10 @@ async function main(): Promise<number> {
     const r = await restoreBackup({ file, dataDir, identity: option(rest, '--identity') });
     console.log(`Restored ${r.sessions} conversations / ${r.messages} messages into ${r.database}`);
     if (r.previous) console.log(`The previous database was kept as ${r.previous}`);
+    console.log(
+      'Warning: images uploaded after this snapshot have no row in the restored database, and the next cleanup sweep deletes\n' +
+        'image files nobody points to. To keep them, copy the attachments folder somewhere safe BEFORE starting the server.',
+    );
     return 0;
   } catch (e) {
     console.error(e instanceof Error ? e.message : e);

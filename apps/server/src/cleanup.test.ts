@@ -153,7 +153,8 @@ describe('trash and purge', () => {
     cleanup.saveSettings({ purgaAutomatica: false, diasRetencao: 1 });
     age(5);
     expect(cleanup.purgeExpired().purged).toBe(0);
-    expect((await json('DELETE', '/trash')).body.result.purged).toBe(1);
+    expect((await json('DELETE', '/trash')).status).toBe(400);
+    expect((await json('DELETE', '/trash?confirmar=1')).body.result.purged).toBe(1);
   });
 
   it('settings are validated and persisted', async () => {
@@ -192,7 +193,7 @@ describe('sweep', () => {
     chat(keep);
     const hash = 'ab'.repeat(32);
     const stray = join(store, 'ab', `${hash}.webp`);
-    const tmp = join(store, 'ab', `${hash}.webp.123.tmp`);
+    const tmp = join(store, 'ab', `${hash}.webp.123-1a2b3c4d.tmp`);
     const foreign = join(store, 'ab', 'notes.txt');
     const fresh = join(store, 'ab', `${'cd'.repeat(32)}.webp`);
     mkdirSync(join(store, 'ab'), { recursive: true });

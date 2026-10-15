@@ -70,7 +70,7 @@ export const api = {
   restoreSession: (id: string) => call<{ session: Session }>('POST', `/sessions/${encodeURIComponent(id)}/restore`),
   /** Deletes a conversation that is in the trash for good. */
   purgeSession: (id: string) => call<{ result: PurgeResult }>('DELETE', `/trash/${encodeURIComponent(id)}`).then((r) => r.result),
-  emptyTrash: () => call<{ result: { purged: number; skipped: number } }>('DELETE', '/trash').then((r) => r.result),
+  emptyTrash: () => call<{ result: { purged: number; skipped: number } }>('DELETE', '/trash?confirmar=1').then((r) => r.result),
   trashSettings: () => call<{ lixeira?: TrashSettings }>('GET', '/settings').then((r) => r.lixeira ?? null),
   saveTrashSettings: (patch: Partial<TrashSettings>) =>
     call<{ lixeira: TrashSettings }>('PUT', '/settings', { lixeira: patch }).then((r) => r.lixeira),

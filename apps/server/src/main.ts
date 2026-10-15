@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { loadConfig } from '@owl/core';
 import { memoryServerLaunch } from '@owl/mcp-memory';
@@ -10,6 +10,9 @@ import { Executor } from './executor.js';
 
 const config = loadConfig();
 mkdirSync(config.dataDir, { recursive: true });
+// `owl restore` refuses to run while this process is alive (it would swap the database file under it).
+const pidFile = join(config.dataDir, 'owl.pid');
+writeFileSync(pidFile, String(process.pid), { mode: 0o600 });
 const db = openDb(join(config.dataDir, 'owl.sqlite'));
 migrate(db);
 const repos = createRepos(db);
@@ -59,6 +62,8 @@ timer.unref();
 const stop = async () => {
   clearInterval(timer);
   await executor.shutdown();
+  await backup.whenIdle(); // closing the database under a running snapshot would cut it
+  rmSync(pidFile, { force: true });
   await app.close();
   db.close();
   process.exit(0);
