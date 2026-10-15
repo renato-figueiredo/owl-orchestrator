@@ -1,4 +1,4 @@
-import type { AgentLibrary, BackupInfo, BackupSettings, BackupStatus, Fact, MemorySettings, PurgeResult, SweepReport, TrashSettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './types';
+import type { AgentLibrary, BoardData, TicketDetail, TicketStatus, BackupInfo, BackupSettings, BackupStatus, Fact, MemorySettings, PurgeResult, SweepReport, TrashSettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -106,5 +106,18 @@ export const api = {
   retryRun: (runId: string, via: { provider: string; model?: string }) =>
     call<{ runId: string }>('POST', `/runs/${encodeURIComponent(runId)}/retry`, via).then((r) => r.runId),
   discardRun: (runId: string) => call<{ status: string }>('POST', `/runs/${encodeURIComponent(runId)}/discard`),
+  board: (projectId: string) => call<BoardData>('GET', `/projects/${encodeURIComponent(projectId)}/board`),
+  ticket: (id: string) => call<TicketDetail>('GET', `/tickets/${encodeURIComponent(id)}`),
+  createTicket: (projectId: string, input: { titulo: string; descricao?: string; criteriosAceite?: string; responsavel?: string; orcamentoTokens?: number; requerAprovacao?: boolean; status?: TicketStatus }) =>
+    call<{ ticket: { id: string } }>('POST', `/projects/${encodeURIComponent(projectId)}/tickets`, input).then((r) => r.ticket),
+  startGoal: (projectId: string, objetivo: string) =>
+    call<{ ticket: { id: string } }>('POST', `/projects/${encodeURIComponent(projectId)}/board/goals`, { objetivo }).then((r) => r.ticket),
+  moveTicket: (id: string, status: TicketStatus, ordem?: number) =>
+    call<unknown>('POST', `/tickets/${encodeURIComponent(id)}/status`, { status, ...(ordem !== undefined ? { ordem } : {}) }),
+  commentTicket: (id: string, texto: string) => call<unknown>('POST', `/tickets/${encodeURIComponent(id)}/comments`, { texto }),
+  runTicket: (id: string, agente?: string) =>
+    call<{ runId: string | null }>('POST', `/tickets/${encodeURIComponent(id)}/run`, agente ? { agente } : {}),
+  decideApproval: (id: string, decisao: 'aprovado' | 'rejeitado', comentario?: string) =>
+    call<unknown>('POST', `/approvals/${encodeURIComponent(id)}/decide`, { decisao, ...(comentario ? { comentario } : {}) }),
   cancel: (runId: string) => call<{ status: string }>('POST', `/runs/${encodeURIComponent(runId)}/cancel`),
 };

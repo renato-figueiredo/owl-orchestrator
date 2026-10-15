@@ -17,7 +17,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 
 ## Fase 2 — Equipes
 - [x] 12 Agentes como arquivos + pipelines YAML (`build/prompts/12`) — implementado em 2026-10-15; `qa-testes` e `revisor` rodam junto do 13
-- [ ] 13 Quadro local + portões de aprovação (`build/prompts/13`)
+- [x] 13 Quadro local + portões de aprovação (`build/prompts/13`) — implementado em 2026-10-15; `qa-testes` e `revisor` rodam junto do 12
 - [ ] 14 Projetos, equipes, gerente multi-projeto, worktrees (`build/prompts/14`)
 - [ ] 15 Roteador e métricas (`build/prompts/15`)
 - [ ] 16 Integração com Linear (`build/prompts/16`)
@@ -34,7 +34,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Pacote de vídeo (ffmpeg, Remotion)
 
 ## Pendências (atualizado em 2026-10-14)
-**Próximo passo:** fase 2, prompt 13 (quadro e aprovação); depois `qa-testes` + `revisor` do 12 e do 13 juntos. Fase 1 concluída (prompt 11). O 08/09 foi revisado de novo em 2026-10-15 (a lista antiga do revisor se perdeu): 9 itens corrigidos, 1 aberto abaixo.
+**Próximo passo:** `qa-testes` + `revisor` do 12 e do 13 juntos; depois prompt 14 (projetos, equipes e worktrees), sozinho. Fase 1 concluída (prompt 11). O 08/09 foi revisado de novo em 2026-10-15 (a lista antiga do revisor se perdeu): 9 itens corrigidos, 1 aberto abaixo.
 
 **Revisão**
 - [x] `qa-testes` e `revisor` nos prompts 02, 03 e 04 rodados em 2026-10-15; 3 bloqueantes corrigidos (NUL no adaptador, Host/Origin, raízes de pastas).
@@ -69,7 +69,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] CLAUDE.md lista `packages/memory` como montador de contexto, mas o código está em `packages/core/src/memory`.
 
 **Agentes e pipelines (prompt 12)**
-- [ ] `qa-testes` e `revisor` no prompt 12 (junto do 13): biblioteca, `outroProvedorQue`, `tentativas`, interface.
+- [ ] `qa-testes` e `revisor` nos prompts 12 e 13 juntos: biblioteca, `outroProvedorQue`, `tentativas`, interface; quadro (transições, portões, fluxo, `ticketBrief`).
 - [ ] Falha de etapa que não é o refinador (ex.: revisor): hoje só dá para dispensar; falta tentar de novo com outro provedor e pular etapa do meio (`runner.retry/continue` assumem o refinador). O `continue` na última etapa responde 409.
 - [ ] Escolher o pipeline na caixa de envio (hoje só pela API: `pipeline` em `POST /sessions/:id/messages`; `GET /pipelines` lista).
 - [ ] Editor de pipelines e de skills na interface (hoje só a biblioteca de agentes; pipelines e skills são arquivos).
@@ -77,6 +77,16 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Agentes com `Edit/Write/Bash` só depois dos worktrees (prompt 14); `ferramentas` de um agente do usuário vão direto para `--allowedTools` sem aviso.
 - [ ] Atualizar o índice de agentes ao mudar um arquivo sem ninguém listar/rodar (hoje reconstrói na listagem e ao iniciar pipeline; um `fs.watch` fica para depois).
 - [ ] Codex ignora `ferramentas` do agente (o sandbox é fixo): documentar/validar quando um agente de Codex declarar ferramentas de escrita.
+
+**Quadro (prompt 13)**
+- [ ] `qa-testes` e `revisor` no quadro (junto do 12): transições, concorrência de portões, fluxo com CLIs reais (hoje só adaptador falso e E2E com a CLI falsa).
+- [ ] Fluxo de exemplo com `claude` real: o formato JSON do `po`/`tech-lead` e o `VEREDITO:` dependem de o modelo obedecer; testar e ajustar os prompts dos agentes de exemplo.
+- [ ] Prefixo do ticket editável por projeto (`projects.prefixo` existe, falta API/UI) e ordem/prioridade editáveis no painel do ticket (prioridade e teto só pela criação/PATCH).
+- [ ] O quadro atualiza por polling (3 s); trocar por SSE se pesar.
+- [ ] Portão `confianca` só existe na API (`requestGate`); o roteador (prompt 15) é quem vai abri-lo.
+- [ ] Sem exclusão de ticket (regra 5: apagar exige aprovação); definir se vira "cancelado" (Linear: `canceled`) em vez de apagar.
+- [ ] Agentes só leem (sem worktree): `proposeAction` está pronto para o prompt 14 chamar antes de escrever, apagar, dar push ou mesclar.
+- [ ] Equipes (`teams`/`team_members`) ainda não são usadas pelo quadro; vêm no prompt 14.
 
 **Adaptadores**
 - [x] Codex: JSON, resume e erros capturados do `codex-cli` 0.162 real (fixtures `codex-*.jsonl`). Falta: imagens (prompt 08).
@@ -98,7 +108,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Memória por agente dentro do projeto (`facts.agent_id` já existe; falta usar no montador, na API e no MCP) e escopo global para conversas sem projeto (hoje o MCP dá a elas só a própria conversa).
 - [x] Prompt 10: `qa-testes` e `revisor` rodados; endurecimento feito (escritor `query_only`, `--tsconfig` fixo, resultados cercados como dado não confiável). Codex não recebe as ferramentas de memória (sem `--mcp-config`; avaliar `codex mcp`); testar o servidor MCP com o `claude` real em CI não é viável (só fake).
 - [ ] `RunPanel.onRetry` troca de provedor sem passar pelo aviso de troca (prompt 07, interface).
-- [ ] Apagar `references/` (clones de estudo, ~840 MB) ao terminar de consultar Plane e Vibe Kanban para o quadro (prompt 13).
+- [ ] Apagar `references/` (clones de estudo, ~840 MB): o quadro (prompt 13) foi feito só com o schema público do Linear, sem consultar Plane/Vibe Kanban; pode apagar quando quiser.
 - [ ] Sandbox opcional de agentes em container (junto ao prompt 14).
 
 **Lançamento e divulgação (decisão de 2026-10-15: só ao final do projeto)**

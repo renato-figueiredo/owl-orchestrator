@@ -54,6 +54,8 @@ export interface SubmitInput {
   allowedTools?: string[];
   /** Library agent this run executes (`agents.id`), stored in `runs.agent_id`. */
   agentId?: string;
+  /** Board ticket this run works on (`runs.ticket_id`), so its tokens and cost add up on the ticket. */
+  ticketId?: string;
   /** Pipeline step name, stored in `runs.etapa`. */
   etapa?: string;
   /** The run whose output feeds this one (`runs.parent_run_id`). */
@@ -157,6 +159,7 @@ export class Executor {
       ...(input.model ? { modelo: input.model } : {}),
       ...(input.etapa ? { etapa: input.etapa } : {}),
       ...(input.agentId ? { agentId: input.agentId } : {}),
+      ...(input.ticketId ? { ticketId: input.ticketId } : {}),
       ...(input.stateless ? { semEstado: true } : {}),
       ...(input.parentRunId ? { parentRunId: input.parentRunId } : {}),
     });

@@ -1,8 +1,11 @@
+import { BoardError, LocalBoard } from '@owl/board';
 import { listAdapters, type RunEvent } from '@owl/core';
 import type { createRepos } from '@owl/db';
 import { createReadStream } from 'node:fs';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z, ZodError } from 'zod';
+import { BoardFlow } from './board-flow.js';
+import { registerBoardRoutes } from './board-routes.js';
 import { BackupService, backupSettingsPatchSchema } from './backup.js';
 import { CleanupService, NotInTrashError, SessionBusyError, trashSettingsPatchSchema } from './cleanup.js';
 import { AttachmentError, AttachmentService, cleanName, HASH, MAX_NAME_CHARS } from './attachments.js';
@@ -128,6 +131,15 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   });
   library.sync(); // index the agent files now; a broken one is listed by GET /agents, it does not stop the server
   const runner = new PipelineRunner({ repos, executor, library });
+  const board = new LocalBoard(repos);
+  const flow = new BoardFlow({
+    repos,
+    executor,
+    library,
+    board,
+    // Checked at every run, like the chat: the folder may have been replaced since the project was created.
+    cwdOf: (p) => folder(p.pasta),
+  });
   const memory = new MemoryService({ repos, executor, ...(deps.mcpMemory ? { mcp: deps.mcpMemory } : {}) });
   const attachments = new AttachmentService({
     repos,
@@ -159,6 +171,9 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       return reply.status(400).send({ error: { code: 'invalid_request', message } });
     }
     if (err instanceof LibraryError) {
+      return reply.status(err.status).send({ error: { code: err.code, message: err.message } });
+    }
+    if (err instanceof BoardError) {
       return reply.status(err.status).send({ error: { code: err.code, message: err.message } });
     }
     if (err instanceof PipelineError) {
@@ -201,6 +216,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   });
 
   app.get('/projects', async () => ({ projects: repos.projects.list() }));
+
+  registerBoardRoutes(app, { repos, board, flow, library });
 
   app.post('/sessions', async (req, reply) => {
     const body = createSession.parse(req.body ?? {});

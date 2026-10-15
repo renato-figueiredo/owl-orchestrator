@@ -1,0 +1,343 @@
+import { agentActor, BoardError, type Decision, HUMAN, LocalBoard, SYSTEM, ticketBrief, ticketContext, estimateTokens } from '@owl/board';
+import type { AgentDefinition } from '@owl/core';
+import type { Actor, createRepos, Project, Run, Ticket } from '@owl/db';
+import { z } from 'zod';
+import type { Executor, StepOutcome } from './executor.js';
+import type { Library } from './library.js';
+
+type Repos = ReturnType<typeof createRepos>;
+
+/** Tokens the facts and the summary may take in an agent's prompt. */
+const CONTEXT_TOKENS = 1500;
+/** Rough size of an answer, added to the prompt when checking the ticket's token ceiling. */
+const EXPECTED_OUTPUT_TOKENS = 2000;
+const MAX_SUBTASKS = 8;
+/** Roles that do not take over the ticket: it stays in its column while they work. */
+const STAYS = new Set(['po', 'techlead', 'qa', 'revisor', 'memoria']);
+
+const poOutput = z.object({
+  titulo: z.string().trim().min(1).max(200),
+  descricao: z.string().trim().max(20_000).optional(),
+  criterios_aceite: z.union([z.string(), z.array(z.string())]).optional(),
+});
+const leadOutput = z.object({
+  subtarefas: z
+    .array(
+      z.object({
+        titulo: z.string().trim().min(1).max(200),
+        descricao: z.string().trim().max(20_000).optional(),
+        criterios_aceite: z.union([z.string(), z.array(z.string())]).optional(),
+        agente: z.string().max(64).optional(),
+      }),
+    )
+    .min(1)
+    .max(MAX_SUBTASKS),
+});
+
+const bullets = (v: string | string[] | undefined): string | undefined =>
+  v === undefined ? undefined : Array.isArray(v) ? v.map((x) => `- ${x.replace(/^[-*]\s*/, '')}`).join('\n') : v;
+
+/** The last fenced ```json block, else the outermost {...} of the text. Undefined when neither parses. */
+export function extractJson(text: string): unknown {
+  const fences = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map((m) => m[1] ?? '');
+  const candidates = [...fences.reverse()];
+  const first = text.indexOf('{');
+  const last = text.lastIndexOf('}');
+  if (first >= 0 && last > first) candidates.push(text.slice(first, last + 1));
+  for (const c of candidates) {
+    try {
+      return JSON.parse(c);
+    } catch {
+      /* try the next one */
+    }
+  }
+  return undefined;
+}
+
+/** "VEREDITO: aprovado|reprovado" (any case, accents optional). Undefined when the agent did not say. */
+export function parseVerdict(text: string): 'aprovado' | 'reprovado' | undefined {
+  const m = [...text.matchAll(/veredito\s*[:\-]\s*\**\s*(aprovad[oa]|reprovad[oa])/gi)].pop();
+  if (!m?.[1]) return undefined;
+  return m[1].toLowerCase().startsWith('aprov') ? 'aprovado' : 'reprovado';
+}
+
+/** Summary and facts out of the memory agent's answer ("1. Resumo ... 2. Fatos ..."). */
+export function parseMemoryOutput(text: string): { resumo: string; fatos: string[] } {
+  const at = text.search(/^[^\w\n]*(\d+\.\s*)?\**fatos\**[ \t]*:?/im);
+  const head = at >= 0 ? text.slice(0, at) : text;
+  const tail = at >= 0 ? text.slice(at).split('\n').slice(1).join('\n') : '';
+  const resumo = head.replace(/^[^\w\n]*(\d+\.\s*)?\**resumo\**[ \t]*:?\s*/i, '').trim();
+  const fatos = tail
+    .split('\n')
+    .map((l) => l.match(/^\s*(?:[-*]|\d+[.)])\s+(.+?)\s*$/)?.[1])
+    .filter((l): l is string => Boolean(l))
+    .map((l) => l.replace(/\*\*/g, '').slice(0, 200))
+    .slice(0, 10);
+  return { resumo: resumo.slice(0, 4000), fatos };
+}
+
+export interface BoardFlowDeps {
+  repos: Repos;
+  executor: Executor;
+  library: Library;
+  board: LocalBoard;
+  /** Working folder of a project's runs (already checked against the allowed roots). */
+  cwdOf: (project: Project) => string;
+  /** Agent names of the example flow (override to use other ones). */
+  agentes?: Partial<Record<'po' | 'techlead' | 'memoria' | 'qa' | 'dev', string>>;
+}
+
+const MEMORY_TASK = 'Resuma o que foi decidido e entregue neste ticket e liste os fatos duráveis.';
+const QA_TASK = 'Verifique a entrega contra os critérios de aceite, um a um. Termine com uma linha "VEREDITO: aprovado" ou "VEREDITO: reprovado" e o motivo.';
+
+type Role = 'po' | 'techlead' | 'dev' | 'qa' | 'revisor' | 'memoria' | string;
+
+/**
+ * Drives agents over tickets. State lives in the database (ticket status, gates, comments), not in memory: each agent
+ * result is handled by what the ticket and the agent's role say, so a restart only loses the run in flight (the ticket
+ * is then `bloqueado` and a person can run it again). Nothing here moves a ticket the rules do not allow an agent to
+ * move: the gates are in `LocalBoard`.
+ *
+ * Example flow: objective → `po` writes the ticket → `tech-lead` splits it → `dev-*` execute each sub-task → `qa`
+ * verifies → delivery gate (person approves) → `memoria` summarizes and records facts.
+ */
+export class BoardFlow {
+  private readonly names: Required<NonNullable<BoardFlowDeps['agentes']>>;
+
+  constructor(private readonly deps: BoardFlowDeps) {
+    this.names = { po: 'po', techlead: 'tech-lead', memoria: 'memoria', qa: 'qa', dev: 'dev-back', ...deps.agentes };
+  }
+
+  /** Creates the goal ticket and hands it to the product owner. */
+  startGoal(project: Project, objetivo: string): { ticket: Ticket; run: Run | undefined } {
+    const ticket = this.deps.board.createTicket({ projectId: project.id, titulo: objetivo.slice(0, 200), descricao: objetivo, status: 'backlog' }, HUMAN);
+    return { ticket, run: this.run(ticket.id, this.names.po, 'Transforme este objetivo em um ticket claro, com critérios de aceite verificáveis.') };
+  }
+
+  /**
+   * Runs `agente` on a ticket with `tarefa`. Returns undefined when a gate stopped it (ceiling exceeded: a person
+   * decides) or the agent cannot run (the reason becomes a comment and the ticket is blocked).
+   */
+  run(ticketId: string, agente: string, tarefa: string, opts: { force?: boolean } = {}): Run | undefined {
+    const { repos, board } = this.deps;
+    const ticket = this.need(ticketId);
+    const project = repos.projects.get(ticket.projectId)!;
+    let def: AgentDefinition;
+    let systemAppend: string;
+    try {
+      def = this.deps.library.agent(agente);
+      systemAppend = this.deps.library.systemPrompt(def);
+    } catch (e) {
+      this.fail(ticket, agente, e instanceof Error ? e.message : String(e));
+      return undefined;
+    }
+    this.deps.library.sync();
+    const agentRow = repos.agents.byName(agente);
+    const parent = ticket.parentId ? (repos.tickets.get(ticket.parentId) ?? null) : null;
+    const brief = ticketBrief({ ticket, comments: repos.tickets.comments(ticketId), parent, children: repos.tickets.children(ticketId), tarefa });
+    const facts = repos.facts.listScope({ projectId: project.id, apenasFixados: true }).map((f) => f.texto);
+    const memory = ticketContext({ fatos: facts, resumo: ticket.resumo ?? parent?.resumo, orcamentoTokens: CONTEXT_TOKENS });
+    const texto = `${memory}${brief}`;
+
+    if (!opts.force && board.overBudget(ticketId, estimateTokens(texto + systemAppend) + EXPECTED_OUTPUT_TOKENS)) {
+      const u = repos.tickets.usage(ticketId);
+      board.requestGate(
+        ticketId,
+        {
+          tipo: 'custo',
+          motivo: `Custo acima do teto do ticket: ${u.tokensIn + u.tokensOut} de ${ticket.orcamentoTokens} tokens já usados; o próximo passo (${agente}) passaria do limite`,
+          retomar: { agente, tarefa, statusAnterior: ticket.status === 'aguardando_aprovacao' ? 'em_andamento' : ticket.status },
+        },
+        agentActor(agente),
+      );
+      return undefined;
+    }
+
+    // Planners, reviewers and the memory agent work on the ticket where it is; an executor puts it in progress.
+    const role = def.papel ?? '';
+    const keepsStatus = STAYS.has(role);
+    const expected = keepsStatus ? ticket.status : 'em_andamento';
+    if (!keepsStatus) {
+      if (ticket.status !== 'em_andamento') board.updateStatus(ticketId, 'em_andamento', SYSTEM);
+      if (!ticket.responsavelAgentId && agentRow) board.assign(ticketId, agentRow.id, SYSTEM);
+    }
+    const sessionId = this.sessionOf(ticket);
+    repos.tickets.addEvent({ ticketId, ator: agentActor(agente), tipo: 'execucao', detalhe: tarefa.slice(0, 300) });
+    return this.deps.executor.submit({
+      sessionId,
+      texto,
+      provider: def.provedor,
+      ...(def.modelo ? { model: def.modelo } : {}),
+      cwd: this.deps.cwdOf(project),
+      systemAppend,
+      etapa: `quadro:${def.papel ?? agente}`,
+      ...(agentRow ? { agentId: agentRow.id } : {}),
+      ticketId,
+      stateless: true,
+      recordUserMessage: false,
+      storeAs: false,
+      ...(def.ferramentas.length ? { allowedTools: def.ferramentas } : {}),
+      noTools: def.ferramentas.length === 0,
+      after: (outcome) => this.afterRun(ticketId, agente, role, expected, outcome),
+    });
+  }
+
+  /** Continues after a person decided a gate: resumes the paused step, or re-runs the author after a rejection. */
+  onDecision(decision: Decision, decisao: 'aprovado' | 'rejeitado'): Run | undefined {
+    const { ticket, approval } = decision;
+    if (decisao === 'aprovado') {
+      if (approval.tipo === 'entrega' && ticket.status === 'concluido') return this.run(ticket.id, this.names.memoria, MEMORY_TASK);
+      const r = decision.retomar;
+      // The paused step goes on; an approved cost gate lets exactly this step past the ceiling.
+      if (r?.agente && r.tarefa) return this.run(ticket.id, r.agente, r.tarefa, { force: approval.tipo === 'custo' });
+      // A reproval the person confirmed: the author reworks it.
+      if (approval.tipo === 'reprovacao') return this.rework(ticket);
+      return undefined;
+    }
+    // Rejected delivery or reproval: the ticket is back in progress with the person's comment on it, and the
+    // responsible agent tries again. Rejecting a cost, destructive or low-confidence gate means "do not": nothing runs.
+    return approval.tipo === 'entrega' || approval.tipo === 'reprovacao' ? this.rework(ticket) : undefined;
+  }
+
+  private rework(ticket: Ticket): Run | undefined {
+    const t = this.need(ticket.id);
+    if (t.status !== 'em_andamento' || !t.responsavel) return undefined;
+    return this.run(t.id, t.responsavel, 'A entrega foi devolvida. Leia os últimos comentários, corrija o que foi apontado e responda com a versão revisada.');
+  }
+
+  private afterRun(ticketId: string, agente: string, role: Role, expected: string, outcome: StepOutcome): void {
+    const { repos, board } = this.deps;
+    const ticket = repos.tickets.get(ticketId);
+    if (!ticket) return;
+    const who = agentActor(agente);
+    if (outcome.status !== 'ok' || !outcome.result.trim()) {
+      const why = outcome.status === 'cancelado' ? 'execução cancelada' : (outcome.error ?? 'o agente não devolveu nenhum texto');
+      this.fail(ticket, agente, why, outcome.run.id);
+      return;
+    }
+    const text = outcome.result.trim();
+    board.comment(ticketId, who, text, outcome.run.id);
+    // A person may have moved the card while the agent worked: then the answer is only a comment.
+    if (ticket.status !== expected) return;
+
+    switch (role) {
+      case 'po':
+        return this.afterPo(ticket, text, who);
+      case 'techlead':
+        return this.afterLead(ticket, text, who);
+      case 'qa':
+      case 'revisor':
+        return this.afterReview(ticket, role, agente, text, who, outcome.run.id);
+      case 'memoria':
+        return this.afterMemory(ticket, text, outcome.run.id);
+      default:
+        // A developer (or any other executor) delivered: it goes to review.
+        board.updateStatus(ticketId, 'em_revisao', who);
+        this.run(ticketId, this.names.qa, QA_TASK);
+    }
+  }
+
+  private afterPo(ticket: Ticket, text: string, who: Actor): void {
+    const { repos, board } = this.deps;
+    const parsed = poOutput.safeParse(extractJson(text));
+    if (!parsed.success) return this.unreadable(ticket, who, 'o product owner não devolveu o ticket no formato esperado (JSON com titulo, descricao e criterios_aceite)');
+    const o = parsed.data;
+    repos.tickets.update(ticket.id, { titulo: o.titulo, descricao: o.descricao ?? ticket.descricao, criteriosAceite: bullets(o.criterios_aceite) ?? null });
+    board.updateStatus(ticket.id, 'pronto', who);
+    this.run(ticket.id, this.names.techlead, `Quebre este ticket em até ${MAX_SUBTASKS} subtarefas pequenas, cada uma com o agente que deve executar ("dev-front", "dev-back"...). Responda SOMENTE com um bloco json: {"subtarefas":[{"titulo":"...","descricao":"...","criterios_aceite":["..."],"agente":"dev-back"}]}`);
+  }
+
+  private afterLead(ticket: Ticket, text: string, who: Actor): void {
+    const { repos, board, library } = this.deps;
+    const parsed = leadOutput.safeParse(extractJson(text));
+    if (!parsed.success) return this.unreadable(ticket, who, 'o tech lead não devolveu as subtarefas no formato esperado (JSON com "subtarefas")');
+    const created: Ticket[] = [];
+    for (const s of parsed.data.subtarefas) {
+      const name = s.agente && repos.agents.byName(s.agente) ? s.agente : this.names.dev;
+      const agentRow = repos.agents.byName(name);
+      const child = board.createTicket(
+        {
+          projectId: ticket.projectId,
+          parentId: ticket.id,
+          titulo: s.titulo,
+          ...(s.descricao ? { descricao: s.descricao } : {}),
+          ...((bullets(s.criterios_aceite) ?? ticket.criteriosAceite) ? { criteriosAceite: (bullets(s.criterios_aceite) ?? ticket.criteriosAceite)! } : {}),
+          status: 'pronto',
+          requerAprovacao: true,
+          ...(ticket.orcamentoTokens != null ? { orcamentoTokens: ticket.orcamentoTokens } : {}),
+          ...(agentRow ? { responsavelAgentId: agentRow.id } : {}),
+        },
+        who,
+      );
+      created.push(child);
+    }
+    // The parent now waits for its sub-tasks.
+    if (ticket.status !== 'em_andamento') board.updateStatus(ticket.id, 'em_andamento', SYSTEM);
+    library.sync();
+    for (const child of created) {
+      this.run(child.id, child.responsavel ?? this.names.dev, 'Implemente esta subtarefa conforme os critérios de aceite e responda com o resultado (diff ou passos) e o que verificou.');
+    }
+  }
+
+  private afterReview(ticket: Ticket, role: Role, agente: string, text: string, who: Actor, runId: string): void {
+    const { board } = this.deps;
+    const verdict = parseVerdict(text);
+    if (!verdict) return this.unreadable(ticket, who, `${agente} não disse "VEREDITO: aprovado" nem "VEREDITO: reprovado"`);
+    if (verdict === 'aprovado') {
+      // Needs approval → the delivery gate; otherwise the reviewer closes it.
+      board.updateStatus(ticket.id, 'concluido', who);
+      const t = this.need(ticket.id);
+      if (t.status === 'concluido') this.run(ticket.id, this.names.memoria, MEMORY_TASK);
+      return;
+    }
+    board.requestGate(
+      ticket.id,
+      { tipo: 'reprovacao', motivo: `${agente} (${role}) reprovou a entrega`, runId, ...(ticket.responsavel ? { retomar: { agente: ticket.responsavel, statusAnterior: 'em_andamento' } } : {}) },
+      who,
+    );
+  }
+
+  private afterMemory(ticket: Ticket, text: string, runId: string): void {
+    const { repos } = this.deps;
+    const { resumo, fatos } = parseMemoryOutput(text);
+    if (resumo) repos.tickets.update(ticket.id, { resumo });
+    for (const f of fatos) repos.facts.add({ projectId: ticket.projectId, texto: f, fixado: false, origemRunId: runId });
+  }
+
+  /** The answer cannot be used: say so on the ticket and block it, for a person to decide. */
+  private unreadable(ticket: Ticket, who: Actor, why: string): void {
+    this.deps.board.comment(ticket.id, SYSTEM, `Não consegui seguir: ${why}. O texto está nos comentários acima; ajuste o ticket e rode o agente de novo.`);
+    this.block(ticket, who);
+  }
+
+  private fail(ticket: Ticket, agente: string, why: string, runId?: string): void {
+    this.deps.board.comment(ticket.id, SYSTEM, `Falha ao executar "${agente}": ${why}`, runId);
+    this.block(this.need(ticket.id), SYSTEM);
+  }
+
+  private block(ticket: Ticket, who: Actor): void {
+    const t = this.need(ticket.id);
+    if (t.status === 'bloqueado' || t.status === 'concluido' || t.status === 'aguardando_aprovacao') return;
+    try {
+      this.deps.board.updateStatus(t.id, 'bloqueado', who.tipo === 'agente' ? SYSTEM : who);
+    } catch (e) {
+      if (!(e instanceof BoardError)) throw e;
+    }
+  }
+
+  /** Each ticket's agent runs live in a hidden conversation (not listed with the chats), one run at a time. */
+  private sessionOf(ticket: Ticket): string {
+    const { repos } = this.deps;
+    const existing = ticket.sessionId && repos.sessions.get(ticket.sessionId);
+    if (existing) return existing.id;
+    const s = repos.sessions.create({ projectId: ticket.projectId, titulo: `${ticket.identificador} ${ticket.titulo}`.slice(0, 200) });
+    repos.tickets.setSession(ticket.id, s.id);
+    return s.id;
+  }
+
+  private need(id: string): Ticket {
+    const t = this.deps.repos.tickets.get(id);
+    if (!t) throw new BoardError(404, 'ticket_not_found', `Ticket not found: ${id}`);
+    return t;
+  }
+}

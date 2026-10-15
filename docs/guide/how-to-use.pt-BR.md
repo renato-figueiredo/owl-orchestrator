@@ -88,6 +88,15 @@ Clique em **Agentes** (barra lateral) para abrir a biblioteca. Um agente é um a
 - **Pipelines** (`pipelines/<nome>.yaml`) encadeiam etapas. Cada etapa pode nomear um agente, rodar só `quando` uma condição valer, receber a saída da etapa anterior, repetir (`tentativas`) e rodar em um provedor diferente de uma etapa anterior (`outroProvedorQue`). O exemplo `refinar-executar-revisar` melhora o prompt, executa e pede ao revisor que confira o resultado no outro provedor. Para usar, envie `pipeline: "refinar-executar-revisar"` à API; escolher na caixa de mensagem está no [roadmap](../roadmap.md).
 - Os agentes de exemplo de desenvolvimento e QA são somente leitura de propósito: devolvem diffs. Escrever no seu projeto vem com os git worktrees.
 
+## O quadro e as aprovações
+Na barra lateral, cada projeto tem um botão **Quadro**. O quadro é o barramento dos agentes: eles se comunicam por tickets e comentários, não conversando entre si.
+- **Colunas**: Backlog → Pronto → Em andamento → Em revisão → Aguardando aprovação → Concluído, mais Bloqueado. **Arraste** um cartão para outra coluna (ou pelo teclado: foco no cartão, Espaço, setas, Espaço). Soltar sobre um cartão coloca o seu antes dele.
+- **Novo ticket** cria um à mão (título, descrição, critérios de aceite, agente responsável, teto de tokens opcional e se a entrega exige a sua aprovação). **Novo objetivo** inicia o fluxo de exemplo: o `po` escreve o ticket, o `tech-lead` quebra em subtarefas, cada `dev-*` executa a sua, o `qa` verifica, você aprova a entrega e o `memoria` grava resumo e fatos. O ticket pai fecha quando a última subtarefa fecha.
+- **Abra um ticket** para ver os comentários (de pessoas e de agentes), o histórico de quem fez o quê, cada execução com tokens e custo, e para **executar um agente** nele.
+- **Fila de aprovações**: o quadro pede a sua decisão quando uma entrega exige aprovação, quando o próximo passo passaria do teto de tokens do ticket, quando uma ação é destrutiva (apagar arquivos, push, deploy, merge…) ou quando um revisor reprova o trabalho. **Aprovar** (comentário opcional) ou **Rejeitar** (comentário obrigatório): o ticket rejeitado volta para *Em andamento* e o agente responsável lê o seu comentário e tenta de novo.
+- Um agente vê **somente** o ticket (com o pai, as subtarefas e os últimos comentários), o resumo do ticket e os fatos fixados do projeto, nunca as suas conversas do chat. As execuções dele ficam numa conversa oculta por ticket.
+- Se um agente falha ou responde num formato que o OWL não consegue usar, o ticket fica **Bloqueado** com o motivo num comentário; rode o agente de novo quando quiser.
+
 ## Teclado e temas
 - Na lista de conversas: **↑ / ↓** movem, **Enter** abre, **Tab** sai da lista.
 - O botão ☾ / ☀ alterna claro e escuro (começa pela configuração do sistema e lembra a sua escolha).

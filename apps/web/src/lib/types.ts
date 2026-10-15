@@ -165,3 +165,87 @@ export interface AgentLibrary {
   agents: AgentSummary[];
   problemas: LibraryProblem[];
 }
+
+// ---- Board (prompt 13) ----
+export const TICKET_STATUSES = ['backlog', 'pronto', 'em_andamento', 'em_revisao', 'aguardando_aprovacao', 'concluido', 'bloqueado'] as const;
+export type TicketStatus = (typeof TICKET_STATUSES)[number];
+
+export interface TicketUsage {
+  runs: number;
+  tokensIn: number;
+  tokensOut: number;
+  custoEstimado: number;
+}
+export interface Ticket {
+  id: string;
+  projectId: string;
+  parentId: string | null;
+  identificador: string;
+  titulo: string;
+  descricao: string | null;
+  criteriosAceite: string | null;
+  status: TicketStatus;
+  responsavel: string | null;
+  prioridade: number;
+  ordem: number;
+  orcamentoTokens: number | null;
+  requerAprovacao: boolean;
+  resumo: string | null;
+  uso?: TicketUsage;
+}
+export type GateKind = 'entrega' | 'custo' | 'destrutiva' | 'reprovacao' | 'confianca';
+export interface TicketApproval {
+  id: string;
+  ticketId: string;
+  motivo: string;
+  tipo: GateKind | null;
+  status: 'pendente' | 'aprovado' | 'rejeitado';
+  comentario: string | null;
+  criadoEm: string | null;
+  ticketIdentificador?: string;
+  ticketTitulo?: string;
+}
+export interface BoardData {
+  estados: TicketStatus[];
+  tickets: Ticket[];
+  aprovacoes: TicketApproval[];
+}
+export interface TicketComment {
+  id: string;
+  autor: string;
+  autorTipo: 'humano' | 'agente' | 'sistema';
+  texto: string;
+  criadoEm: string;
+}
+export interface TicketEvent {
+  id: number;
+  autor: string;
+  autorTipo: 'humano' | 'agente' | 'sistema';
+  tipo: 'criado' | 'status' | 'atribuido' | 'comentario' | 'aprovacao' | 'execucao';
+  de: string | null;
+  para: string | null;
+  detalhe: string | null;
+  criadoEm: string;
+}
+export interface TicketRun {
+  id: string;
+  agente: string | null;
+  etapa: string | null;
+  provedor: string;
+  modelo: string | null;
+  status: string;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  custoEstimado: number | null;
+  erro: string | null;
+}
+export interface TicketDetail {
+  ticket: Ticket;
+  parent: Ticket | null;
+  children: Ticket[];
+  comments: TicketComment[];
+  events: TicketEvent[];
+  runs: TicketRun[];
+  uso: TicketUsage;
+  aprovacoes: TicketApproval[];
+}

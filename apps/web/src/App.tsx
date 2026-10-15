@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AgentLibrary } from './components/AgentLibrary';
+import { Board } from './components/Board';
 import { Chat } from './components/Chat';
 import { MemoryPanel } from './components/MemoryPanel';
 import { RunPanel } from './components/RunPanel';
@@ -26,7 +27,8 @@ export function App() {
   const [memBusy, setMemBusy] = useState(false);
   const [memMessage, setMemMessage] = useState<string | null>(null);
   const [trashVersion, setTrashVersion] = useState(0);
-  const [view, setView] = useState<'chat' | 'agents'>('chat');
+  const [view, setView] = useState<'chat' | 'agents' | 'board'>('chat');
+  const [boardProjectId, setBoardProjectId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -210,10 +212,17 @@ export function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
         onOpenAgents={() => setView('agents')}
+        onOpenBoard={(pid) => {
+          setBoardProjectId(pid);
+          setView('board');
+        }}
       />
       {view === 'agents' && <AgentLibrary onClose={() => setView('chat')} />}
-      {/* Kept mounted while the library is open, so a stream or a draft in progress is not lost. */}
-      <div className={view === 'agents' ? 'hidden' : 'contents'}>
+      {view === 'board' && projects.some((p) => p.id === boardProjectId) && (
+        <Board project={projects.find((p) => p.id === boardProjectId)!} onClose={() => setView('chat')} />
+      )}
+      {/* Kept mounted while the library or the board is open, so a stream or a draft in progress is not lost. */}
+      <div className={view === 'chat' ? 'contents' : 'hidden'}>
       <Chat
         hasSession={selectedId !== null}
         messages={detail?.messages ?? []}

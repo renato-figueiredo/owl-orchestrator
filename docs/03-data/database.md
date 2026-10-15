@@ -148,3 +148,8 @@ CREATE INDEX idx_attachments_blob ON attachments(blob_hash);
 
 ## Migrações
 Arquivos `packages/db/migrations/0001_*.sql`, aplicados em ordem, com tabela `schema_migrations`.
+
+## Quadro (migração 0008, prompt 13)
+`tickets` ganhou `numero` (por projeto), `prioridade`, `ordem` (float), `resumo`, `session_id` (conversa oculta das execuções) e `concluido_em`;
+`ticket_comments` ganhou `autor_tipo` e `run_id`; nova `ticket_events` (histórico); `approvals` ganhou `tipo`, `retomar_json` e `criado_em`;
+`projects.prefixo` (opcional). Conversas de ticket não aparecem na lista de conversas (`sessions.list` as filtra).

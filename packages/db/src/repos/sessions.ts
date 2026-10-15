@@ -37,6 +37,7 @@ export function sessionsRepo(db: Db) {
         .prepare(
           `SELECT ${COLS} FROM sessions
            WHERE (@projectId IS NULL OR project_id = @projectId)
+             AND id NOT IN (SELECT session_id FROM tickets WHERE session_id IS NOT NULL)  -- ticket conversations stay on the board
              AND (CASE WHEN @onlyDeleted = 1 THEN deleted_at IS NOT NULL
                        ELSE (@includeDeleted = 1 OR deleted_at IS NULL) END)
            ORDER BY criado_em DESC, rowid DESC`,

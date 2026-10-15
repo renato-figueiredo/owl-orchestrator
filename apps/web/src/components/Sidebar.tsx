@@ -18,9 +18,10 @@ interface Props {
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
   onOpenAgents: () => void;
+  onOpenBoard: (projectId: string) => void;
 }
 
-export function Sidebar({ projects, sessions, selectedId, onSelect, onNewSession, onDeleteSession, trashVersion, onRestored, onCreateProject, theme, onToggleTheme, onOpenAgents }: Props) {
+export function Sidebar({ projects, sessions, selectedId, onSelect, onNewSession, onDeleteSession, trashVersion, onRestored, onCreateProject, theme, onToggleTheme, onOpenAgents, onOpenBoard }: Props) {
   const listRef = useRef<HTMLElement>(null);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -114,9 +115,14 @@ export function Sidebar({ projects, sessions, selectedId, onSelect, onNewSession
               <div className="flex items-center justify-between px-1">
                 <h2 className="truncate text-xs font-semibold uppercase tracking-wide text-muted">{g.title}</h2>
                 {g.projectId && (
-                  <button type="button" onClick={() => onNewSession(g.projectId)} aria-label={`Nova conversa em ${g.title}`} className="rounded px-1.5 text-muted hover:bg-raised hover:text-fg">
-                    +
-                  </button>
+                  <span className="flex items-center">
+                    <button type="button" onClick={() => onOpenBoard(g.projectId!)} aria-label={`Quadro de ${g.title}`} className="rounded px-1.5 text-xs text-muted hover:bg-raised hover:text-fg">
+                      Quadro
+                    </button>
+                    <button type="button" onClick={() => onNewSession(g.projectId)} aria-label={`Nova conversa em ${g.title}`} className="rounded px-1.5 text-muted hover:bg-raised hover:text-fg">
+                      +
+                    </button>
+                  </span>
                 )}
               </div>
               <ul className="mt-1 space-y-0.5">

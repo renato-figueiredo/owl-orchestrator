@@ -88,6 +88,15 @@ Click **Agents** (sidebar) to open the library. An agent is a Markdown file with
 - **Pipelines** (`pipelines/<name>.yaml`) chain steps. Each step can name an agent, run only `quando` a condition holds, take the previous step's output as input, retry (`tentativas`) and run on a provider different from an earlier step (`outroProvedorQue`). The example `refinar-executar-revisar` refines the prompt, runs it, and has the reviewer check the result on the other provider. Use it by sending `pipeline: "refinar-executar-revisar"` to the API; picking one in the message box is on the [roadmap](../roadmap.md).
 - The example developer and QA agents are read-only on purpose: they hand back diffs. Writing to your project comes with git worktrees.
 
+## The board and approvals
+In the sidebar, each project has a **Board** button. The board is the agents' message bus: they talk through tickets and comments, not to each other.
+- **Columns**: Backlog → Ready → In progress → In review → Waiting for approval → Done, plus Blocked. **Drag** a card to another column (or use the keyboard: focus the card, Space, arrows, Space). Dropping on a card puts yours before it.
+- **New ticket** creates one by hand (title, description, acceptance criteria, an agent as assignee, an optional token ceiling, and whether delivery needs your approval). **New goal** starts the example flow: the `po` agent writes the ticket, `tech-lead` splits it into sub-tasks, each `dev-*` executes its own, `qa` verifies, you approve the delivery and `memoria` records a summary and facts. The parent ticket closes when its last sub-task does.
+- **Open a ticket** to see its comments (people and agents), a history of who did what, every run with tokens and cost, and to **run an agent** on it.
+- **Approvals queue**: the board asks for your decision when a delivery needs approval, when the next step would pass the ticket's token ceiling, when an action is destructive (deleting files, push, deploy, merge…) or when a reviewer rejects the work. **Approve** (comment optional) or **Reject** (comment required): a rejected ticket goes back to *In progress* and the assigned agent reads your comment and tries again.
+- An agent sees **only** the ticket (with its parent, sub-tasks and latest comments), the ticket's summary and the project's pinned facts, never your chat conversations. Its runs live in a hidden conversation per ticket.
+- If an agent fails or answers in a format OWL cannot use, the ticket is **Blocked** with the reason in a comment; run the agent again when ready.
+
 ## Keyboard and themes
 - In the session list: **↑ / ↓** move, **Enter** opens, **Tab** leaves the list.
 - The ☾ / ☀ button switches light and dark (it starts from your system setting and remembers your choice).

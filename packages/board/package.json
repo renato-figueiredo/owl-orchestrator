@@ -1,2 +1,3 @@
 { "name": "@owl/board", "version": "0.0.0", "private": true, "type": "module",
-  "main": "src/index.ts", "scripts": { "typecheck": "tsc -p tsconfig.json" } }
+  "main": "src/index.ts", "scripts": { "typecheck": "tsc -p tsconfig.json" },
+  "dependencies": { "@owl/core": "workspace:*", "@owl/db": "workspace:*" } }

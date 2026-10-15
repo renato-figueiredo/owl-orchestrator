@@ -10,6 +10,7 @@
     "restore": "tsx src/cli.ts restore"
   },
   "dependencies": {
+    "@owl/board": "workspace:*",
     "@owl/core": "workspace:*",
     "@owl/db": "workspace:*",
     "@owl/mcp-memory": "workspace:*",

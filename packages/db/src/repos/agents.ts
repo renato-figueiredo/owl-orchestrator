@@ -24,6 +24,7 @@ export function agentsRepo(db: Db) {
   const byName = (nome: string) => db.prepare(`SELECT ${COLS} FROM agents WHERE nome = ?`).get(nome) as AgentRow | undefined;
   return {
     byName,
+    byId: (id: string) => db.prepare(`SELECT ${COLS} FROM agents WHERE id = ?`).get(id) as AgentRow | undefined,
     list: () => db.prepare(`SELECT ${COLS} FROM agents ORDER BY nome`).all() as AgentRow[],
     /**
      * Makes the table match `entries`: new names are added, known ones updated in place (their id stays, so old runs
