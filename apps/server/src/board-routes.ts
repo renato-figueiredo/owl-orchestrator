@@ -1,4 +1,4 @@
-import { agentActor, BoardError, HUMAN, TICKET_STATUSES, type LocalBoard } from '@owl/board';
+import { agentActor, BoardError, HUMAN, TICKET_STATUSES, validDate, type LocalBoard } from '@owl/board';
 import { RELATION_TYPES } from '@owl/db';
 import { isSafeName } from '@owl/core';
 import type { createRepos } from '@owl/db';
@@ -13,7 +13,7 @@ type Repos = ReturnType<typeof createRepos>;
 const id = z.object({ id: z.string().min(1).max(100) });
 const agentName = z.string().refine(isSafeName, 'invalid agent name').max(64);
 const status = z.enum(TICKET_STATUSES);
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'dates look like 2026-10-31');
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'dates look like 2026-10-31').refine(validDate, 'not a real calendar date');
 const labelName = z.string().trim().min(1).max(40);
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'color looks like #a1b2c3');
 /** Present only when an agent (not the person at the keyboard) makes the call: the agent's rules then apply. */
@@ -145,7 +145,7 @@ export function registerBoardRoutes(
   app.patch('/tickets/:id', async (req) => {
     const { id: tid } = id.parse(req.params);
     const body = patchTicket.parse(req.body);
-    ticket(tid);
+    const before = ticket(tid);
     repos.tickets.update(tid, {
       ...(body.titulo !== undefined ? { titulo: body.titulo } : {}),
       ...(body.descricao !== undefined ? { descricao: body.descricao } : {}),
@@ -156,6 +156,12 @@ export function registerBoardRoutes(
       ...(body.orcamentoTokens !== undefined ? { orcamentoTokens: body.orcamentoTokens } : {}),
       ...(body.requerAprovacao !== undefined ? { requerAprovacao: body.requerAprovacao } : {}),
     });
+    for (const campo of ['estimativa', 'prazo'] as const) {
+      const to = body[campo];
+      if (to !== undefined && to !== before[campo]) {
+        repos.tickets.addEvent({ ticketId: tid, ator: HUMAN, tipo: campo, de: before[campo] === null ? null : String(before[campo]), para: to === null ? null : String(to) });
+      }
+    }
     return { ticket: repos.tickets.get(tid) };
   });
 

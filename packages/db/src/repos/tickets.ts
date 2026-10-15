@@ -70,7 +70,7 @@ export interface TicketEvent {
   ticketId: string;
   autor: string;
   autorTipo: ActorKind;
-  tipo: 'criado' | 'status' | 'atribuido' | 'comentario' | 'aprovacao' | 'execucao' | 'roteamento' | 'aviso' | 'etiqueta' | 'relacao' | 'ciclo';
+  tipo: 'criado' | 'status' | 'atribuido' | 'comentario' | 'aprovacao' | 'execucao' | 'roteamento' | 'aviso' | 'etiqueta' | 'relacao' | 'ciclo' | 'estimativa' | 'prazo';
   de: string | null;
   para: string | null;
   detalhe: string | null;

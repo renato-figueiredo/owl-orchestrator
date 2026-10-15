@@ -2,7 +2,7 @@ import type { Actor, Approval, createRepos, Cycle, CycleProgress, GateKind, Labe
 import { canAgentMove, GATE_LABEL, isDestructive } from './rules.js';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-const validDate = (d: string) => DATE.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
+export const validDate = (d: string) => DATE.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
 const COLOR = /^#[0-9a-fA-F]{6}$/;
 
 type Repos = ReturnType<typeof createRepos>;
@@ -305,7 +305,7 @@ export class LocalBoard implements BoardProvider {
     const b = this.need(relatedId);
     this.sameProject(a, b, 'The other ticket');
     if (this.repos.quadro.relations.exists(ticketId, relatedId, tipo)) throw new BoardError(409, 'relation_exists', 'These tickets are already related this way');
-    if (tipo === 'bloqueia' && (ticketId === relatedId || this.repos.quadro.relations.blocksTransitively(relatedId, ticketId))) {
+    if (tipo === 'bloqueia' && this.repos.quadro.relations.blocksTransitively(relatedId, ticketId)) {
       throw new BoardError(409, 'blocking_loop', `${b.identificador} already (directly or not) blocks ${a.identificador}: this would make them wait for each other`);
     }
     const r = this.repos.quadro.relations.create(ticketId, relatedId, tipo);

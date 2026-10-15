@@ -300,7 +300,7 @@ export interface TicketEvent {
   id: number;
   autor: string;
   autorTipo: 'humano' | 'agente' | 'sistema';
-  tipo: 'criado' | 'status' | 'atribuido' | 'comentario' | 'aprovacao' | 'execucao' | 'roteamento' | 'aviso' | 'etiqueta' | 'relacao' | 'ciclo';
+  tipo: 'criado' | 'status' | 'atribuido' | 'comentario' | 'aprovacao' | 'execucao' | 'roteamento' | 'aviso' | 'etiqueta' | 'relacao' | 'ciclo' | 'estimativa' | 'prazo';
   de: string | null;
   para: string | null;
   detalhe: string | null;

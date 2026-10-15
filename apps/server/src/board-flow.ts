@@ -171,7 +171,7 @@ export class BoardFlow {
       return undefined;
     }
     // A ticket that other tickets still block does not start by itself; a person can run it anyway (`force`).
-    const open = opts.ignorarBloqueio ? [] : board.openBlockers(ticketId);
+    const open = opts.ignorarBloqueio || agente === this.names.memoria ? [] : board.openBlockers(ticketId);
     if (open.length) {
       this.fail(ticket, agente, `bloqueado por ${open.map((b) => `${b.identificador} (${b.status})`).join(', ')}; termine-o antes ou rode ignorando o bloqueio`);
       return undefined;
@@ -384,7 +384,7 @@ export class BoardFlow {
       // The paused step goes on; an approved cost gate lets exactly this step past the ceiling.
       if (r?.agente && r.tarefa) {
         const tier = approval.tipo === 'confianca' && TIER_NAMES.has(r.tier ?? '') ? (r.tier as Tier) : undefined;
-        return this.run(ticket.id, r.agente, r.tarefa, { force: approval.tipo === 'custo', ...(tier ? { tier } : {}) });
+        return this.run(ticket.id, r.agente, r.tarefa, { force: approval.tipo === 'custo', ignorarBloqueio: true, ...(tier ? { tier } : {}) });
       }
       // A reproval the person confirmed: the author reworks it.
       if (approval.tipo === 'reprovacao') return this.rework(ticket);
