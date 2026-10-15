@@ -1,55 +1,63 @@
 <p align="center"><img src="brand/logo-animated.svg" width="96" alt="Logo do OWL"></p>
 <h1 align="center">OWL</h1>
 <p align="center"><b>Orchestrator for Work &amp; LLMs</b><br>
-Orquestrador local de agentes de IA · <a href="README.md">English</a> · Português (BR)</p>
+Orquestrador local de agentes de IA para programar · <a href="README.md">English</a> · Português (BR)</p>
 
-> **Status: pré-alfa — o núcleo do chat funciona (M0).** Dá para conversar com o Claude Code e o Codex pelas suas próprias CLIs logadas, por projeto, com streaming, cancelar, "melhorar prompt" e temas claro/escuro. Memória, anexos, equipes e quadro ainda são planos; veja o [roadmap](docs/roadmap.md).
+<p align="center">
+<a href="https://github.com/renato-figueiredo/owl-orchestrator/actions/workflows/ci.yml"><img src="https://github.com/renato-figueiredo/owl-orchestrator/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/licen%C3%A7a-MIT-blue" alt="Licença MIT"></a>
+<img src="https://img.shields.io/badge/status-pr%C3%A9--alfa-orange" alt="pré-alfa">
+</p>
 
-O OWL roda as **CLIs oficiais** (Claude Code, Codex) e modelos locais (Ollama) como subprocessos na sua própria
-máquina, com interface web local, memória em camadas, agentes reutilizáveis, equipes por projeto, um quadro de
-tickets estilo Linear com aprovação humana e roteamento por custo.
+<!-- Os prints entram aqui depois de capturados: coloque os PNGs em docs/images/ (veja docs/images/README.md) e referencie, ex.:
+<p align="center"><img src="docs/images/chat-dark.png" width="820" alt="Chat do OWL com o painel de execução"></p> -->
 
-> Cada pessoa usa **as próprias contas e CLIs na própria máquina**. O OWL nunca lê, copia ou guarda credenciais.
-> Veja [regras e conformidade](docs/01-product/rules-and-compliance.md).
+O OWL roda as **CLIs oficiais** que você já usa (Claude Code, Codex) e, depois, modelos locais (Ollama) como subprocessos **na sua
+própria máquina**, com uma interface web local. Ele nunca lê, copia ou guarda suas credenciais: cada CLI mantém o próprio login.
 
-## Destaques (planejados)
-- Chat com stream e linha do tempo da execução via SSE, só em `127.0.0.1`.
-- Pipelines de "melhorar prompt" (um modelo reescreve, outro executa).
-- Memória em camadas no SQLite (fatos fixados, resumos, últimas mensagens, FTS5) + servidor MCP de memória.
-- Agentes reutilizáveis em Markdown; equipes por projeto; git worktree por agente desenvolvedor.
-- Quadro kanban local baseado no schema público do Linear; espelho opcional no Linear.
-- Portões de aprovação para ações destrutivas ou caras; métricas de custo por execução.
-- Movimento fluido e acessível (Motion, AutoAnimate, dnd-kit).
+> **Status: pré-alfa, o núcleo do chat funciona.** Memória, anexos, equipes de agentes e quadro estão planejados. Veja o [roadmap](docs/roadmap.md).
 
-## Estrutura do repositório
-| Caminho | Para quê |
-|---|---|
-| `apps/` | `server` (Fastify + SSE), `web` (React) |
-| `packages/` | `core`, `db`, `board`, `memory`, `mcp-memory`, `ui` |
-| `docs/` | Produto, arquitetura, dados, agentes e quadro, UI, pesquisa |
-| `build/` | Prompts passo a passo para construir com o Claude Code |
-| `.claude/agents/` | Subagentes que constroem este projeto |
-| `examples/` | Agentes de execução e pipelines |
-| `brand/` | Logo e identidade |
-| `references/` | Clones rasos de projetos upstream para estudo (ignorado pelo git) |
+## O que funciona hoje
+- Chat com streaming com o **Claude Code** e o **Codex**, com Markdown, blocos de código com cópia e botão de cancelar.
+- **Projetos**: cada um tem a própria pasta e instruções, e as conversas nunca vazam entre projetos.
+- **Melhorar prompt**: um agente refinador reescreve o seu pedido, você pode editar antes de rodar, e se o refinador falhar (por
+  exemplo, o limite do Codex) o OWL pergunta qual modelo usar em vez de trocar em silêncio.
+- Painel de execução com as ferramentas usadas, tokens, custo (quando a CLI informa) e as etapas encadeadas de um pipeline.
+- Temas claro e escuro, navegação completa por teclado na lista de conversas.
+- Seguro por padrão: só loopback, proteção contra DNS rebinding e requisições entre sites, agentes confinados às pastas que você permitir.
 
-## Como começar (contribuidores)
+## O que vem a seguir
+Memória em camadas e resumos · anexos e prints · lixeira e backup criptografado · agentes como arquivos, equipes e um quadro local
+estilo Linear com portões de aprovação · git worktree por agente · roteamento por custo · espelho opcional no Linear e Ollama.
+Detalhes no [roadmap](docs/roadmap.md).
+
+## Início rápido
 ```bash
+git clone https://github.com/renato-figueiredo/owl-orchestrator.git
+cd owl-orchestrator
 pnpm install
-pnpm dev        # servidor em 127.0.0.1:4317 (/health) + web em 127.0.0.1:5173
-pnpm typecheck && pnpm lint && pnpm test
-pnpm --filter @owl/web test:e2e   # testes no navegador (1ª vez: pnpm --filter @owl/web exec playwright install chromium)
-# próximos passos: build/HOW-TO-USE.pt-BR.md, um prompt por vez
+pnpm dev          # depois abra http://127.0.0.1:5173
 ```
-Para conversar de verdade: a CLI `claude` e/ou `codex` instalada e logada. Abra http://127.0.0.1:5173. O servidor roda via `tsx` (`pnpm --filter @owl/server start`); ainda não há bundle de produção.
+Você precisa de Node 22+, pnpm, e da CLI `claude` e/ou `codex` instalada e logada.
+Passo a passo: **[Primeiros passos](docs/guide/getting-started.pt-BR.md)**.
 
-Configuração (veja [`.env.example`](.env.example)): `OWL_PORT`, `OWL_DATA_DIR`, `OWL_CONCURRENCY`, `OWL_WORKSPACE_ROOTS`
-(pastas onde os agentes podem trabalhar; padrão: sua home), `OWL_ALLOWED_ORIGINS`.
-A API só responde em hosts de loopback e recusa requisições de outros sites no navegador.
+## Documentação
+| | |
+|---|---|
+| [Primeiros passos](docs/guide/getting-started.pt-BR.md) | Instalar, rodar, primeira conversa |
+| [Como usar](docs/guide/how-to-use.pt-BR.md) | Projetos, chat, melhorar prompt, painel de execução, teclado |
+| [Configuração](docs/guide/configuration.pt-BR.md) | Variáveis de ambiente e o modelo de segurança |
+| [Solução de problemas](docs/guide/troubleshooting.pt-BR.md) | Erros comuns e como resolver |
+| [Desenvolvimento](docs/guide/development.pt-BR.md) | Estrutura, testes, como o projeto é construído |
+| [Roadmap](docs/roadmap.md) · [Documentos de projeto](docs/README.md) | Para onde vai e por quê |
+
+## Contribuindo
+Leia o [CONTRIBUTING](CONTRIBUTING.md) e o [`CLAUDE.md`](CLAUDE.md). Relatos de segurança: [SECURITY](SECURITY.md).
+Os documentos estão em português do Brasil; traduções para o inglês são bem-vindas.
 
 ## Aviso
-Sem afiliação com Anthropic, OpenAI ou Linear. O OWL apenas executa as CLIs oficiais instaladas e autenticadas por
-você. Você é responsável por respeitar os termos de cada provedor; as regras de assinatura mudam com frequência.
+Sem afiliação com Anthropic, OpenAI ou Linear. O OWL apenas executa as CLIs oficiais instaladas e autenticadas por você.
+Você é responsável por respeitar os termos de cada provedor; as regras de assinatura mudam com frequência.
 
 ## Licença
 [MIT](LICENSE)

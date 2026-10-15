@@ -1,5 +1,7 @@
 # Contributing
 
+Setup, commands and tests: [`docs/guide/development.md`](docs/guide/development.md).
+
 - One focused change per PR; tests and typecheck must pass.
 - Read `CLAUDE.md` (golden rules) and `docs/01-product/rules-and-compliance.md` first.
 
