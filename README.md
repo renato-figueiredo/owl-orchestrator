@@ -15,7 +15,7 @@ Local-first orchestrator of AI coding agents · English · <a href="README.pt-BR
 OWL runs the **official CLIs** you already use (Claude Code, Codex) and, later, local models (Ollama) as subprocesses on **your
 own machine**, with a local web UI. It never reads, copies or stores your credentials: each CLI keeps its own login.
 
-> **Status: pre-alpha, the chat core works.** Memory, attachments, agent teams and the board are planned. See the [roadmap](docs/roadmap.md).
+> **Status: pre-alpha, the chat core works.** Agent teams and the board are planned. See the [roadmap](docs/roadmap.md).
 
 ## What works today
 - Streaming chat with **Claude Code** and **Codex**, with Markdown, copyable code blocks and a cancel button.

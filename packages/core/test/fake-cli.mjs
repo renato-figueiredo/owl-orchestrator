@@ -67,6 +67,9 @@ switch (scenario) {
     emit(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result, session_id: '0ebc5870-da74-48ab-88a4-2e4c4aaeb936', usage: { input_tokens: 50, output_tokens: 20 } }) + '\n');
     break;
   }
+  case 'describe-ok':
+    emit(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: '```json\n' + JSON.stringify({ descricao: 'Texto vermelho sobre fundo branco', ocr: 'OWL 4242' }) + '\n```', session_id: '0ebc5870-da74-48ab-88a4-2e4c4aaeb936', usage: {} }) + '\n');
+    break;
   case 'empty':
     emit(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: '', session_id: '0ebc5870-da74-48ab-88a4-2e4c4aaeb936', usage: {} }) + '\n');
     break;

@@ -4,6 +4,7 @@ import type { Approval, Message, ProviderInfo, RefinerInfo, SummarizeResult } fr
 import type { SendInput } from '../lib/api';
 import { Logo } from './Logo';
 import { Markdown } from './Markdown';
+import { PendingStrip, Thumbs, useComposerImages, ACCEPTED } from './Attachments';
 import { FailureCard, RefinedPromptDone, ReviewCard } from './RefinedPrompt';
 
 interface Props {
@@ -50,6 +51,8 @@ export function Chat({ hasSession, messages, stream, providers, busy, error, onS
   /** A message waiting for the user's decision about switching provider. */
   const [switching, setSwitching] = useState<{ input: SendInput; working: boolean; problem: string | null } | null>(null);
   const refinerOptions = refiner ? [{ provedor: refiner.provedor, ...(refiner.modelo ? { modelo: refiner.modelo } : {}) }, ...refiner.fallback] : [];
+  const images = useComposerImages();
+  const fileInput = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const streaming = stream !== null && (stream.phase === 'running' || stream.phase === 'connecting');
 
@@ -68,6 +71,7 @@ export function Chat({ hasSession, messages, stream, providers, busy, error, onS
     const chosen = refinerOptions[refinerIdx];
     return {
       texto,
+      ...(images.ready.length ? { anexos: images.ready } : {}),
       provider,
       ...(model.trim() ? { model: model.trim() } : {}),
       ...(improve
@@ -83,13 +87,14 @@ export function Chat({ hasSession, messages, stream, providers, busy, error, onS
   const reallySend = async (input: SendInput) => {
     setSwitching(null);
     setText('');
+    images.clear();
     await onSend(input);
   };
 
   const submit = async (e?: FormEvent) => {
     e?.preventDefault();
     const texto = text.trim();
-    if (!texto || busy || streaming || !hasSession || switching) return;
+    if ((!texto && images.ready.length === 0) || images.uploading || busy || streaming || !hasSession || switching) return;
     const input = buildInput(texto);
     // The conversation's native CLI session does not follow a change of provider: say so before it happens.
     if (sessionProvider && provider !== sessionProvider) {
@@ -155,6 +160,7 @@ export function Chat({ hasSession, messages, stream, providers, busy, error, onS
           }
           return (
             <Bubble key={m.id} papel={m.papel}>
+              {m.anexos?.length ? <Thumbs anexos={m.anexos} /> : null}
               {m.papel === 'usuario' ? <p className="whitespace-pre-wrap break-words">{m.conteudo}</p> : <Markdown>{m.conteudo}</Markdown>}
             </Bubble>
           );
@@ -194,12 +200,14 @@ export function Chat({ hasSession, messages, stream, providers, busy, error, onS
         <div ref={endRef} />
       </div>
 
-      <form onSubmit={(e) => void submit(e)} className="border-t border-line bg-panel p-3">
+      <form onSubmit={(e) => void submit(e)} onDragOver={(e) => e.preventDefault()} onDrop={images.onDrop} className="border-t border-line bg-panel p-3">
         {error && (
           <p role="alert" className="mb-2 text-sm text-danger">
             {error}
           </p>
         )}
+        {images.notice && <p className="mb-2 text-sm text-muted">{images.notice}</p>}
+        <PendingStrip items={images.items} onRemove={images.remove} />
         {switching && (
           <section role="alertdialog" aria-label="Troca de provedor" className="mb-2 rounded-lg border border-accent bg-raised p-3 text-sm">
             <p className="font-semibold">
@@ -286,17 +294,22 @@ export function Chat({ hasSession, messages, stream, providers, busy, error, onS
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={onKeyDown}
+            onPaste={images.onPaste}
             disabled={!hasSession || switching !== null}
             rows={2}
             placeholder="Enter envia · Shift+Enter quebra a linha"
             className="max-h-48 min-h-[2.75rem] flex-1 resize-y rounded-lg border border-line bg-raised px-3 py-2 disabled:opacity-50"
           />
+          <input ref={fileInput} type="file" accept={ACCEPTED.join(',')} multiple hidden aria-label="Escolher imagens" onChange={(e) => { images.add(e.target.files ?? []); e.target.value = ''; }} />
+          <button type="button" aria-label="Anexar imagem" title="Anexar imagem (ou cole / arraste)" disabled={!hasSession} onClick={() => fileInput.current?.click()} className="rounded-lg border border-line px-3 py-2 disabled:opacity-50">
+            📎
+          </button>
           {streaming ? (
             <button type="button" onClick={onCancel} className="rounded-lg border border-danger px-4 py-2 font-medium text-danger">
               Cancelar
             </button>
           ) : (
-            <button type="submit" disabled={!hasSession || busy || !text.trim()} className="rounded-lg bg-accent px-4 py-2 font-medium text-accent-fg disabled:opacity-50">
+            <button type="submit" disabled={!hasSession || busy || images.uploading || (!text.trim() && images.ready.length === 0)} className="rounded-lg bg-accent px-4 py-2 font-medium text-accent-fg disabled:opacity-50">
               Enviar
             </button>
           )}

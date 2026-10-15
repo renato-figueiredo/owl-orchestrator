@@ -15,7 +15,7 @@ Orquestrador local de agentes de IA para programar · <a href="README.md">Englis
 O OWL roda as **CLIs oficiais** que você já usa (Claude Code, Codex) e, depois, modelos locais (Ollama) como subprocessos **na sua
 própria máquina**, com uma interface web local. Ele nunca lê, copia ou guarda suas credenciais: cada CLI mantém o próprio login.
 
-> **Status: pré-alfa, o núcleo do chat funciona.** Memória, anexos, equipes de agentes e quadro estão planejados. Veja o [roadmap](docs/roadmap.md).
+> **Status: pré-alfa, o núcleo do chat funciona.** Equipes de agentes e quadro estão planejados. Veja o [roadmap](docs/roadmap.md).
 
 ## O que funciona hoje
 - Chat com streaming com o **Claude Code** e o **Codex**, com Markdown, blocos de código com cópia e botão de cancelar.

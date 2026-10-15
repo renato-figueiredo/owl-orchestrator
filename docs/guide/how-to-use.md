@@ -62,6 +62,13 @@ Each CLI keeps its own internal session (tool results, cache). Changing from Cla
 - **Cancelar**: nothing is sent and your text stays in the box.
 If the summary fails, OWL does not switch by itself: it tells you why and lets you choose.
 
+## Images and screenshots
+Paste (**Ctrl+V**), drag a file onto the message box, or click 📎. PNG, JPEG and WebP up to the configured limit.
+- OWL shrinks each image to WebP (longest side 1500 px) and strips its metadata. The same image sent twice is stored once.
+- The first time an image goes to a model, the model sees the picture itself. Afterwards a cheap model (the same one that writes summaries) describes it and reads its text; from then on the **description goes instead of the picture**, which saves tokens.
+- Click a thumbnail in the conversation to see it full size (**Esc** closes).
+- An image alone is a valid message.
+
 ## Keyboard and themes
 - In the session list: **↑ / ↓** move, **Enter** opens, **Tab** leaves the list.
 - The ☾ / ☀ button switches light and dark (it starts from your system setting and remembers your choice).
@@ -69,4 +76,4 @@ If the summary fails, OWL does not switch by itself: it tells you why and lets y
 ## What agents can and cannot do today
 - Codex runs in a **read-only sandbox**. Claude runs without any tool pre-approved, and in non-interactive mode the CLI denies the rest.
   In practice agents **read and explain, they do not edit your files yet**. Safe write access (git worktrees, approvals) is on the [roadmap](../roadmap.md).
-- Deleting conversations and attachments/images are not available yet.
+- Deleting conversations is not available yet; images you attach stay on disk until then.

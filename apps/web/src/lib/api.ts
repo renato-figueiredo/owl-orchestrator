@@ -19,6 +19,7 @@ export interface SendInput {
   melhorarPrompt?: boolean;
   editarAntes?: boolean;
   refinador?: { provider: string; model?: string };
+  anexos?: Array<{ hash: string; nome?: string }>;
 }
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -34,7 +35,23 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return data as T;
 }
 
+/** Sends one image as the raw request body; the server shrinks it and answers with its hash. */
+async function uploadAttachment(file: File): Promise<{ hash: string; nome?: string; url: string }> {
+  const res = await fetch(`${API}/attachments?nome=${encodeURIComponent(file.name)}`, {
+    method: 'POST',
+    headers: { 'content-type': file.type },
+    body: file,
+  });
+  const data: unknown = await res.json().catch(() => null);
+  if (!res.ok) {
+    const e = (data as { error?: { code?: string; message?: string } } | null)?.error;
+    throw new ApiError(res.status, e?.code ?? 'error', e?.message ?? `Upload failed (${res.status})`);
+  }
+  return (data as { attachment: { hash: string; nome?: string; url: string } }).attachment;
+}
+
 export const api = {
+  uploadAttachment,
   providers: () => call<{ providers: ProviderInfo[] }>('GET', '/providers').then((r) => r.providers),
   projects: () => call<{ projects: Project[] }>('GET', '/projects').then((r) => r.projects),
   createProject: (input: { nome: string; pasta: string; instrucoes?: string }) =>

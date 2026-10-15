@@ -9,6 +9,7 @@ O OWL lê variáveis de ambiente (veja [`.env.example`](../../.env.example); cop
 | `OWL_PORT` | `4317` | Porta do servidor da API. |
 | `OWL_DATA_DIR` | `./data` | Pasta do banco SQLite. Caminho relativo é relativo a onde o servidor roda (com `pnpm dev`: `apps/server/`). |
 | `OWL_CONCURRENCY` | `1` | Runs executando ao mesmo tempo (1–16). Uma mesma conversa nunca roda dois ao mesmo tempo. |
+| `OWL_MAX_ATTACHMENT_MB` | `10` | Maior imagem aceita ao anexar uma figura (0,1–100 MB, medida antes de o OWL reduzi-la). |
 | `OWL_WORKSPACE_ROOTS` | sua pasta pessoal | Pastas onde projetos e runs podem trabalhar, separadas por `:`. Veja abaixo. |
 | `OWL_ALLOWED_ORIGINS` | nenhuma | Origens de navegador extras autorizadas a chamar a API, separadas por vírgula. |
 | `OWL_WEB_PORT` | `5173` | Porta do servidor web de desenvolvimento (só em desenvolvimento). |

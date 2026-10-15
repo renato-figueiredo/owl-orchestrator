@@ -9,6 +9,7 @@ OWL reads environment variables (see [`.env.example`](../../.env.example); copy 
 | `OWL_PORT` | `4317` | Port of the API server. |
 | `OWL_DATA_DIR` | `./data` | Folder of the SQLite database. A relative path is relative to where the server runs (with `pnpm dev`: `apps/server/`). |
 | `OWL_CONCURRENCY` | `1` | Runs executing at once (1–16). A single conversation never runs two at the same time. |
+| `OWL_MAX_ATTACHMENT_MB` | `10` | Largest image accepted when you attach a picture (0.1–100 MB, measured before OWL shrinks it). |
 | `OWL_WORKSPACE_ROOTS` | your home folder | Folders where projects and runs may work, separated by `:`. See below. |
 | `OWL_ALLOWED_ORIGINS` | none | Extra browser origins allowed to call the API, comma-separated. |
 | `OWL_WEB_PORT` | `5173` | Port of the web dev server (development only). |

@@ -1,7 +1,9 @@
 import { listAdapters, type RunEvent } from '@owl/core';
 import type { createRepos } from '@owl/db';
+import { createReadStream } from 'node:fs';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z, ZodError } from 'zod';
+import { AttachmentError, AttachmentService, cleanName, HASH, MAX_NAME_CHARS } from './attachments.js';
 import type { Executor } from './executor.js';
 import { Library } from './library.js';
 import { MemoryService, memorySettingsPatchSchema } from './memory.js';
@@ -21,6 +23,10 @@ export interface AppDeps {
   allowedOrigins?: string[];
   /** Folder with `agents/` and `pipelines/` (default: the repo's `examples/`). */
   libraryDir?: string;
+  /** Where processed images are stored (default: a folder in the system temp dir). */
+  attachmentsDir?: string;
+  /** Largest image accepted, in bytes (default 10 MB). */
+  maxAttachmentBytes?: number;
 }
 
 /** Error with an HTTP status, rendered as `{ error: { code, message } }`. */
@@ -47,8 +53,14 @@ const createSession = z.object({
 const listSessions = z.object({ projectId: z.string().min(1).optional() });
 // Same shape the adapters accept as an option value: never starts with "-".
 const modelId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:[\]-]{0,99}$/);
+const attachmentRef = z.object({
+  hash: z.string().regex(HASH),
+  nome: z.string().max(MAX_NAME_CHARS * 4).optional(),
+});
 const sendMessage = z.object({
-  texto: z.string().trim().min(1).max(200_000),
+  /** May be empty when images are attached. */
+  texto: z.string().trim().max(200_000).default(''),
+  anexos: z.array(attachmentRef).max(10).default([]),
   provider: z.string().min(1).max(64).default('claude-cli'),
   model: modelId.optional(),
   /** Only for sessions without a project; a project session always runs in the project's folder. */
@@ -86,6 +98,18 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   const library = new Library(deps.libraryDir);
   const runner = new PipelineRunner({ repos, executor, library });
   const memory = new MemoryService({ repos, executor });
+  const attachments = new AttachmentService({
+    repos,
+    executor,
+    ...(deps.attachmentsDir ? { dir: deps.attachmentsDir } : {}),
+    ...(deps.maxAttachmentBytes ? { maxBytes: deps.maxAttachmentBytes } : {}),
+    describer: () => memory.settings().resumidor,
+  });
+
+  // Images arrive as the raw request body (no multipart): the file name travels in the query string.
+  for (const type of ['image/png', 'image/jpeg', 'image/webp']) {
+    app.addContentTypeParser(type, { parseAs: 'buffer', bodyLimit: attachments.maxBytes }, (_req, body, done) => done(null, body));
+  }
 
   registerGuards(app, deps.allowedOrigins);
 
@@ -111,6 +135,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     }
     const status = (err as { statusCode?: number }).statusCode;
     if (typeof status === 'number' && status >= 400 && status < 500) {
+      if (status === 413) return reply.status(413).send({ error: { code: 'too_large', message: 'The request body is too large' } });
       return reply.status(status).send({ error: { code: 'bad_request', message: err instanceof Error ? err.message : 'Bad request' } });
     }
     return reply.status(500).send({ error: { code: 'internal', message: 'Internal server error' } });
@@ -162,12 +187,49 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.get('/sessions/:id', async (req) => {
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const session = liveSession(id);
+    const messages = repos.messages.list(id);
+    const byMessage = new Map<number, unknown[]>();
+    for (const x of repos.attachments.forMessages(messages.map((m) => m.id))) {
+      byMessage.set(x.messageId, [
+        ...(byMessage.get(x.messageId) ?? []),
+        { hash: x.blobHash, nome: x.nomeOriginal, largura: x.largura, altura: x.altura, url: `/attachments/${x.blobHash}` },
+      ]);
+    }
     return {
       session,
-      messages: repos.messages.list(id),
+      messages: messages.map((m) => (byMessage.has(m.id) ? { ...m, anexos: byMessage.get(m.id) } : m)),
       runs: repos.runs.listBySession(id),
       approvals: repos.approvals.pendingBySession(id).filter((a) => !a.runId || runner.isWaiting(a.runId)),
     };
+  });
+
+  app.post('/attachments', async (req, reply) => {
+    const q = z.object({ nome: z.string().max(MAX_NAME_CHARS * 4).optional() }).parse(req.query);
+    if (!Buffer.isBuffer(req.body)) {
+      throw new HttpError(415, 'unsupported_type', 'Send the image as the request body with Content-Type image/png, image/jpeg or image/webp');
+    }
+    try {
+      const blob = await attachments.store(req.body);
+      const nome = cleanName(q.nome);
+      return reply.status(201).send({
+        attachment: { hash: blob.hash, ...(nome ? { nome } : {}), mime: blob.mime, bytes: blob.bytes, largura: blob.largura, altura: blob.altura, url: `/attachments/${blob.hash}` },
+      });
+    } catch (e) {
+      if (e instanceof AttachmentError) throw new HttpError(e.status, e.code, e.message);
+      throw e;
+    }
+  });
+
+  app.get('/attachments/:hash', async (req, reply) => {
+    const { hash } = z.object({ hash: z.string() }).parse(req.params);
+    const file = attachments.pathOf(hash);
+    if (!file) throw new HttpError(404, 'attachment_not_found', 'Attachment not found');
+    return reply
+      .header('content-type', 'image/webp')
+      .header('cache-control', 'private, max-age=31536000, immutable')
+      .header('x-content-type-options', 'nosniff')
+      .header('content-security-policy', "default-src 'none'")
+      .send(createReadStream(file));
   });
 
   app.post('/sessions/:id/messages', async (req, reply) => {
@@ -177,6 +239,11 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     if (!listAdapters().some((a) => a.id === body.provider)) {
       throw new HttpError(400, 'unknown_provider', `Unknown provider: ${body.provider}`);
     }
+    if (!body.texto && body.anexos.length === 0) throw new HttpError(400, 'invalid_request', 'texto: write something or attach an image');
+    const missing = body.anexos.find((x) => !attachments.exists(x.hash));
+    if (missing) throw new HttpError(400, 'attachment_not_found', `Attachment not found: ${missing.hash}`);
+    const anexos = body.anexos.map((x) => ({ hash: x.hash, ...(cleanName(x.nome) ? { nome: cleanName(x.nome) } : {}) }));
+    const texto = body.texto || 'Veja a imagem anexa.';
 
     const project = session.projectId ? repos.projects.get(session.projectId) : undefined;
     if (project && body.cwd) {
@@ -185,7 +252,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     // Checked on every run, not only at creation: the folder may have been removed or replaced by a symlink since.
     const cwd = folder(project?.pasta ?? body.cwd ?? deps.defaultCwd ?? process.cwd());
 
-    repos.sessions.setTitleIfEmpty(id, body.texto.replace(/\s+/g, ' ').slice(0, 60));
+    repos.sessions.setTitleIfEmpty(id, texto.replace(/\s+/g, ' ').slice(0, 60));
     const systemAppend = project ? projectInstructions(project.configJson) : undefined;
     for (const p of [body.refinador?.provider].filter((x): x is string => !!x)) {
       if (!listAdapters().some((a) => a.id === p)) throw new HttpError(400, 'unknown_provider', `Unknown provider: ${p}`);
@@ -194,7 +261,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       const first = runner.start(
         {
           sessionId: id,
-          pedido: body.texto,
+          pedido: texto,
+          ...(anexos.length ? { anexos } : {}),
           cwd,
           editarAntes: body.editarAntes,
           executar: {
@@ -210,7 +278,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     }
     const run = executor.submit({
       sessionId: id,
-      texto: body.texto,
+      texto,
+      ...(anexos.length ? { anexos } : {}),
       provider: body.provider,
       cwd,
       ...(body.model ? { model: body.model } : {}),

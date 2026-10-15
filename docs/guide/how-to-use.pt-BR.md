@@ -62,6 +62,13 @@ Cada CLI guarda uma sessão interna própria (resultados de ferramentas, cache).
 - **Cancelar**: nada é enviado e o seu texto continua na caixa.
 Se o resumo falhar, o OWL não troca sozinho: mostra o motivo e deixa você escolher.
 
+## Imagens e prints
+Cole (**Ctrl+V**), arraste um arquivo para a caixa de mensagem ou clique em 📎. PNG, JPEG e WebP até o limite configurado.
+- O OWL reduz cada imagem para WebP (lado maior 1500 px) e remove os metadados. A mesma imagem enviada duas vezes é guardada uma vez.
+- Na primeira vez que a imagem vai a um modelo, ele vê a figura em si. Depois um modelo barato (o mesmo que escreve os resumos) a descreve e lê o texto dela; daí em diante vai a **descrição no lugar da figura**, o que economiza tokens.
+- Clique na miniatura na conversa para ver em tamanho real (**Esc** fecha).
+- Uma imagem sozinha já é uma mensagem válida.
+
 ## Teclado e temas
 - Na lista de conversas: **↑ / ↓** movem, **Enter** abre, **Tab** sai da lista.
 - O botão ☾ / ☀ alterna claro e escuro (começa pela configuração do sistema e lembra a sua escolha).
@@ -69,4 +76,4 @@ Se o resumo falhar, o OWL não troca sozinho: mostra o motivo e deixa você esco
 ## O que os agentes fazem (e não fazem) hoje
 - O Codex roda num **sandbox somente leitura**. O Claude roda sem nenhuma ferramenta pré-aprovada, e no modo não interativo a CLI nega o resto.
   Na prática os agentes **leem e explicam, ainda não editam seus arquivos**. O acesso seguro de escrita (git worktrees, aprovações) está no [roadmap](../roadmap.md).
-- Excluir conversas e anexos/imagens ainda não existem.
+- Excluir conversas ainda não existe; as imagens anexadas ficam no disco até lá.

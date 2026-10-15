@@ -1,4 +1,4 @@
-import { assertSafeArg, buildEnv, CLAUDE_API_KEY_ENV_VARS, probeVersion } from '../process.js';
+import { assertImagePath, assertSafeArg, buildEnv, CLAUDE_API_KEY_ENV_VARS, probeVersion } from '../process.js';
 import type { CliAdapterOptions, ProviderAdapter, RunRequest } from '../types.js';
 import { ClaudeStreamParser } from './claude-stream.js';
 import { runCli } from './run-cli.js';
@@ -21,9 +21,6 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * text can never be interpreted as a flag. Flags verified against `claude --help` (v2.1.x).
  */
 export function buildClaudeArgs(req: RunRequest, opts: Pick<ClaudeCliOptions, 'isolate'> = {}): string[] {
-  if (req.images?.length) {
-    throw new Error('claude-cli does not support images yet (see build/prompts/08-anexos.md)');
-  }
   const args = ['-p', '--output-format=stream-json', '--verbose', '--include-partial-messages'];
   if (opts.isolate ?? true) args.push('--strict-mcp-config', '--disable-slash-commands', '--setting-sources', '');
   if (req.model) args.push(`--model=${assertSafeArg('model', req.model, SAFE_ID)}`);
@@ -37,12 +34,23 @@ export function buildClaudeArgs(req: RunRequest, opts: Pick<ClaudeCliOptions, 'i
     args.push(`--append-system-prompt=${req.systemAppend}`);
   }
   if (req.mcpConfigPath) args.push(`--mcp-config=${assertSafeArg('mcpConfigPath', req.mcpConfigPath, /^[^\0]+$/)}`);
-  if (req.noTools) args.push('--tools', '');
-  else if (req.allowedTools?.length) {
-    for (const t of req.allowedTools) assertSafeArg('allowed tool', t, SAFE_TOOL);
-    args.push('--allowedTools', ...req.allowedTools);
+  const images = (req.images ?? []).map((p) => assertImagePath(p));
+  if (req.noTools && images.length === 0) args.push('--tools', '');
+  else {
+    // Claude looks at an image by reading the file: allow the Read tool and the folders the images live in.
+    const tools = [...new Set([...(req.allowedTools ?? []), ...(images.length ? ['Read'] : [])])];
+    for (const t of tools) assertSafeArg('allowed tool', t, SAFE_TOOL);
+    for (const dir of new Set(images.map((p) => p.slice(0, p.lastIndexOf('/')) || '/'))) args.push(`--add-dir=${dir}`);
+    if (tools.length) args.push('--allowedTools', ...tools);
   }
   return args;
+}
+
+/** The text sent on stdin: for images, tells Claude which files to read before the user's prompt. */
+export function buildClaudePrompt(req: RunRequest): string {
+  if (!req.images?.length) return req.prompt;
+  const list = req.images.map((p) => `- ${p}`).join('\n');
+  return `[Imagens anexas. Use a ferramenta Read para ver cada arquivo:\n${list}]\n\n${req.prompt}`;
 }
 
 export function createClaudeCliAdapter(opts: ClaudeCliOptions = {}): ProviderAdapter {
@@ -65,7 +73,7 @@ export function createClaudeCliAdapter(opts: ClaudeCliOptions = {}): ProviderAda
         provider: 'claude-cli',
         bin,
         args,
-        stdin: req.prompt,
+        stdin: buildClaudePrompt(req),
         req,
         env: env(),
         signal,

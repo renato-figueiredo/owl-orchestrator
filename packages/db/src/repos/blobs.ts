@@ -21,6 +21,15 @@ export interface Attachment {
   nomeOriginal: string | null;
 }
 
+export interface AttachmentInfo extends Attachment {
+  mime: string;
+  bytes: number;
+  largura: number | null;
+  altura: number | null;
+  descricao: string | null;
+  ocr: string | null;
+}
+
 const BLOB_COLS = `hash, caminho, mime, bytes, largura, altura, descricao, ocr, criado_em AS criadoEm`;
 
 export function blobsRepo(db: Db) {
@@ -73,6 +82,19 @@ export function attachmentsRepo(db: Db) {
         input.nomeOriginal ?? null,
       );
       return db.prepare(`SELECT ${COLS} FROM attachments WHERE id = ?`).get(id) as Attachment;
+    },
+    /** Attachments of several messages with the blob data the interface and the prompt need, in message order. */
+    forMessages(messageIds: number[]): AttachmentInfo[] {
+      if (messageIds.length === 0) return [];
+      const marks = messageIds.map(() => '?').join(',');
+      return db
+        .prepare(
+          `SELECT a.id, a.message_id AS messageId, a.blob_hash AS blobHash, a.nome_original AS nomeOriginal,
+                  b.mime, b.bytes, b.largura, b.altura, b.descricao, b.ocr
+           FROM attachments a JOIN blobs b ON b.hash = a.blob_hash
+           WHERE a.message_id IN (${marks}) ORDER BY a.rowid`,
+        )
+        .all(...messageIds) as AttachmentInfo[];
     },
     listByMessage(messageId: number): Attachment[] {
       return db

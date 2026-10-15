@@ -18,6 +18,12 @@ export interface MemoryProvider {
   contextFor(input: { sessionId: string; runId: string; texto: string; beforeMessageId: number | undefined; resume: boolean }): string | undefined;
 }
 
+/** Turns attachments into what the model gets (see `AttachmentService`). */
+export interface AttachmentProvider {
+  prepare(refs: Array<{ hash: string; nome?: string | undefined }>): { images: string[]; note: string };
+  afterRun(outcome: { status: string; input: SubmitInput }): void;
+}
+
 export interface SubmitInput {
   sessionId: string;
   texto: string;
@@ -30,6 +36,10 @@ export interface SubmitInput {
    * belongs to the conversation, and a refiner run must neither resume it nor overwrite it.
    */
   stateless?: boolean;
+  /** Images attached to the request: stored with the user message (when recorded) and sent to the model. */
+  anexos?: Array<{ hash: string; nome?: string | undefined }>;
+  /** Image files to hand to the CLI as they are (the describer). Attachments are turned into this automatically. */
+  images?: string[];
   /** Run with no tools at all (the summarizer reads untrusted text and needs none). */
   noTools?: boolean;
   /** Tools pre-approved for this run (agent `ferramentas`); empty or absent leaves the adapter's default. */
@@ -66,6 +76,7 @@ export interface ExecutorOptions {
   /** Finished runs whose events stay replayable from memory. */
   keepFinished?: number;
   memory?: MemoryProvider;
+  attachments?: AttachmentProvider;
   /** Called for every finished run, after it is stored and before its terminal event is announced. Must not throw. */
   afterRun?: (outcome: StepOutcome & { input: SubmitInput }) => void;
 }
@@ -93,6 +104,7 @@ export class Executor {
   private readonly resolveAdapter: (id: string) => ProviderAdapter;
   private readonly keepFinished: number;
   private memory: MemoryProvider | undefined;
+  private attachments: AttachmentProvider | undefined;
   private afterRun: ExecutorOptions['afterRun'];
   private readonly entries = new Map<string, Entry>();
   private readonly queue: Entry[] = [];
@@ -106,12 +118,14 @@ export class Executor {
     this.resolveAdapter = opts.resolveAdapter ?? getAdapter;
     this.keepFinished = opts.keepFinished ?? 200;
     this.memory = opts.memory;
+    this.attachments = opts.attachments;
     this.afterRun = opts.afterRun;
   }
 
   /** Wires memory and the per-run hook after construction (the memory service needs the executor itself). */
-  attach(parts: { memory?: MemoryProvider; afterRun?: ExecutorOptions['afterRun'] }): void {
+  attach(parts: { memory?: MemoryProvider; attachments?: AttachmentProvider; afterRun?: ExecutorOptions['afterRun'] }): void {
     if (parts.memory) this.memory = parts.memory;
+    if (parts.attachments) this.attachments = parts.attachments;
     if (parts.afterRun) this.afterRun = parts.afterRun;
   }
 
@@ -121,6 +135,7 @@ export class Executor {
     if (input.recordUserMessage !== false) {
       const message = repos.messages.add({ sessionId: input.sessionId, papel: 'usuario', conteudo: input.texto });
       input = { ...input, contextBeforeMessageId: input.contextBeforeMessageId ?? message.id };
+      for (const a of input.anexos ?? []) repos.attachments.add({ messageId: message.id, blobHash: a.hash, ...(a.nome ? { nomeOriginal: a.nome } : {}) });
     }
     const run = repos.runs.start({
       provedor: input.provider,
@@ -225,9 +240,12 @@ export class Executor {
         beforeMessageId: input.contextBeforeMessageId,
         resume: Boolean(resume),
       });
+      // Images already described go as text; new ones as files (and get described after the run).
+      const att = input.anexos?.length ? this.attachments?.prepare(input.anexos) : undefined;
+      const images = [...(input.images ?? []), ...(att?.images ?? [])];
       const stream = adapter.run(
         {
-          prompt: memory ? `${memory}${input.texto}` : input.texto,
+          prompt: `${memory ?? ''}${att?.note ?? ''}${input.texto}`,
           cwd: input.cwd,
           runId: run.id,
           ...(input.model ? { model: input.model } : {}),
@@ -235,6 +253,7 @@ export class Executor {
           ...(resume ? { resumeSessionId: resume } : {}),
           ...(input.allowedTools?.length ? { allowedTools: input.allowedTools } : {}),
           ...(input.noTools ? { noTools: true } : {}),
+          ...(images.length ? { images } : {}),
         },
         entry.controller.signal,
       );
@@ -291,10 +310,11 @@ export class Executor {
 
   private runAfter(entry: Entry, status: Exclude<RunStatus, 'rodando'>, result: string, erro: string | undefined): void {
     const { after } = entry.input;
-    if (!after && !this.afterRun) return;
+    if (!after && !this.afterRun && !this.attachments) return;
     try {
       const outcome: StepOutcome = { run: this.repos.runs.get(entry.run.id)!, status, result, ...(erro !== undefined ? { error: erro } : {}) };
       after?.(outcome);
+      this.attachments?.afterRun({ status, input: entry.input });
       this.afterRun?.({ ...outcome, input: entry.input });
     } catch (err) {
       this.repos.messages.add({

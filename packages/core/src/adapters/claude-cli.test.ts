@@ -117,7 +117,11 @@ describe('buildClaudeArgs', () => {
     expect(() => buildClaudeArgs({ prompt: 'x', cwd: '/x', model: '--dangerously-skip-permissions' })).toThrow();
     expect(() => buildClaudeArgs({ prompt: 'x', cwd: '/x', resumeSessionId: '--x' })).toThrow();
     expect(() => buildClaudeArgs({ prompt: 'x', cwd: '/x', allowedTools: ['--bad'] })).toThrow();
-    expect(() => buildClaudeArgs({ prompt: 'x', cwd: '/x', images: ['/a.png'] })).toThrow(/images/);
+    const args = buildClaudeArgs({ prompt: 'x', cwd: '/x', images: ['/data/a.png'] });
+    expect(args).toContain('--add-dir=/data');
+    expect(args.slice(args.indexOf('--allowedTools'))).toEqual(['--allowedTools', 'Read']);
+    expect(() => buildClaudeArgs({ prompt: 'x', cwd: '/x', images: ['relativo.png'] })).toThrow(/image path/);
+    expect(() => buildClaudeArgs({ prompt: 'x', cwd: '/x', images: ['/a\n.png'] })).toThrow(/image path/);
   });
 });
 

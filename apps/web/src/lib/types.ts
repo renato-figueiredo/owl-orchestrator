@@ -50,6 +50,16 @@ export interface Message {
   papel: 'usuario' | 'assistente' | 'sistema' | 'agente';
   conteudo: string;
   criadoEm: string;
+  /** Images attached to a user message. */
+  anexos?: Attachment[];
+}
+export interface Attachment {
+  hash: string;
+  nome: string | null;
+  largura: number | null;
+  altura: number | null;
+  /** Path on the API (`/attachments/<hash>`); prefix it with `API`. */
+  url: string;
 }
 export interface Run {
   id: string;

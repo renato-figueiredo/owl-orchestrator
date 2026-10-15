@@ -11,6 +11,7 @@ import {
 } from '@owl/core';
 import type { createRepos, Message, Session } from '@owl/db';
 import { z } from 'zod';
+import { historyLine } from './attachments.js';
 import type { Executor, MemoryProvider, StepOutcome } from './executor.js';
 
 type Repos = ReturnType<typeof createRepos>;
@@ -52,7 +53,6 @@ const SUMMARY_INPUT_CHARS = 60_000;
 const SNIPPET_CHARS = 400;
 
 const chat = (m: Message): m is Message & { papel: 'usuario' | 'assistente' } => m.papel === 'usuario' || m.papel === 'assistente';
-const toContext = (m: Message & { papel: 'usuario' | 'assistente' }): ContextMessage => ({ papel: m.papel, conteudo: m.conteudo });
 
 export type SummarizeResult =
   | { ok: true; runId: string; resumo: string; fatosNovos: number }
@@ -121,10 +121,22 @@ export class MemoryService implements MemoryProvider {
     const trechos = cfg.trechosFts ? this.snippets(session, i.texto, new Set(recent.map((m) => m.id)), i.beforeMessageId) : [];
 
     const out = montarContexto(
-      { fatos: facts, resumo: session.resumo, mensagens: history.filter(chat).map(toContext), trechos },
+      { fatos: facts, resumo: session.resumo, mensagens: this.toContext(history.filter(chat)), trechos },
       { orcamentoTokens: cfg.orcamentoTokens, ultimasN: cfg.ultimasN },
     );
     return out.texto || undefined;
+  }
+
+  /** Messages as the model sees them: images the user attached appear as their stored description. */
+  private toContext(messages: Array<Message & { papel: 'usuario' | 'assistente' }>): ContextMessage[] {
+    const byMessage = new Map<number, string[]>();
+    for (const a of this.deps.repos.attachments.forMessages(messages.map((m) => m.id))) {
+      byMessage.set(a.messageId, [...(byMessage.get(a.messageId) ?? []), historyLine(a)]);
+    }
+    return messages.map((m) => {
+      const lines = byMessage.get(m.id);
+      return { papel: m.papel, conteudo: lines ? `${lines.join('\n')}\n${m.conteudo}` : m.conteudo };
+    });
   }
 
   /**
@@ -200,7 +212,7 @@ export class MemoryService implements MemoryProvider {
       try {
         executor.submit({
           sessionId,
-          texto: buildSummaryPrompt({ resumoAnterior: session.resumo, mensagens: batch.map(toContext) }),
+          texto: buildSummaryPrompt({ resumoAnterior: session.resumo, mensagens: this.toContext(batch) }),
           provider: cfg.resumidor.provider,
           ...(cfg.resumidor.model ? { model: cfg.resumidor.model } : {}),
           cwd: this.scratchDir(),

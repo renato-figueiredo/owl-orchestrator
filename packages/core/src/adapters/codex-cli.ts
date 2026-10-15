@@ -1,4 +1,4 @@
-import { assertSafeArg, buildEnv, CODEX_API_KEY_ENV_VARS, probeVersion } from '../process.js';
+import { assertImagePath, assertSafeArg, buildEnv, CODEX_API_KEY_ENV_VARS, probeVersion } from '../process.js';
 import type { CliAdapterOptions, ProviderAdapter, RunRequest } from '../types.js';
 import { CodexStreamParser } from './codex-stream.js';
 import { runCli } from './run-cli.js';
@@ -26,10 +26,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * - Codex has no "append system prompt" flag, so `systemAppend` is prepended to the prompt of a FIRST turn only;
  *   a resumed thread already carries it.
  * - `allowedTools` and `mcpConfigPath` do not map to `codex exec` flags and are ignored.
- * - Images (`-i`) are variadic and would swallow the stdin marker; they stay unsupported until prompt 08 can test them.
+ * - Images go as `--image <file>` AFTER the `-` stdin marker: the flag is variadic and would swallow the marker if it came first.
  */
 export function buildCodexArgs(req: RunRequest, opts: Pick<CodexCliOptions, 'isolate' | 'sandbox'> = {}): string[] {
-  if (req.images?.length) throw new Error('codex-cli does not support images yet (see build/prompts/08-anexos.md)');
   const args = ['exec'];
   if (req.resumeSessionId) {
     if (!UUID.test(req.resumeSessionId)) throw new Error(`Invalid resumeSessionId: ${JSON.stringify(req.resumeSessionId)}`);
@@ -40,6 +39,7 @@ export function buildCodexArgs(req: RunRequest, opts: Pick<CodexCliOptions, 'iso
   if (!req.resumeSessionId) args.push('--sandbox', opts.sandbox ?? 'read-only');
   if (req.model) args.push('--model', assertSafeArg('model', req.model, SAFE_MODEL));
   args.push('-');
+  for (const image of req.images ?? []) args.push('--image', assertImagePath(image));
   return args;
 }
 

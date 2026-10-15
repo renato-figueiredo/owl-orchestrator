@@ -22,7 +22,7 @@ export interface RunRequest {
   /** Native CLI session continuity. */
   resumeSessionId?: string;
   mcpConfigPath?: string;
-  /** Image file paths. Not supported by the CLI adapters yet (see build/prompts/08). */
+  /** Absolute paths of image files the CLI should look at (Claude reads them with its Read tool, Codex gets `--image`). */
   images?: string[];
 }
 

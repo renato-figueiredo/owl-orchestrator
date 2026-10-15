@@ -16,6 +16,8 @@ export interface PipelineRequest {
   executar: { provider: string; model?: string; systemAppend?: string };
   /** Overrides the refiner agent's own provider/model (e.g. the user picked haiku). */
   refinador?: { provider: string; model?: string };
+  /** Images attached to the request: stored with it and sent to the step that executes (not to the refiner). */
+  anexos?: Array<{ hash: string; nome?: string | undefined }>;
 }
 
 /** Raised when a pipeline cannot be resumed (unknown or already handled run, or the server restarted). */
@@ -68,6 +70,9 @@ export class PipelineRunner {
       state: { pedido: req.pedido, opcoes: { ...opcoes, editarAntes: req.editarAntes }, etapas: {} },
     };
     ctx.userMessageId = this.deps.repos.messages.add({ sessionId: req.sessionId, papel: 'usuario', conteudo: req.pedido }).id;
+    for (const a of req.anexos ?? []) {
+      this.deps.repos.attachments.add({ messageId: ctx.userMessageId, blobHash: a.hash, ...(a.nome ? { nomeOriginal: a.nome } : {}) });
+    }
     const run = this.advance(ctx);
     if (!run) throw new Error('Pipeline has no step to run');
     return run;
@@ -152,7 +157,7 @@ export class PipelineRunner {
       recordUserMessage: false,
       ...(ctx.userMessageId !== undefined ? { contextBeforeMessageId: ctx.userMessageId } : {}),
       storeAs: agent ? 'agente' : 'assistente',
-      ...(agent ? { stateless: true } : {}),
+      ...(agent ? { stateless: true } : ctx.req.anexos?.length ? { anexos: ctx.req.anexos } : {}),
       ...(agent?.ferramentas.length ? { allowedTools: agent.ferramentas } : {}),
       after: (outcome) => this.afterStep(ctx, step, outcome),
     });

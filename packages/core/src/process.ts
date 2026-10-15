@@ -26,6 +26,11 @@ export function assertSafeArg(name: string, value: string, pattern = /^[\w.:/[\]
   return value;
 }
 
+/** Image paths end up in argv and in the prompt: absolute, no NUL, no newline, never an option. */
+export function assertImagePath(p: string): string {
+  return assertSafeArg('image path', p, /^\/[^\0\r\n]+$/);
+}
+
 export type ProcessChunk =
   | { kind: 'line'; line: string }
   | { kind: 'exit'; code: number | null; signal: NodeJS.Signals | null; stderr: string; aborted: boolean; spawnError?: Error };

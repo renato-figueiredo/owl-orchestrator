@@ -282,7 +282,7 @@ describe('codex adapter (process handling)', () => {
   });
 
   it('invalid request yields start + error without spawning', async () => {
-    const ev = await collect(codex().run(req({ images: ['/a.png'] }), new AbortController().signal));
+    const ev = await collect(codex().run(req({ images: ['a.png'] }), new AbortController().signal));
     expect(ev.map((e) => e.type)).toEqual(['start', 'error']);
     expect(() => readFileSync(join(dir, 'c.json'))).toThrow();
   });

@@ -92,8 +92,12 @@ describe('buildCodexArgs', () => {
     expect(args).not.toContain('--ignore-user-config');
     expect(args).toContain('workspace-write');
   });
+  it('images go after the stdin marker, one --image each', () => {
+    const args = buildCodexArgs({ ...base, images: ['/d/a.webp', '/d/b.webp'] });
+    expect(args.slice(args.indexOf('-'))).toEqual(['-', '--image', '/d/a.webp', '--image', '/d/b.webp']);
+  });
   it('rejects unsafe values instead of passing them on', () => {
-    expect(() => buildCodexArgs({ ...base, images: ['/a.png'] })).toThrow();
+    expect(() => buildCodexArgs({ ...base, images: ['a.png'] })).toThrow();
     expect(() => buildCodexArgs({ ...base, resumeSessionId: '--last' })).toThrow();
     expect(() => buildCodexArgs({ ...base, resumeSessionId: 'abc' })).toThrow();
     expect(() => buildCodexArgs({ ...base, model: '--bad' })).toThrow();
@@ -132,7 +136,7 @@ describe('codex-cli adapter (fake CLI replaying real output)', () => {
   });
 
   it('unsupported request is start + error without spawning', async () => {
-    const events = await run('codex-text', { images: ['/a.png'] });
+    const events = await run('codex-text', { images: ['a.png'] });
     expect(events.map((e) => e.type)).toEqual(['start', 'error']);
     expect(() => readFileSync(join(dir, 'rec.json'))).toThrow();
   });

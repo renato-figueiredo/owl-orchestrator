@@ -10,7 +10,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [x] 05 Interface de chat com stream (`build/prompts/05`)
 - [x] 06 Pipeline "melhorar prompt" (`build/prompts/06`)
 - [x] 07 Memória em camadas + resumo incremental (`build/prompts/07`)
-- [ ] 08 Anexos/prints (`build/prompts/08`)
+- [x] 08 Anexos/prints (`build/prompts/08`) — falta `qa-testes` e `revisor`
 - [ ] 09 Exclusão, lixeira, limpeza, backup (`build/prompts/09`)
 - [ ] 10 Servidor MCP de memória (`build/prompts/10`)
 - [ ] 11 Revisão e testes da fase 1 (`build/prompts/11`)
@@ -34,7 +34,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Pacote de vídeo (ffmpeg, Remotion)
 
 ## Pendências (atualizado em 2026-10-14)
-**Próximo passo:** `qa-testes` e `revisor` no prompt 07; depois prompt 08 (anexos). 
+**Próximo passo:** `qa-testes` e `revisor` no prompt 08; depois prompt 09 (exclusão e backup). 
 
 **Revisão**
 - [x] `qa-testes` e `revisor` nos prompts 02, 03 e 04 rodados em 2026-10-15; 3 bloqueantes corrigidos (NUL no adaptador, Host/Origin, raízes de pastas).

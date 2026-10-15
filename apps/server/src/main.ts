@@ -12,7 +12,14 @@ migrate(db);
 const repos = createRepos(db);
 repos.approvals.expirePendingRunGates(); // pipeline pauses live in memory and do not survive a restart
 const executor = new Executor({ repos, concurrency: config.concurrency });
-const app = buildApp({ repos, executor, workspaceRoots: config.workspaceRoots, allowedOrigins: config.allowedOrigins });
+const app = buildApp({
+  repos,
+  executor,
+  workspaceRoots: config.workspaceRoots,
+  allowedOrigins: config.allowedOrigins,
+  attachmentsDir: join(config.dataDir, 'attachments'),
+  maxAttachmentBytes: config.maxAttachmentBytes,
+});
 
 const stop = async () => {
   await executor.shutdown();
