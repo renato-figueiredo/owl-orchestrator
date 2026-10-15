@@ -79,9 +79,12 @@ export const api = {
   runBackup: () => call<{ status: BackupStatus }>('POST', '/backups').then((r) => r.status),
   saveBackupSettings: (patch: Partial<BackupSettings>) =>
     call<{ backup: BackupSettings }>('PUT', '/settings', { backup: patch }).then((r) => r.backup),
-  facts: (projectId: string | null) =>
-    call<{ facts: Fact[] }>('GET', `/facts${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`).then((r) => r.facts),
-  addFact: (input: { texto: string; projectId?: string; fixado?: boolean }) =>
+  facts: (projectId: string | null, sessionId?: string) =>
+    call<{ facts: Fact[] }>(
+      'GET',
+      `/facts${projectId ? `?projectId=${encodeURIComponent(projectId)}` : sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ''}`,
+    ).then((r) => r.facts),
+  addFact: (input: { texto: string; projectId?: string; sessionId?: string; fixado?: boolean }) =>
     call<{ fact: Fact }>('POST', '/facts', input).then((r) => r.fact),
   updateFact: (id: string, changes: { texto?: string; fixado?: boolean }) =>
     call<{ fact: Fact }>('PATCH', `/facts/${encodeURIComponent(id)}`, changes).then((r) => r.fact),

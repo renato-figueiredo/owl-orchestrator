@@ -68,7 +68,7 @@ export function App() {
   // Facts belong to the project of the open conversation (or to "no project").
   const selectedSession = sessions.find((x) => x.id === selectedId) ?? null;
   const factsScope = selectedSession?.projectId ?? null;
-  const loadFacts = useCallback(() => api.facts(factsScope).then(setFacts), [factsScope]);
+  const loadFacts = useCallback(() => api.facts(factsScope, selectedId ?? undefined).then(setFacts), [factsScope, selectedId]);
   useEffect(() => {
     setMemMessage(null);
     if (!selectedId) return setFacts([]);
@@ -240,7 +240,7 @@ export function App() {
             onSaveSummary={(resumo) => selectedId && void memAction(async () => void (await api.saveSummary(selectedId, resumo)))}
             onUndoSummary={() => selectedId && void memAction(async () => void (await api.undoSummary(selectedId)))}
             onSummarize={() => void summarizeNow()}
-            onAddFact={(texto, fixado) => void memAction(async () => void (await api.addFact({ texto, fixado, ...(factsScope ? { projectId: factsScope } : {}) })))}
+            onAddFact={(texto, fixado) => void memAction(async () => void (await api.addFact({ texto, fixado, ...(factsScope ? { projectId: factsScope } : selectedId ? { sessionId: selectedId } : {}) })))}
             onUpdateFact={(id, changes) => {
               // Optimistic: the toggle must not flicker back while the request is in flight. A failure reloads the truth.
               setFacts((list) => list.map((f) => (f.id === id ? { ...f, ...changes } : f)));

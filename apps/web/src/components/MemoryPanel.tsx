@@ -183,6 +183,9 @@ function SettingsForm({ settings, providers, busy, onSave }: { settings: MemoryS
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={s.trechosFts} onChange={(e) => setS({ ...s, trechosFts: e.target.checked })} /> Buscar trechos relacionados
         </label>
+        <label className="flex items-center gap-2" title="Só no Claude: ele consulta busca, resumo e fatos quando precisar, em vez de receber tudo no prompt">
+          <input type="checkbox" checked={s.mcpMemoria} onChange={(e) => setS({ ...s, mcpMemoria: e.target.checked })} /> Ferramentas de memória sob demanda (Claude)
+        </label>
         <label className="flex items-center justify-between gap-2">
           Resumidor
           <select aria-label="Resumidor" value={s.resumidor.provider} onChange={(e) => setS({ ...s, resumidor: { ...s.resumidor, provider: e.target.value } })} className="rounded border border-line bg-raised px-1 py-0.5">

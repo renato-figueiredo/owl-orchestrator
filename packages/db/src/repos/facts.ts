@@ -5,13 +5,14 @@ export interface Fact {
   id: string;
   projectId: string | null;
   agentId: string | null;
+  sessionId: string | null;
   texto: string;
   fixado: boolean;
   origemRunId: string | null;
   criadoEm: string;
 }
 
-const COLS = `id, project_id AS projectId, agent_id AS agentId, texto, fixado = 1 AS fixado,
+const COLS = `id, project_id AS projectId, agent_id AS agentId, session_id AS sessionId, texto, fixado = 1 AS fixado,
   origem_run_id AS origemRunId, criado_em AS criadoEm`;
 
 interface FactRow extends Omit<Fact, 'fixado'> {
@@ -29,17 +30,20 @@ export function factsRepo(db: Db) {
     add(input: {
       texto: string;
       projectId?: string;
+      /** Only for a fact of a conversation with no project. */
+      sessionId?: string;
       agentId?: string;
       fixado?: boolean;
       origemRunId?: string;
     }): Fact {
       const id = randomUUID();
       db.prepare(
-        'INSERT INTO facts (id, project_id, agent_id, texto, fixado, origem_run_id) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO facts (id, project_id, agent_id, session_id, texto, fixado, origem_run_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
       ).run(
         id,
         input.projectId ?? null,
         input.agentId ?? null,
+        input.projectId ? null : (input.sessionId ?? null),
         input.texto,
         input.fixado ? 1 : 0,
         input.origemRunId ?? null,
@@ -63,22 +67,24 @@ export function factsRepo(db: Db) {
       return rows.map(toFact);
     },
     /**
-     * Facts of exactly one scope: a project, or `null` for conversations that belong to no project. Unlike `list`,
-     * `projectId: null` means "no project", never "all". `desde` keeps only facts created STRICTLY after that time
+     * Facts of exactly one scope: a project, or one conversation with no project (`projectId: null` plus its
+     * `sessionId`). Unlike `list`, `projectId: null` means "no project", never "all", and without a `sessionId` it
+     * matches nothing but legacy facts that belong to no conversation. `desde` keeps only facts created STRICTLY after that time
      * (timestamps have one-second resolution: a fact made in the very second a run started counts as already seen).
      */
-    listScope(scope: { projectId: string | null; apenasFixados?: boolean; desde?: string }): Fact[] {
+    listScope(scope: { projectId: string | null; sessionId?: string | null; apenasFixados?: boolean; desde?: string }): Fact[] {
       const rows = db
         .prepare(
           `SELECT ${COLS} FROM facts
            WHERE agent_id IS NULL
-             AND ((@projectId IS NULL AND project_id IS NULL) OR project_id = @projectId)
+             AND ((@projectId IS NULL AND project_id IS NULL AND session_id IS @sessionId) OR project_id = @projectId)
              AND (@apenasFixados = 0 OR fixado = 1)
              AND (@desde IS NULL OR criado_em > @desde)
            ORDER BY criado_em, rowid`,
         )
         .all({
           projectId: scope.projectId,
+          sessionId: scope.projectId ? null : (scope.sessionId ?? null),
           apenasFixados: scope.apenasFixados ? 1 : 0,
           desde: scope.desde ?? null,
         }) as FactRow[];

@@ -8,7 +8,7 @@ import { CleanupService, NotInTrashError, SessionBusyError, trashSettingsPatchSc
 import { AttachmentError, AttachmentService, cleanName, HASH, MAX_NAME_CHARS } from './attachments.js';
 import type { Executor } from './executor.js';
 import { Library } from './library.js';
-import { MemoryService, memorySettingsPatchSchema } from './memory.js';
+import { MemoryService, memorySettingsPatchSchema, type McpMemoryLaunch } from './memory.js';
 import { PipelineError, PipelineRunner } from './pipeline-runner.js';
 import { FolderError, registerGuards, resolveWorkspace } from './security.js';
 
@@ -33,6 +33,8 @@ export interface AppDeps {
   cleanup?: CleanupService;
   /** Optional snapshots. Without it the backup routes answer 501. */
   backup?: BackupService;
+  /** How to start the memory MCP server. Without it the "memory tools" option has no effect. */
+  mcpMemory?: McpMemoryLaunch;
 }
 
 /** Error with an HTTP status, rendered as `{ error: { code, message } }`. */
@@ -56,6 +58,12 @@ const createSession = z.object({
   projectId: z.string().min(1).optional(),
   titulo: z.string().trim().min(1).max(200).optional(),
 });
+const listFacts = z.object({
+  projectId: z.string().min(1).optional(),
+  /** Conversation with no project: its facts are its own. */
+  sessionId: z.string().min(1).optional(),
+});
+
 const listSessions = z.object({
   projectId: z.string().min(1).optional(),
   /** `trash=1` lists the conversations in the trash instead of the live ones. */
@@ -84,6 +92,7 @@ const sendMessage = z.object({
 });
 const factBody = z.object({
   projectId: z.string().min(1).optional(),
+  sessionId: z.string().min(1).optional(),
   texto: z.string().trim().min(1).max(500),
   fixado: z.boolean().default(false),
 });
@@ -107,7 +116,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   const app = Fastify({ logger: false });
   const library = new Library(deps.libraryDir);
   const runner = new PipelineRunner({ repos, executor, library });
-  const memory = new MemoryService({ repos, executor });
+  const memory = new MemoryService({ repos, executor, ...(deps.mcpMemory ? { mcp: deps.mcpMemory } : {}) });
   const attachments = new AttachmentService({
     repos,
     executor,
@@ -426,8 +435,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   });
 
   app.get('/facts', async (req) => {
-    const q = listSessions.parse(req.query);
-    return { facts: repos.facts.listScope({ projectId: q.projectId ?? null }) };
+    const q = listFacts.parse(req.query);
+    return { facts: repos.facts.listScope({ projectId: q.projectId ?? null, sessionId: q.sessionId ?? null }) };
   });
 
   app.post('/facts', async (req, reply) => {
@@ -435,7 +444,14 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     if (body.projectId && !repos.projects.get(body.projectId)) {
       throw new HttpError(404, 'project_not_found', `Project not found: ${body.projectId}`);
     }
-    const fact = repos.facts.add({ texto: body.texto, fixado: body.fixado, ...(body.projectId ? { projectId: body.projectId } : {}) });
+    if (!body.projectId && body.sessionId && !repos.sessions.get(body.sessionId)) {
+      throw new HttpError(404, 'session_not_found', `Session not found: ${body.sessionId}`);
+    }
+    const fact = repos.facts.add({
+      texto: body.texto,
+      fixado: body.fixado,
+      ...(body.projectId ? { projectId: body.projectId } : body.sessionId ? { sessionId: body.sessionId } : {}),
+    });
     return reply.status(201).send({ fact });
   });
 

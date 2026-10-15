@@ -85,8 +85,8 @@ async function say(sid: string, texto: string, extra: object = {}) {
   await executor.idle();
   return r.body.runId as string;
 }
-const pinnedFact = (projectId: string | undefined, texto: string, fixado = true) =>
-  post('/facts', { texto, fixado, ...(projectId ? { projectId } : {}) });
+const pinnedFact = (projectId: string | undefined, texto: string, fixado = true, sessionId?: string) =>
+  post('/facts', { texto, fixado, ...(projectId ? { projectId } : sessionId ? { sessionId } : {}) });
 
 describe('memory block when the CLI has no session to resume', () => {
   it('a new conversation in a project starts with the project\'s PINNED facts (not the unpinned ones)', async () => {
@@ -106,15 +106,24 @@ describe('memory block when the CLI has no session to resume', () => {
     const a = await project('A');
     const b = await project('B');
     await pinnedFact(a, 'segredo do projeto A');
-    await pinnedFact(undefined, 'fato global sem projeto');
+    const other = await session();
+    await pinnedFact(undefined, 'fato de outra conversa solta', true, other);
     await say(await session(b), 'pedido B');
     await say(await session(), 'pedido solto');
     expect(rec(0).stdin).toBe('pedido B'); // B has no facts: no block at all
-    expect(prefixOf(1, 'pedido solto')).toContain('fato global sem projeto');
+    expect(rec(1).stdin).toBe('pedido solto'); // no block: another loose conversation's fact does not reach it
     expect(rec(1).stdin).not.toContain('segredo do projeto A');
     await say(await session(a), 'pedido A');
     expect(prefixOf(2, 'pedido A')).toContain('segredo do projeto A');
-    expect(rec(2).stdin).not.toContain('fato global');
+    expect(rec(2).stdin).not.toContain('fato de outra conversa solta');
+  });
+
+  it('a conversation with no project sees its own pinned facts, and only those', async () => {
+    await setup();
+    const mine = await session();
+    await pinnedFact(undefined, 'regra só desta conversa', true, mine);
+    await say(mine, 'pedido solto');
+    expect(prefixOf(0, 'pedido solto')).toContain('- regra só desta conversa');
   });
 
   it('switching provider hands over summary and recent messages, without repeating the current request', async () => {
@@ -243,7 +252,7 @@ describe('incremental summary', () => {
     expect(s.resumo).toBe('Resumo novo da conversa.\n\nPendências:\n- Escrever os testes');
     expect(s.resumoAnterior).toBe('Resumo anterior.');
     expect(s.resumoAteMessageId).toBe(last.id + 0); // up to the last CHAT message summarized
-    const facts = repos.facts.listScope({ projectId: null });
+    const facts = repos.facts.listScope({ projectId: null, sessionId: sid });
     expect(facts.map((f) => f.texto)).toEqual(['Usar pnpm no projeto', 'Responder em português']);
     expect(facts.every((f) => !f.fixado)).toBe(true); // the user decides what to pin
     // the summary run is recorded (transparent usage) but is not a chat message
@@ -264,7 +273,7 @@ describe('incremental summary', () => {
   it('facts already known are not added twice', async () => {
     await setup();
     const sid = await session();
-    await pinnedFact(undefined, 'usar PNPM no projeto', false);
+    await pinnedFact(undefined, 'usar PNPM no projeto', false, sid);
     repos.messages.add({ sessionId: sid, papel: 'usuario', conteudo: 'algo' });
     const r = await post(`/sessions/${sid}/summarize`);
     expect(r.body.fatosNovos).toBe(1); // "Usar pnpm no projeto" matched case-insensitively

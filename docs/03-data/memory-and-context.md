@@ -33,10 +33,26 @@ Servidor MCP local (`packages/mcp-memory`) com ferramentas:
 - `buscar_memoria(consulta, projeto?, limite?)`
 - `ler_resumo(sessao | projeto)`
 - `salvar_fato(texto, projeto, fixado?)`
-- `listar_fatos(projeto)`
+- `listar_fatos()` (até 50, os mais recentes; texto achatado em uma linha)
 
 Passado ao `claude -p` via `--mcp-config`. O agente consulta só quando precisa,
 em vez de receber tudo empurrado no prompt.
+
+### Como está implementado (prompt 10)
+- **Pacote** `packages/mcp-memory` (SDK oficial `@modelcontextprotocol/sdk`, stdio). `createMemoryServer` recebe duas conexões:
+  uma **somente leitura** (`openReadonly`) para busca, resumos e listagem, e outra usada **só** por `salvar_fato` (insert em `facts`).
+- **Escopo fixado por quem inicia o servidor, não pelo modelo**: projeto e sessão vão em variáveis de ambiente do processo
+  (`OWL_DB`, `OWL_MEMORY_SESSION`, `OWL_MEMORY_PROJECT`, `OWL_MEMORY_RUN`). Por isso as ferramentas **não têm** o parâmetro `projeto`
+  do desenho original: nenhum argumento alcança outro projeto. Conversa sem projeto busca só nela mesma (`buscarMensagens` sem
+  escopo buscaria tudo) e seus fatos são só dela (`facts.session_id`, migração 0006). Conversas na lixeira nunca aparecem.
+- **`salvar_fato` nunca fixa** (fixar põe o texto em todo prompt futuro: texto não confiável lido pelo agente não pode chegar lá
+  sozinho), no máximo 10 fatos por execução, ignora duplicados e guarda a execução de origem.
+- **Ligação**: opção `mcpMemoria` nas configurações da memória (desligada por padrão). `MemoryService.mcpFor` escreve um config por
+  execução (`<dados>/mcp/<runId>.json`, modo 0600, apagado ao fim) e o executor o passa em `mcpConfigPath` com a permissão
+  `mcp__owl-memory`. Só `claude-cli`; execuções sem estado (resumidor, refinador) ou sem ferramentas não recebem. O isolamento
+  (`--strict-mcp-config`) continua: só este servidor é carregado.
+- **Registro**: `runs.memoria_chamadas` (JSON `{"buscar_memoria": 2}`, migração 0005), mostrado no painel de execuções.
+- O servidor é iniciado com o mesmo carregador `tsx` do processo principal (os pacotes exportam TypeScript).
 
 ## Continuidade nativa
 Usar `--resume <cliSessionId>` do Claude Code em vez de remontar o histórico.
@@ -57,6 +73,6 @@ A CLI cuida de cache e compactação. Guardar `cli_session_id` na sessão.
   falha da CLI nunca sobrescrevem o resumo anterior.
 - **Backoff**: depois de uma tentativa automática que falhou, só tenta de novo com mais `resumirACada` mensagens novas.
   A falha automática é silenciosa; o resumo manual que falha avisa na conversa com uma mensagem de sistema.
-- **Fatos** são do projeto (ou, sem projeto, de um escopo "sem projeto"). Decisões do resumo viram fatos não fixados.
-- **Pendências**: escopo por agente (a tabela `facts` já tem `agent_id`, ainda não usado); fatos de conversas sem projeto
-  compartilham um único escopo global.
+- **Fatos** são do projeto (ou, sem projeto, da própria conversa: `session_id`, apagados junto com ela). Decisões do resumo viram fatos não fixados.
+- **Pendências**: escopo por agente (a tabela `facts` já tem `agent_id`, ainda não usado).
+  Fatos antigos sem projeto e sem conversa (anteriores à 0006) ficam no banco, mas nenhuma conversa os vê.

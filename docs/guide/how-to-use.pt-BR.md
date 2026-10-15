@@ -50,7 +50,10 @@ O painel da direita tem duas abas: **Execução** e **Memória**.
   compartilham os fatos, e nenhum outro projeto os vê. **Só os fatos fixados (Fixar) são enviados ao modelo.** Quando o resumidor percebe uma decisão, ele a
   propõe como fato, *sem fixar*, para você revisar.
 - **Configurações da memória**: quantas mensagens recentes (N), quando resumir, o orçamento do contexto em tokens, resumo automático, trechos
-  relacionados e quem escreve os resumos (padrão: Claude haiku, para poupar um limite pequeno do Codex).
+  relacionados, ferramentas de memória sob demanda e quem escreve os resumos (padrão: Claude haiku, para poupar um limite pequeno do Codex).
+- **Ferramentas de memória sob demanda** (desligadas por padrão, só no Claude): o Claude pode buscar nas mensagens antigas do projeto, ler resumos e listar ou
+  salvar fatos quando precisar, em vez de receber tudo no prompt. Ele só enxerga o projeto atual (uma conversa sem projeto enxerga só a si mesma), os fatos que
+  ele salva nunca ficam fixados (quem decide é você) e o painel de execuções mostra quais ferramentas de memória foram chamadas.
 
 Quando o modelo recebe a memória? Quando a CLI **não tem sessão para retomar**: uma conversa nova num projeto, ou depois de trocar de provedor. Uma
 conversa que continua retomando a mesma sessão da CLI só recebe os fatos fixados *novos*.

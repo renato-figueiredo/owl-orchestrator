@@ -122,6 +122,11 @@ export function RunPanel({ runs, stream, open, onToggle, memory }: PanelProps) {
                   <div className="text-xs text-muted">
                     {fmtTokens(r.tokensIn)} ent · {fmtTokens(r.tokensOut)} saí · {fmtCost(r.custoEstimado)}
                   </div>
+                  {r.memoriaChamadas && (
+                    <div className="text-xs text-muted" data-testid="memory-calls">
+                      Memória: {Object.entries(r.memoriaChamadas).map(([name, n]) => `${name} ×${n}`).join(', ')}
+                    </div>
+                  )}
                   {r.erro && <div className="truncate text-xs text-danger" title={r.erro}>{r.erro}</div>}
                 </li>
               ))}

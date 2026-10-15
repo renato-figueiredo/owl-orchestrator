@@ -20,15 +20,33 @@ export interface Run {
   inicio: string;
   fim: string | null;
   erro: string | null;
+  /** Memory tools the model called, by name (MCP); null when none. */
+  memoriaChamadas: Record<string, number> | null;
 }
 
 const COLS = `id, session_id AS sessionId, ticket_id AS ticketId, parent_run_id AS parentRunId,
   agent_id AS agentId, provedor, modelo, etapa, status, tokens_in AS tokensIn,
-  tokens_out AS tokensOut, custo_estimado AS custoEstimado, complexidade, inicio, fim, erro`;
+  tokens_out AS tokensOut, custo_estimado AS custoEstimado, complexidade, inicio, fim, erro, memoria_chamadas AS memoriaChamadas`;
+
+type RunRow = Omit<Run, 'memoriaChamadas'> & { memoriaChamadas: string | null };
+
+function toRun(r: RunRow): Run {
+  let calls: Run['memoriaChamadas'] = null;
+  if (r.memoriaChamadas) {
+    try {
+      calls = JSON.parse(r.memoriaChamadas) as Record<string, number>;
+    } catch {
+      calls = null;
+    }
+  }
+  return { ...r, memoriaChamadas: calls };
+}
 
 export function runsRepo(db: Db) {
-  const get = (id: string) =>
-    db.prepare(`SELECT ${COLS} FROM runs WHERE id = ?`).get(id) as Run | undefined;
+  const get = (id: string) => {
+    const r = db.prepare(`SELECT ${COLS} FROM runs WHERE id = ?`).get(id) as RunRow | undefined;
+    return r && toRun(r);
+  };
   return {
     get,
     start(input: {
@@ -97,9 +115,14 @@ export function runsRepo(db: Db) {
       return row?.inicio;
     },
     listBySession(sessionId: string): Run[] {
-      return db
+      const rows = db
         .prepare(`SELECT ${COLS} FROM runs WHERE session_id = ? ORDER BY inicio, rowid`)
-        .all(sessionId) as Run[];
+        .all(sessionId) as RunRow[];
+      return rows.map(toRun);
+    },
+    /** Records the memory tools the model called in this run. */
+    setMemoryCalls(id: string, calls: Record<string, number>): void {
+      db.prepare('UPDATE runs SET memoria_chamadas = ? WHERE id = ?').run(Object.keys(calls).length ? JSON.stringify(calls) : null, id);
     },
   };
 }

@@ -34,7 +34,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Pacote de vídeo (ffmpeg, Remotion)
 
 ## Pendências (atualizado em 2026-10-14)
-**Próximo passo:** `qa-testes` e `revisor` nos prompts 08 e 09; depois prompt 10 (MCP de memória).
+**Próximo passo:** `qa-testes` e `revisor` nos prompts 08 e 09 (em andamento em outra sessão) e no 10; depois prompt 11 (revisão da fase 1).
 
 **Revisão**
 - [x] `qa-testes` e `revisor` nos prompts 02, 03 e 04 rodados em 2026-10-15; 3 bloqueantes corrigidos (NUL no adaptador, Host/Origin, raízes de pastas).
@@ -75,7 +75,8 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Manter `docs/guide/` (EN + pt-BR) em dia a cada prompt que mudar o uso (memória, anexos, lixeira).
 
 **Limpeza e hardening**
-- [ ] Memória por agente dentro do projeto (`facts.agent_id` já existe; falta usar no montador e na API) e escopo global para conversas sem projeto (prompt 10, junto do MCP de memória).
+- [ ] Memória por agente dentro do projeto (`facts.agent_id` já existe; falta usar no montador, na API e no MCP) e escopo global para conversas sem projeto (hoje o MCP dá a elas só a própria conversa).
+- [ ] Prompt 10: `qa-testes` e `revisor`; Codex não recebe as ferramentas de memória (sem `--mcp-config`; avaliar `codex mcp`); testar o servidor MCP com o `claude` real em CI não é viável (só fake).
 - [ ] `RunPanel.onRetry` troca de provedor sem passar pelo aviso de troca (prompt 07, interface).
 - [ ] Apagar `references/` (clones de estudo, ~840 MB) ao terminar de consultar Plane e Vibe Kanban para o quadro (prompt 13).
 - [ ] Sandbox opcional de agentes em container (junto ao prompt 14).
@@ -85,3 +86,4 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Site de documentação/landing estático em `owl.renatofigueiredo.dev` (Cloudflare Pages ou GitHub Pages; custo zero, sem Railway, que só entra se houver backend de demo). Comprar domínio próprio apenas se houver tração; redirect 301 preserva o SEO. "owl" é um termo muito disputado: pesar um nome/domínio mais distintivo.
 - [ ] Usar a construção do site como primeiro caso de uso real do próprio OWL ("este site foi feito pelo OWL").
 - [ ] Divulgar (Reddit, Hacker News e afins) com README final, prints atualizados (`docs/images/`) e site no ar. O que traz público ao repositório é conteúdo (README, docs, backlinks), não o domínio.
+- [ ] **README animado (tarefa para o próprio OWL, só com a arquitetura completa):** (1) SVG animado (CSS/SMIL, `docs/images/flow.svg`) com o caminho real de um pedido: prompt → refinador → aprovação → agente (Claude/Codex/Ollama) → executor → memória em camadas → resposta em streaming; 8–12 s em loop, `prefers-reduced-motion` respeitado, paleta de `brand/`, sem caminhos nem dados pessoais. (2) Versão estática do mesmo diagrama como fallback (`flow-static.svg`/PNG). (3) GIF/WebM curto da interface real (chat, memória, troca de provedor, quadro). (4) Dashboard interativo apenas no site de documentação, não no README (o GitHub não executa JavaScript). Gerar a partir de `docs/02-architecture/architecture.md` e regenerar a cada mudança de arquitetura. Princípios em `docs/05-ui/motion-and-animation.md`.

@@ -1,6 +1,7 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { MEMORY_TOOLS_ALLOW, writeMcpConfig } from '@owl/mcp-memory';
 import {
   buildSummaryPrompt,
   montarContexto,
@@ -12,7 +13,7 @@ import {
 import type { createRepos, Message, Session } from '@owl/db';
 import { z } from 'zod';
 import { historyLine } from './attachments.js';
-import type { Executor, MemoryProvider, StepOutcome } from './executor.js';
+import type { Executor, McpProvider, MemoryProvider, StepOutcome } from './executor.js';
 
 type Repos = ReturnType<typeof createRepos>;
 
@@ -29,6 +30,8 @@ const fields = {
   resumoAutomatico: z.boolean(),
   /** Add related snippets from earlier messages (full-text search) when the request matches them. */
   trechosFts: z.boolean(),
+  /** Give Claude the memory tools (search, summary, facts) to consult on demand. */
+  mcpMemoria: z.boolean(),
   /** Who writes the summaries. */
   resumidor: z.object({ provider: z.string().min(1).max(64), model: modelId.optional() }),
 };
@@ -43,6 +46,7 @@ export const DEFAULT_MEMORY_SETTINGS: z.infer<typeof memorySettingsSchema> = {
   orcamentoTokens: 4000,
   resumoAutomatico: true,
   trechosFts: true,
+  mcpMemoria: false,
   resumidor: { provider: 'claude-cli', model: 'haiku' },
 };
 export type MemorySettings = z.infer<typeof memorySettingsSchema>;
@@ -58,17 +62,27 @@ export type SummarizeResult =
   | { ok: true; runId: string; resumo: string; fatosNovos: number }
   | { ok: false; runId?: string; error: string; code: 'nothing_to_summarize' | 'invalid_output' | 'run_failed' };
 
-export class MemoryService implements MemoryProvider {
+/** How to start the memory MCP server and where its per-run config files live. Without it the option does nothing. */
+export interface McpMemoryLaunch {
+  dbFile: string;
+  /** Folder for the per-run config files (created when needed, files removed when the run ends). */
+  dir: string;
+  command: string;
+  args: string[];
+}
+
+export class MemoryService implements MemoryProvider, McpProvider {
   private readonly summarizing = new Set<string>();
   /** Sessions whose last summary attempt failed: how many chat messages were pending then. See `maybeSummarize`. */
   private readonly failedAt = new Map<string, number>();
   private scratch: string | undefined;
 
   constructor(
-    private readonly deps: { repos: Repos; executor: Executor },
+    private readonly deps: { repos: Repos; executor: Executor; mcp?: McpMemoryLaunch },
   ) {
     deps.executor.attach({
       memory: this,
+      mcp: this,
       afterRun: (o) => this.maybeSummarize(o),
     });
   }
@@ -90,11 +104,32 @@ export class MemoryService implements MemoryProvider {
     return next;
   }
 
+  // ---- memory tools on demand (MCP) ---------------------------------------------------------------------------
+
+  /** Only Claude can take an MCP config; runs that must stay isolated or tool-free (refiner, summarizer) get nothing. */
+  mcpFor(i: { sessionId: string; runId: string; provider: string; stateless: boolean; noTools: boolean }): ReturnType<McpProvider['mcpFor']> {
+    const launch = this.deps.mcp;
+    if (!launch || i.provider !== 'claude-cli' || i.stateless || i.noTools || !this.settings().mcpMemoria) return undefined;
+    const session = this.deps.repos.sessions.get(i.sessionId);
+    if (!session) return undefined;
+    mkdirSync(launch.dir, { recursive: true, mode: 0o700 });
+    const configPath = join(launch.dir, `${i.runId}.json`);
+    writeMcpConfig(configPath, {
+      command: launch.command,
+      args: launch.args,
+      dbFile: launch.dbFile,
+      projectId: session.projectId,
+      sessionId: session.id,
+      runId: i.runId,
+    });
+    return { configPath, allowedTools: [MEMORY_TOOLS_ALLOW], done: () => rmSync(configPath, { force: true }) };
+  }
+
   // ---- the memory block ---------------------------------------------------------------------------------------
 
   /** Facts live in the project; a conversation with no project keeps them for itself (no project, no sharing). */
   private scope(session: Session) {
-    return { projectId: session.projectId };
+    return { projectId: session.projectId, sessionId: session.id };
   }
 
   contextFor(i: { sessionId: string; runId: string; texto: string; beforeMessageId: number | undefined; resume: boolean }): string | undefined {
@@ -255,12 +290,12 @@ export class MemoryService implements MemoryProvider {
     repos.sessions.setSummary(session.id, resumo, upTo);
 
     // Decisions become facts (not pinned: the user decides which ones to keep sending). Never duplicate one.
-    const scope = { projectId: session.projectId };
+    const scope = this.scope(session);
     const known = new Set(repos.facts.listScope(scope).map((f) => f.texto.trim().toLowerCase()));
     let added = 0;
     for (const texto of out.fatos_novos) {
       if (known.has(texto.toLowerCase())) continue;
-      repos.facts.add({ texto, ...(session.projectId ? { projectId: session.projectId } : {}), origemRunId: o.run.id });
+      repos.facts.add({ texto, ...(session.projectId ? { projectId: session.projectId } : { sessionId: session.id }), origemRunId: o.run.id });
       known.add(texto.toLowerCase());
       added++;
     }

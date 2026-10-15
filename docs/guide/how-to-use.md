@@ -50,7 +50,10 @@ The right panel has two tabs: **Execução** and **Memória**.
   conversation of the project shares them and no other project sees them. **Only pinned facts (Fixar) are sent to the model.** When the summarizer spots a
   decision it proposes it as a fact, *not pinned*, for you to review.
 - **Configurações da memória**: how many recent messages (N), when to summarize, the context budget in tokens, automatic summaries, related snippets,
-  and who writes the summaries (default: Claude haiku, to spare a small Codex limit).
+  memory tools on demand, and who writes the summaries (default: Claude haiku, to spare a small Codex limit).
+- **Memory tools on demand** (off by default, Claude only): Claude can search the project's earlier messages, read summaries and list or save facts when it
+  needs to, instead of receiving everything in the prompt. It only sees the current project (a conversation without a project sees only itself), facts it saves
+  are never pinned (you decide), and the run panel shows which memory tools were called.
 
 When does the model receive the memory? When the CLI has **no session to resume**: a new conversation in a project, or after a provider switch. A
 conversation that keeps resuming the same CLI session only gets the *new* pinned facts.

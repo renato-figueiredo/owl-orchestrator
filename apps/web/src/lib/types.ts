@@ -38,6 +38,7 @@ export interface MemorySettings {
   orcamentoTokens: number;
   resumoAutomatico: boolean;
   trechosFts: boolean;
+  mcpMemoria: boolean;
   resumidor: { provider: string; model?: string };
 }
 export type SummarizeResult =
@@ -74,6 +75,8 @@ export interface Run {
   inicio: string;
   fim: string | null;
   erro: string | null;
+  /** Memory tools the model called (MCP), by name. */
+  memoriaChamadas?: Record<string, number> | null;
 }
 export interface ProviderInfo {
   id: string;

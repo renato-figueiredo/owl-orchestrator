@@ -16,6 +16,13 @@ export function openDb(file = ':memory:'): Db {
   return db;
 }
 
+/** Read-only connection to an existing database (the memory MCP server reads through it and cannot write by mistake). */
+export function openReadonly(file: string): Db {
+  const db = new Database(file, { readonly: true, fileMustExist: true });
+  db.pragma('busy_timeout = 5000');
+  return db;
+}
+
 export function foreignKeysEnabled(db: Db): boolean {
   return db.pragma('foreign_keys', { simple: true }) === 1;
 }

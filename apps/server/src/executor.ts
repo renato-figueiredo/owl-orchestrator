@@ -18,6 +18,14 @@ export interface MemoryProvider {
   contextFor(input: { sessionId: string; runId: string; texto: string; beforeMessageId: number | undefined; resume: boolean }): string | undefined;
 }
 
+/** Gives a run access to the memory tools (MCP server), see `MemoryService.mcpFor`. */
+export interface McpProvider {
+  /** Config file and tool permissions for this run, or undefined when it gets no memory tools. */
+  mcpFor(input: { sessionId: string; runId: string; provider: string; stateless: boolean; noTools: boolean }):
+    | { configPath: string; allowedTools: string[]; done(): void }
+    | undefined;
+}
+
 /** Turns attachments into what the model gets (see `AttachmentService`). */
 export interface AttachmentProvider {
   prepare(refs: Array<{ hash: string; nome?: string | undefined }>): { images: string[]; note: string };
@@ -76,6 +84,7 @@ export interface ExecutorOptions {
   /** Finished runs whose events stay replayable from memory. */
   keepFinished?: number;
   memory?: MemoryProvider;
+  mcp?: McpProvider;
   attachments?: AttachmentProvider;
   /** Called for every finished run, after it is stored and before its terminal event is announced. Must not throw. */
   afterRun?: (outcome: StepOutcome & { input: SubmitInput }) => void;
@@ -104,6 +113,7 @@ export class Executor {
   private readonly resolveAdapter: (id: string) => ProviderAdapter;
   private readonly keepFinished: number;
   private memory: MemoryProvider | undefined;
+  private mcp: McpProvider | undefined;
   private attachments: AttachmentProvider | undefined;
   private afterRun: ExecutorOptions['afterRun'];
   private readonly entries = new Map<string, Entry>();
@@ -118,13 +128,15 @@ export class Executor {
     this.resolveAdapter = opts.resolveAdapter ?? getAdapter;
     this.keepFinished = opts.keepFinished ?? 200;
     this.memory = opts.memory;
+    this.mcp = opts.mcp;
     this.attachments = opts.attachments;
     this.afterRun = opts.afterRun;
   }
 
   /** Wires memory and the per-run hook after construction (the memory service needs the executor itself). */
-  attach(parts: { memory?: MemoryProvider; attachments?: AttachmentProvider; afterRun?: ExecutorOptions['afterRun'] }): void {
+  attach(parts: { memory?: MemoryProvider; mcp?: McpProvider; attachments?: AttachmentProvider; afterRun?: ExecutorOptions['afterRun'] }): void {
     if (parts.memory) this.memory = parts.memory;
+    if (parts.mcp) this.mcp = parts.mcp;
     if (parts.attachments) this.attachments = parts.attachments;
     if (parts.afterRun) this.afterRun = parts.afterRun;
   }
@@ -232,6 +244,8 @@ export class Executor {
     let tokensOut: number | undefined;
     let cost: number | undefined;
     let terminal: RunEvent | undefined;
+    const memoryCalls: Record<string, number> = {};
+    let mcp: ReturnType<McpProvider['mcpFor']>;
 
     try {
       const adapter = this.resolveAdapter(input.provider);
@@ -249,6 +263,8 @@ export class Executor {
       // Images already described go as text; new ones as files (and get described after the run).
       const att = input.anexos?.length ? this.attachments?.prepare(input.anexos) : undefined;
       const images = [...(input.images ?? []), ...(att?.images ?? [])];
+      mcp = this.mcp?.mcpFor({ sessionId: input.sessionId, runId: run.id, provider: input.provider, stateless: Boolean(input.stateless), noTools: Boolean(input.noTools) });
+      const allowedTools = [...(input.allowedTools ?? []), ...(mcp?.allowedTools ?? [])];
       const stream = adapter.run(
         {
           prompt: `${memory ?? ''}${att?.note ?? ''}${input.texto}`,
@@ -257,7 +273,8 @@ export class Executor {
           ...(input.model ? { model: input.model } : {}),
           ...(input.systemAppend ? { systemAppend: input.systemAppend } : {}),
           ...(resume ? { resumeSessionId: resume } : {}),
-          ...(input.allowedTools?.length ? { allowedTools: input.allowedTools } : {}),
+          ...(allowedTools.length ? { allowedTools } : {}),
+          ...(mcp ? { mcpConfigPath: mcp.configPath } : {}),
           ...(input.noTools ? { noTools: true } : {}),
           ...(images.length ? { images } : {}),
         },
@@ -265,6 +282,10 @@ export class Executor {
       );
       for await (const event of stream) {
         if (event.type === 'text') text += event.delta;
+        if (event.type === 'tool') {
+          const m = /^mcp__owl-memory__(\w+)$/.exec(event.name);
+          if (m?.[1]) memoryCalls[m[1]] = (memoryCalls[m[1]] ?? 0) + 1;
+        }
         if (event.type === 'usage') {
           tokensIn = (tokensIn ?? 0) + (event.inputTokens ?? 0);
           tokensOut = (tokensOut ?? 0) + (event.outputTokens ?? 0);
@@ -278,6 +299,7 @@ export class Executor {
       terminal ??= { type: 'error', message: err instanceof Error ? err.message : String(err) };
     }
     terminal ??= { type: 'error', message: 'Provider ended without a result' };
+    mcp?.done();
 
     let status: Exclude<RunStatus, 'rodando'>;
     let erro: string | undefined;
@@ -308,6 +330,7 @@ export class Executor {
       ...(cost !== undefined ? { custoEstimado: cost } : {}),
       ...(erro !== undefined ? { erro } : {}),
     });
+    if (Object.keys(memoryCalls).length) repos.runs.setMemoryCalls(run.id, memoryCalls);
     this.runAfter(entry, status, result, erro);
     // Persist first, announce after: a client that reacts to the terminal event must find the final state.
     this.emit(entry, terminal);

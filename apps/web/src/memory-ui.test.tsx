@@ -24,7 +24,7 @@ const messages: Message[] = [
   { id: 1, sessionId: 's1', runId: null, papel: 'usuario', conteudo: 'olá', criadoEm: '' },
   { id: 2, sessionId: 's1', runId: 'r0', papel: 'assistente', conteudo: 'oi!', criadoEm: '' },
 ];
-const settings = { ultimasN: 8, resumirACada: 10, orcamentoTokens: 4000, resumoAutomatico: true, trechosFts: true, resumidor: { provider: 'claude-cli', model: 'haiku' } };
+const settings = { ultimasN: 8, resumirACada: 10, orcamentoTokens: 4000, resumoAutomatico: true, trechosFts: true, mcpMemoria: false, resumidor: { provider: 'claude-cli', model: 'haiku' } };
 
 beforeEach(() => {
   calls = [];
@@ -210,7 +210,7 @@ describe('memory tab', () => {
 
     await user.type(screen.getByLabelText('Novo fato'), 'Responder em português');
     await user.click(screen.getByRole('button', { name: 'Adicionar fato' }));
-    await waitFor(() => expect(calls.find((c) => c.method === 'POST' && c.path === '/facts')?.body).toEqual({ texto: 'Responder em português', fixado: true }));
+    await waitFor(() => expect(calls.find((c) => c.method === 'POST' && c.path === '/facts')?.body).toEqual({ texto: 'Responder em português', fixado: true, sessionId: 's1' }));
 
     await user.click(screen.getByRole('button', { name: 'Apagar fato: Usar pnpm' }));
     await waitFor(() => expect(calls.some((c) => c.method === 'DELETE' && c.path === '/facts/f1')).toBe(true));
