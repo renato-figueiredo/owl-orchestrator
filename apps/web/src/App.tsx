@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AgentLibrary } from './components/AgentLibrary';
 import { Board } from './components/Board';
+import { Pairing } from './components/Pairing';
 import { Chat } from './components/Chat';
 import { MemoryPanel } from './components/MemoryPanel';
 import { RunPanel } from './components/RunPanel';
@@ -12,7 +13,18 @@ import { useTheme } from './lib/useTheme';
 
 const message = (e: unknown) => (e instanceof Error ? e.message : 'Algo deu errado');
 
+/** Opens the app once the server accepts this browser (see `SessionAuth`); servers without auth open at once. */
 export function App() {
+  const [needsPairing, setNeedsPairing] = useState<boolean | null>(null);
+  useEffect(() => {
+    void api.authNeeded().then(setNeedsPairing);
+  }, []);
+  if (needsPairing === null) return null;
+  if (needsPairing) return <Pairing onDone={() => setNeedsPairing(false)} />;
+  return <Workspace />;
+}
+
+function Workspace() {
   const [theme, toggleTheme] = useTheme();
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);

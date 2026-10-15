@@ -1,9 +1,11 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { LocalBoard } from '@owl/board';
 import { loadConfig } from '@owl/core';
 import { memoryServerLaunch } from '@owl/mcp-memory';
 import { createRepos, migrate, openDb } from '@owl/db';
 import { buildApp } from './app.js';
+import { SessionAuth } from './auth.js';
 import { BackupService } from './backup.js';
 import { CleanupService } from './cleanup.js';
 import { Executor } from './executor.js';
@@ -17,6 +19,7 @@ const db = openDb(join(config.dataDir, 'owl.sqlite'));
 migrate(db);
 const repos = createRepos(db);
 repos.runs.failInterrupted(); // a run cannot outlive its server; left 'rodando' it would block deleting the conversation
+new LocalBoard(repos).recoverInterrupted(); // their tickets would sit in em_andamento with nothing running
 repos.approvals.expirePendingRunGates(); // pipeline pauses live in memory and do not survive a restart
 const executor = new Executor({ repos, concurrency: config.concurrency });
 const attachmentsDir = join(config.dataDir, 'attachments');
@@ -28,7 +31,9 @@ const backup = new BackupService({
   recipient: config.backupAgeRecipient,
   remote: config.backupRcloneRemote,
 });
+const auth = new SessionAuth();
 const app = buildApp({
+  auth,
   mcpMemory: {
     // absolute: the CLI runs in the project folder, not in ours
     dbFile: resolve(config.dataDir, 'owl.sqlite'),
@@ -75,7 +80,11 @@ process.on('SIGTERM', () => void stop());
 
 app
   .listen({ host: config.host, port: config.port })
-  .then(() => console.log(`owl server listening on http://${config.host}:${config.port}`))
+  .then(() => {
+    console.log(`owl server listening on http://${config.host}:${config.port}`);
+    // Printed only here: agents run as subprocesses and never see this console.
+    console.log(`owl: to pair the browser open the web app with ?pair=${auth.pairingCode()} (e.g. http://127.0.0.1:5173/?pair=${auth.pairingCode()}), or paste the code on the pairing screen`);
+  })
   .catch((err) => {
     console.error(err);
     process.exit(1);

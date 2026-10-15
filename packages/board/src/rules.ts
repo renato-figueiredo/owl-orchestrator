@@ -40,7 +40,7 @@ const DESTRUCTIVE = [
   /\btruncate\b/i,
   /\bpush\b/i,
   /\bdeploy\w*\b/i,
-  /\bpublic(ar|ish)\b/i,
+  /\bpubli(car|sh)\w*\b/i,
   /\bmerge\b/i,
   /\bmesclar\b/i,
   /\breset\s+--hard\b/i,
@@ -48,6 +48,15 @@ const DESTRUCTIVE = [
   /\bsobrescrev\w*\b/i,
   /\boverwrite\b/i,
   /\brebase\b/i,
+  /\brmdir\b/i,
+  /\bshred\b/i,
+  /\bmkfs\b/i,
+  /\bdd\s+if=/i,
+  /\bgit\s+clean\b/i,
+  /\bbranch\s+-D\b/,
+  /\bchmod\s+-R\b/i,
+  /\bchown\s+-R\b/i,
+  /\b(curl|wget)\b[^|]*\|\s*(ba|z)?sh\b/i,
 ];
 
 export function isDestructive(action: string): boolean {

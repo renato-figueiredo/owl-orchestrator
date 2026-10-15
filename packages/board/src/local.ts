@@ -168,13 +168,31 @@ export class LocalBoard implements BoardProvider {
     else if (a.tipo === 'entrega') next = 'concluido';
     else next = (a.retomar?.statusAnterior as TicketStatus | undefined) ?? 'em_andamento';
     // Another gate may still be open on this ticket: it stays waiting.
-    const stillWaiting = this.repos.approvals.pendingByTicket(t.id).length > 0;
+    const open = this.repos.approvals.pendingByTicket(t.id);
+    const stillWaiting = open.length > 0;
+    // A delivery approved while another gate is open must not be lost: the last gate decided closes the ticket.
+    if (stillWaiting && decisao === 'aprovado' && a.tipo === 'entrega') {
+      for (const g of open) this.repos.approvals.setRetomar(g.id, { ...g.retomar, statusAnterior: 'concluido' });
+    }
     if (!stillWaiting || decisao === 'rejeitado') {
       if (decisao === 'rejeitado') this.closeOpenGates(t.id, 'ticket devolvido');
       if (t.status !== next) this.move(t, next, ator);
       if (next === 'concluido') this.closeParentIfDone(t.id);
     }
-    return { approval: this.repos.approvals.get(approvalId)!, ticket: this.need(t.id), retomar: decisao === 'aprovado' && !stillWaiting ? a.retomar : null };
+    return { approval: this.repos.approvals.get(approvalId)!, ticket: this.need(t.id), retomar: decisao === 'aprovado' && !stillWaiting && next !== 'concluido' ? a.retomar : null };
+  }
+
+  /**
+   * Startup recovery: a run cannot outlive the server, so a ticket still `em_andamento` has lost its run. Block it with
+   * a note; a person can run it again. Call after the interrupted runs were failed.
+   */
+  recoverInterrupted(): number {
+    const lost = this.repos.tickets.byStatus('em_andamento');
+    for (const t of lost) {
+      this.move(t, 'bloqueado', SYSTEM);
+      this.comment(t.id, SYSTEM, 'O servidor reiniciou durante a execução. Rode de novo quando quiser.');
+    }
+    return lost.length;
   }
 
   /** Sum of tokens already spent plus an estimate for the next run, against the ticket's ceiling. */

@@ -4,6 +4,7 @@ import type { createRepos } from '@owl/db';
 import { createReadStream } from 'node:fs';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z, ZodError } from 'zod';
+import { registerAuth, type SessionAuth } from './auth.js';
 import { BoardFlow } from './board-flow.js';
 import { registerBoardRoutes } from './board-routes.js';
 import { BackupService, backupSettingsPatchSchema } from './backup.js';
@@ -40,6 +41,8 @@ export interface AppDeps {
   backup?: BackupService;
   /** How to start the memory MCP server. Without it the "memory tools" option has no effect. */
   mcpMemory?: McpMemoryLaunch;
+  /** When set, every route but /health and /auth/* needs a paired browser session (see `SessionAuth`). */
+  auth?: SessionAuth;
 }
 
 /** Error with an HTTP status, rendered as `{ error: { code, message } }`. */
@@ -155,6 +158,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   }
 
   registerGuards(app, deps.allowedOrigins);
+  if (deps.auth) registerAuth(app, deps.auth);
+  else app.get('/auth/status', async () => ({ required: false, authenticated: true }));
 
   const folder = (dir: string) => {
     try {

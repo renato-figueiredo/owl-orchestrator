@@ -66,6 +66,10 @@ export function approvalsRepo(db: Db) {
       );
       return get(id)!;
     },
+    /** Rewrites what a (pending) gate will do once decided, e.g. when a delivery was approved before it. */
+    setRetomar(id: string, retomar: ResumeInfo): void {
+      db.prepare('UPDATE approvals SET retomar_json = ? WHERE id = ?').run(JSON.stringify(retomar), id);
+    },
     /** Pending ticket gates of a project, oldest first (the approvals queue). */
     pendingByProject(projectId: string): Array<Approval & { ticketIdentificador: string; ticketTitulo: string }> {
       const rows = db

@@ -184,6 +184,9 @@ export function ticketsRepo(db: Db) {
         }) as Row[];
       return rows.map(toTicket);
     },
+    /** Tickets in a status across all projects (startup recovery). */
+    byStatus: (status: TicketStatus): Ticket[] =>
+      (db.prepare(`${SELECT} WHERE t.status = ? ORDER BY t.ordem, t.numero`).all(status) as Row[]).map(toTicket),
     children: (id: string): Ticket[] =>
       (db.prepare(`${SELECT} WHERE t.parent_id = ? ORDER BY t.ordem, t.numero`).all(id) as Row[]).map(toTicket),
     /** Edits plain fields (never the status: that goes through `setStatus` and its rules). */

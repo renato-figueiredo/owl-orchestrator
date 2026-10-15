@@ -61,3 +61,6 @@ Provedor, modelo e refinador são escolhidos na interface. O agente refinador e 
 [`examples/agents/refinador-de-prompt.md`](../../examples/agents/refinador-de-prompt.md) (`provedor`, `modelo`, `fallback`).
 O OWL **remove as variáveis de chave de API** (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, …) do ambiente das CLIs que ele inicia, para que usem
 o **login da sua assinatura** e nunca cobrem uma chave de API por surpresa.
+
+## Parear o navegador
+O servidor pede que cada navegador faça um pareamento, para que as aprovações venham de você e não de um programa na mesma máquina. Ao subir, ele imprime no próprio terminal um código de uso único: abra `http://127.0.0.1:5173/?pair=<código>` (ou cole o código na tela de pareamento). A sessão fica em memória: reiniciar o servidor pede o pareamento de novo.

@@ -61,3 +61,6 @@ Provider, model and the refiner are chosen in the interface. The refiner agent a
 [`examples/agents/refinador-de-prompt.md`](../../examples/agents/refinador-de-prompt.md) (`provedor`, `modelo`, `fallback`).
 OWL **removes API-key variables** (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, …) from the environment of the CLIs it starts, so they use
 your **subscription login** and never bill an API key by surprise.
+
+## Pairing the browser
+The server asks every browser to pair once, so that approvals come from you and not from a program on the same machine. On startup it prints a one-time code in its own terminal: open `http://127.0.0.1:5173/?pair=<code>` (or paste the code on the pairing screen). The session lives in memory: restarting the server asks you to pair again.

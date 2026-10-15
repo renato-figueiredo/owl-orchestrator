@@ -51,6 +51,12 @@ async function uploadAttachment(file: File): Promise<{ hash: string; nome?: stri
 }
 
 export const api = {
+  /** Whether the server asks this browser to pair; any failure counts as "no" so the app still opens. */
+  authNeeded: () =>
+    call<{ required: boolean; authenticated: boolean }>('GET', '/auth/status')
+      .then((r) => r.required && !r.authenticated)
+      .catch(() => false),
+  pair: (code: string) => call<{ authenticated: boolean }>('POST', '/auth/pair', { code }),
   uploadAttachment,
   providers: () => call<{ providers: ProviderInfo[] }>('GET', '/providers').then((r) => r.providers),
   projects: () => call<{ projects: Project[] }>('GET', '/projects').then((r) => r.projects),

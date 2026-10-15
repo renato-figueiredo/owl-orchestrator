@@ -69,7 +69,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] CLAUDE.md lista `packages/memory` como montador de contexto, mas o código está em `packages/core/src/memory`.
 
 **Agentes e pipelines (prompt 12)**
-- [ ] `qa-testes` e `revisor` nos prompts 12 e 13 juntos: biblioteca, `outroProvedorQue`, `tentativas`, interface; quadro (transições, portões, fluxo, `ticketBrief`).
+- [x] `qa-testes` (2026-10-15): critérios do 12 cobertos por testes existentes (agente inválido: `agents-library.test.ts`/`agents-pipeline.test.ts`; mesmo agente em duas sessões e pipeline de 3 etapas com outro provedor: `agents-pipeline.test.ts`; `quando`/passagem de saída/`tentativas`: `pipeline.test.ts`, `qa-pipeline-gaps.test.ts`). Nenhuma lacuna nova; `pnpm typecheck`, `lint` e `test` limpos. `revisor` (2026-10-15) feito: achados abaixo, em Quadro.
 - [ ] Falha de etapa que não é o refinador (ex.: revisor): hoje só dá para dispensar; falta tentar de novo com outro provedor e pular etapa do meio (`runner.retry/continue` assumem o refinador). O `continue` na última etapa responde 409.
 - [ ] Escolher o pipeline na caixa de envio (hoje só pela API: `pipeline` em `POST /sessions/:id/messages`; `GET /pipelines` lista).
 - [ ] Editor de pipelines e de skills na interface (hoje só a biblioteca de agentes; pipelines e skills são arquivos).
@@ -79,7 +79,15 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Codex ignora `ferramentas` do agente (o sandbox é fixo): documentar/validar quando um agente de Codex declarar ferramentas de escrita.
 
 **Quadro (prompt 13)**
-- [ ] `qa-testes` e `revisor` no quadro (junto do 12): transições, concorrência de portões, fluxo com CLIs reais (hoje só adaptador falso e E2E com a CLI falsa).
+- [x] `qa-testes` (2026-10-15): os 3 critérios do 13 estão cobertos (`packages/board/src/board.test.ts`, `apps/server/src/board.test.ts`, `apps/web/src/board-ui.test.tsx`); novos casos em `packages/board/src/board-qa.test.ts`. Achados:
+- [x] `rules.ts`: `npm publish` agora abre portão (regex `publi(car|sh)`); teste trocado de `it.fails` por `it`.
+- [x] `local.ts` `decide`: aprovar a entrega com outro portão aberto grava `concluido` nos demais; o último decidido fecha o ticket (qualquer ordem).
+- [x] Lista de ações destrutivas ampliada (`rmdir`, `git clean`, `shred`, `mkfs`, `dd if=`, `branch -D`, `chmod/chown -R`, `curl | sh`). **Prompt 14:** inverter para lista de permissão (só ler/testar sem portão).
+- [x] Reinício: tickets `em_andamento` sem run viram `bloqueado` com comentário (`LocalBoard.recoverInterrupted`, chamado em `main.ts`).
+- [x] Comentários no `ticketBrief` agora dentro de `<comentarios>` com cada linha citada (não forjam cabeçalhos).
+- [x] **Autenticação das rotas** (bloqueante do 14, regra de ouro 5) — feita em 2026-10-15: `SessionAuth` (`apps/server/src/auth.ts`). O servidor imprime no próprio console um código de pareamento de uso único; o navegador o troca por cookie `HttpOnly`/`SameSite=Strict` e toda rota (menos `/health` e `/auth/*`) exige a sessão. Sessões em memória: reiniciar o servidor pede novo pareamento. Testes: `auth.test.ts`, `pairing-ui.test.tsx`. Limite: um agente com `Bash` que leia o console/processo do servidor ainda poderia obter o código; o isolamento real vem com os worktrees/sandbox do 14.
+- [ ] Revisor, pendentes: `ticketBrief` sem teto próprio (descrição/subtarefas/comentários fora do `CONTEXT_TOKENS`); `parseVerdict` pega o último "VEREDITO:" do texto (exigir última linha); `numero` NULL em tickets antigos (migração 0008 sem backfill); pai fecha sem portão de entrega (`closeParentIfDone`); rótulo ambíguo ao rejeitar `reprovacao`; `allowed-tools` de skill é ignorado (documentar).
+- [ ] Ainda sem teste: concorrência real de portões (duas decisões simultâneas pela API) e fluxo com CLIs reais (hoje só adaptador falso e E2E com a CLI falsa).
 - [ ] Fluxo de exemplo com `claude` real: o formato JSON do `po`/`tech-lead` e o `VEREDITO:` dependem de o modelo obedecer; testar e ajustar os prompts dos agentes de exemplo.
 - [ ] Prefixo do ticket editável por projeto (`projects.prefixo` existe, falta API/UI) e ordem/prioridade editáveis no painel do ticket (prioridade e teto só pela criação/PATCH).
 - [ ] O quadro atualiza por polling (3 s); trocar por SSE se pesar.
