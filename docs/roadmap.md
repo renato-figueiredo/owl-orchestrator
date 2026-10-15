@@ -137,3 +137,17 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Usar a construção do site como primeiro caso de uso real do próprio OWL ("este site foi feito pelo OWL").
 - [ ] Divulgar (Reddit, Hacker News e afins) com README final, prints atualizados (`docs/images/`) e site no ar. O que traz público ao repositório é conteúdo (README, docs, backlinks), não o domínio.
 - [ ] **README animado (tarefa para o próprio OWL, só com a arquitetura completa):** (1) SVG animado (CSS/SMIL, `docs/images/flow.svg`) com o caminho real de um pedido: prompt → refinador → aprovação → agente (Claude/Codex/Ollama) → executor → memória em camadas → resposta em streaming; 8–12 s em loop, `prefers-reduced-motion` respeitado, paleta de `brand/`, sem caminhos nem dados pessoais. (2) Versão estática do mesmo diagrama como fallback (`flow-static.svg`/PNG). (3) GIF/WebM curto da interface real (chat, memória, troca de provedor, quadro). (4) Dashboard interativo apenas no site de documentação, não no README (o GitHub não executa JavaScript). Gerar a partir de `docs/02-architecture/architecture.md` e regenerar a cada mudança de arquitetura. Princípios em `docs/05-ui/motion-and-animation.md`.
+
+**Anotado em 2026-10-15 (pedido do usuário) — modelos locais, para o prompt 18 (Ollama)**
+- [ ] Modelos candidatos já vistos rodando bem na máquina do usuário: **Gemma 4 text-only e2b** e **Ministral 3 3B** (pequenos, bons para melhorar prompt e para monitorar o Linear), mais o **Gemma 4 26B** (mixture of experts, maior). A máquina provavelmente aguenta modelos maiores que esses; medir antes de decidir o padrão.
+- [ ] Usar os pequenos para o **refinador de prompt** e para o **monitoramento do Linear** (espelho do prompt 16) em vez de gastar Claude/Codex com tarefa de vigia.
+- [ ] **Monitoramento local de um agente por outro** (um modelo local confere o trabalho de outro): troca um custo recorrente alto por um quase zero. Desenhar como etapa de pipeline com `outroProvedorQue`.
+- [ ] **Testar e validar a integração do Gemma 4 26B** (e e2b / Ministral 3B) pelo adaptador próprio do Ollama, lado a lado com `codex --oss`, medindo velocidade e qualidade no refinador e no monitor.
+- [ ] **Conferir se o modo de raciocínio (thinking) vem ligado por padrão** nesses modelos: ligado atrasa respostas onde não precisa. O adaptador deve desligá-lo por padrão (parâmetro do Ollama) e deixar o agente pedir quando valer.
+
+**Anotado em 2026-10-15 — acabamento visual (vai para "finalmentes", é estético)**
+- [ ] Animação simples de **estado do agente**: dormindo (ocioso), trabalhando, aguardando (aprovação/bloqueado). Só animação, nada além.
+- [ ] A **coruja** (marca do OWL) para agentes de modelos locais; o **boneco do Claude** quando o agente roda no `claude`. Outros provedores: personagem próprio.
+- [ ] Usuários poderão **criar os próprios personagens**, associá-los a uma LLM/provedor e definir o que cada um faz em ocioso, trabalhando e aguardando (campo no arquivo do agente, no mesmo estilo dos outros). Encaixa no prompt 17 (motion) ou depois dele.
+
+**Fluxo combinado para fechar o 14:** `qa-testes` + `revisor` do 14 rodam num terminal à parte (sem misturar contexto com este chat); lá mesmo se aplicam as correções, e então commit e push.
