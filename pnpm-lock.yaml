@@ -197,19 +197,19 @@ importers:
         specifier: workspace:*
         version: link:../../packages/db
       fastify:
-        specifier: '*'
+        specifier: ^5.12.7
         version: 5.12.7
       zod:
-        specifier: '*'
+        specifier: ^4.6.7
         version: 4.6.7
 
   apps/web:
     dependencies:
       react:
-        specifier: '*'
+        specifier: ^19.3.0
         version: 19.3.0
       react-dom:
-        specifier: '*'
+        specifier: ^19.3.0
         version: 19.3.0(react@19.3.0)
       react-markdown:
         specifier: ^10.1.0
@@ -260,7 +260,7 @@ importers:
         specifier: ^2.9.1
         version: 2.9.1
       zod:
-        specifier: '*'
+        specifier: ^4.6.7
         version: 4.6.7
 
   packages/db:

@@ -1,3 +1,17 @@
-{ "name": "@owl/server", "version": "0.0.0", "private": true, "type": "module",
-  "scripts": { "dev": "tsx watch src/main.ts", "build": "tsc -p tsconfig.json --noEmit false --outDir dist", "typecheck": "tsc -p tsconfig.json" },
-  "dependencies": { "@owl/core": "workspace:*", "@owl/db": "workspace:*", "fastify": "*", "zod": "*" } }
+{
+  "name": "@owl/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@owl/core": "workspace:*",
+    "@owl/db": "workspace:*",
+    "fastify": "^5.12.7",
+    "zod": "^4.6.7"
+  }
+}

@@ -3,7 +3,7 @@
 <p align="center"><b>Orchestrator for Work &amp; LLMs</b><br>
 Orquestrador local de agentes de IA · <a href="README.md">English</a> · Português (BR)</p>
 
-> **Status: pré-alfa — planejamento e estrutura.** Ainda nada executa; veja o [roadmap](docs/roadmap.md).
+> **Status: pré-alfa — o núcleo do chat funciona (M0).** Dá para conversar com o Claude Code e o Codex pelas suas próprias CLIs logadas, por projeto, com streaming, cancelar, "melhorar prompt" e temas claro/escuro. Memória, anexos, equipes e quadro ainda são planos; veja o [roadmap](docs/roadmap.md).
 
 O OWL roda as **CLIs oficiais** (Claude Code, Codex) e modelos locais (Ollama) como subprocessos na sua própria
 máquina, com interface web local, memória em camadas, agentes reutilizáveis, equipes por projeto, um quadro de
@@ -38,8 +38,14 @@ tickets estilo Linear com aprovação humana e roteamento por custo.
 pnpm install
 pnpm dev        # servidor em 127.0.0.1:4317 (/health) + web em 127.0.0.1:5173
 pnpm typecheck && pnpm lint && pnpm test
+pnpm --filter @owl/web test:e2e   # testes no navegador (1ª vez: pnpm --filter @owl/web exec playwright install chromium)
 # próximos passos: build/HOW-TO-USE.pt-BR.md, um prompt por vez
 ```
+Para conversar de verdade: a CLI `claude` e/ou `codex` instalada e logada. Abra http://127.0.0.1:5173. O servidor roda via `tsx` (`pnpm --filter @owl/server start`); ainda não há bundle de produção.
+
+Configuração (veja [`.env.example`](.env.example)): `OWL_PORT`, `OWL_DATA_DIR`, `OWL_CONCURRENCY`, `OWL_WORKSPACE_ROOTS`
+(pastas onde os agentes podem trabalhar; padrão: sua home), `OWL_ALLOWED_ORIGINS`.
+A API só responde em hosts de loopback e recusa requisições de outros sites no navegador.
 
 ## Aviso
 Sem afiliação com Anthropic, OpenAI ou Linear. O OWL apenas executa as CLIs oficiais instaladas e autenticadas por
