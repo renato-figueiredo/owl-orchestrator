@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Chat } from './components/Chat';
 import { RunPanel } from './components/RunPanel';
 import { Sidebar } from './components/Sidebar';
-import { api } from './lib/api';
-import type { Project, ProviderInfo, Session, SessionDetail } from './lib/types';
+import { api, type SendInput } from './lib/api';
+import type { Project, ProviderInfo, RefinerInfo, Session, SessionDetail } from './lib/types';
 import { useRunStream } from './lib/useRunStream';
 import { useTheme } from './lib/useTheme';
 
@@ -14,6 +14,7 @@ export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  const [refiner, setRefiner] = useState<RefinerInfo | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
@@ -35,6 +36,7 @@ export function App() {
         setSessions(s);
         setProviders(pr);
       })
+      .then(() => api.refiner().then(setRefiner).catch(() => setRefiner(null))) // optional: chat works without it
       .catch((e) => setError(message(e)));
   }, []);
 
@@ -58,7 +60,15 @@ export function App() {
 
   const stream = useRunStream(activeRunId, () => {
     // The server stores the reply before it announces the end, so a reload now returns the final state.
-    if (selectedId) void loadDetail(selectedId).catch((e) => setError(message(e)));
+    // A pipeline creates its next run before announcing this one's end: follow it.
+    if (selectedId) {
+      void loadDetail(selectedId)
+        .then((d) => {
+          const next = d.runs.find((r) => r.status === 'rodando' && r.id !== activeRunId);
+          if (next) setActiveRunId(next.id);
+        })
+        .catch((e) => setError(message(e)));
+    }
     void refreshSessions();
   });
   const liveStream = activeRunId ? stream : null;
@@ -78,7 +88,7 @@ export function App() {
     }
   };
 
-  const send = async (input: { texto: string; provider: string; model?: string }) => {
+  const send = async (input: SendInput) => {
     if (!selectedId) return;
     setBusy(true);
     setError(null);
@@ -87,6 +97,22 @@ export function App() {
       await loadDetail(selectedId); // the user message is stored at submit time
       setActiveRunId(runId);
       void refreshSessions(); // auto-title from the first message
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Runs a decision on a paused pipeline, then follows the run it started (if any). */
+  const decide = async (action: () => Promise<string | void>) => {
+    if (!selectedId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const runId = await action();
+      await loadDetail(selectedId);
+      if (runId) setActiveRunId(runId);
     } catch (e) {
       setError(message(e));
     } finally {
@@ -122,6 +148,12 @@ export function App() {
         error={error}
         onSend={send}
         onCancel={cancel}
+        refiner={refiner}
+        approvals={detail?.approvals ?? []}
+        streamStep={detail?.runs.find((r) => r.id === activeRunId)?.etapa ?? null}
+        onContinue={(runId, texto) => void decide(() => api.continueRun(runId, texto))}
+        onRetry={(runId, via) => void decide(() => api.retryRun(runId, via))}
+        onDiscard={(runId) => void decide(() => api.discardRun(runId).then(() => undefined))}
       />
       <RunPanel runs={detail?.runs ?? []} stream={liveStream} open={panelOpen} onToggle={() => setPanelOpen((v) => !v)} />
     </div>

@@ -3,6 +3,8 @@ import type { createRepos } from '@owl/db';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z, ZodError } from 'zod';
 import type { Executor } from './executor.js';
+import { Library } from './library.js';
+import { PipelineError, PipelineRunner } from './pipeline-runner.js';
 import { FolderError, registerGuards, resolveWorkspace } from './security.js';
 
 type Repos = ReturnType<typeof createRepos>;
@@ -16,6 +18,8 @@ export interface AppDeps {
   workspaceRoots: string[];
   /** Extra browser origins allowed to call the API (e.g. the Vite dev server). */
   allowedOrigins?: string[];
+  /** Folder with `agents/` and `pipelines/` (default: the repo's `examples/`). */
+  libraryDir?: string;
 }
 
 /** Error with an HTTP status, rendered as `{ error: { code, message } }`. */
@@ -40,14 +44,23 @@ const createSession = z.object({
   titulo: z.string().trim().min(1).max(200).optional(),
 });
 const listSessions = z.object({ projectId: z.string().min(1).optional() });
+// Same shape the adapters accept as an option value: never starts with "-".
+const modelId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:[\]-]{0,99}$/);
 const sendMessage = z.object({
   texto: z.string().trim().min(1).max(200_000),
   provider: z.string().min(1).max(64).default('claude-cli'),
-  // Same shape the adapters accept as an option value: never starts with "-".
-  model: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:[\]-]{0,99}$/).optional(),
+  model: modelId.optional(),
   /** Only for sessions without a project; a project session always runs in the project's folder. */
   cwd: z.string().min(1).max(4096).optional(),
+  /** Run the "melhorar prompt" pipeline: a refiner agent rewrites the request first. */
+  melhorarPrompt: z.boolean().default(false),
+  /** With `melhorarPrompt`: stop after the refinement so the user can review and edit it. */
+  editarAntes: z.boolean().default(false),
+  /** Use this provider/model for the refiner instead of the agent's own (e.g. haiku after the limit ran out). */
+  refinador: z.object({ provider: z.string().min(1).max(64), model: modelId.optional() }).optional(),
 });
+const continueBody = z.object({ texto: z.string().max(200_000).optional() });
+const retryBody = z.object({ provider: z.string().min(1).max(64), model: modelId.optional() });
 
 function projectInstructions(configJson: string | null): string | undefined {
   if (!configJson) return undefined;
@@ -62,6 +75,8 @@ function projectInstructions(configJson: string | null): string | undefined {
 export function buildApp(deps: AppDeps): FastifyInstance {
   const { repos, executor } = deps;
   const app = Fastify({ logger: false });
+  const library = new Library(deps.libraryDir);
+  const runner = new PipelineRunner({ repos, executor, library });
 
   registerGuards(app, deps.allowedOrigins);
 
@@ -78,6 +93,9 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     if (err instanceof ZodError) {
       const message = err.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; ');
       return reply.status(400).send({ error: { code: 'invalid_request', message } });
+    }
+    if (err instanceof PipelineError) {
+      return reply.status(err.status).send({ error: { code: err.code, message: err.message } });
     }
     if (err instanceof HttpError) {
       return reply.status(err.status).send({ error: { code: err.code, message: err.message } });
@@ -135,7 +153,12 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.get('/sessions/:id', async (req) => {
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const session = liveSession(id);
-    return { session, messages: repos.messages.list(id), runs: repos.runs.listBySession(id) };
+    return {
+      session,
+      messages: repos.messages.list(id),
+      runs: repos.runs.listBySession(id),
+      approvals: repos.approvals.pendingBySession(id),
+    };
   });
 
   app.post('/sessions/:id/messages', async (req, reply) => {
@@ -155,6 +178,27 @@ export function buildApp(deps: AppDeps): FastifyInstance {
 
     repos.sessions.setTitleIfEmpty(id, body.texto.replace(/\s+/g, ' ').slice(0, 60));
     const systemAppend = project ? projectInstructions(project.configJson) : undefined;
+    for (const p of [body.refinador?.provider].filter((x): x is string => !!x)) {
+      if (!listAdapters().some((a) => a.id === p)) throw new HttpError(400, 'unknown_provider', `Unknown provider: ${p}`);
+    }
+    if (body.melhorarPrompt) {
+      const first = runner.start(
+        {
+          sessionId: id,
+          pedido: body.texto,
+          cwd,
+          editarAntes: body.editarAntes,
+          executar: {
+            provider: body.provider,
+            ...(body.model ? { model: body.model } : {}),
+            ...(systemAppend ? { systemAppend } : {}),
+          },
+          ...(body.refinador ? { refinador: { provider: body.refinador.provider, ...(body.refinador.model ? { model: body.refinador.model } : {}) } } : {}),
+        },
+        { melhorarPrompt: true },
+      );
+      return reply.status(202).send({ runId: first.id, etapa: first.etapa });
+    }
     const run = executor.submit({
       sessionId: id,
       texto: body.texto,
@@ -200,6 +244,34 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     for (const event of sub.history) write(event);
     if (sub.done) reply.raw.end();
     req.raw.on('close', () => sub.unsubscribe());
+  });
+
+  app.get('/refiner', async () => {
+    const a = library.agent('refinador-de-prompt');
+    return { provedor: a.provedor, modelo: a.modelo ?? null, fallback: a.fallback };
+  });
+
+  app.post('/runs/:id/continue', async (req, reply) => {
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const body = continueBody.parse(req.body ?? {});
+    const run = runner.continue(id, body.texto);
+    return reply.status(202).send({ runId: run.id, etapa: run.etapa });
+  });
+
+  app.post('/runs/:id/retry', async (req, reply) => {
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const body = retryBody.parse(req.body);
+    if (!listAdapters().some((a) => a.id === body.provider)) {
+      throw new HttpError(400, 'unknown_provider', `Unknown provider: ${body.provider}`);
+    }
+    const run = runner.retry(id, { provider: body.provider, ...(body.model ? { model: body.model } : {}) });
+    return reply.status(202).send({ runId: run.id, etapa: run.etapa });
+  });
+
+  app.post('/runs/:id/discard', async (req, reply) => {
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    runner.discard(id);
+    return reply.status(200).send({ status: 'discarded' });
   });
 
   app.post('/runs/:id/cancel', async (req, reply) => {

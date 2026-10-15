@@ -1,4 +1,5 @@
 import type { Db } from './connection.js';
+import { approvalsRepo } from './repos/approvals.js';
 import { attachmentsRepo, blobsRepo } from './repos/blobs.js';
 import { factsRepo } from './repos/facts.js';
 import { messagesRepo } from './repos/messages.js';
@@ -8,6 +9,7 @@ import { sessionsRepo } from './repos/sessions.js';
 
 export { foreignKeysEnabled, openDb, type Db } from './connection.js';
 export { MIGRATIONS_DIR, migrate } from './migrate.js';
+export * from './repos/approvals.js';
 export * from './repos/blobs.js';
 export * from './repos/facts.js';
 export * from './repos/messages.js';
@@ -25,5 +27,6 @@ export function createRepos(db: Db) {
     facts: factsRepo(db),
     blobs: blobsRepo(db),
     attachments: attachmentsRepo(db),
+    approvals: approvalsRepo(db),
   };
 }

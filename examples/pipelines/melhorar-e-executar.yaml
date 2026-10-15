@@ -1,0 +1,11 @@
+nome: melhorar-e-executar
+etapas:
+  # Só roda se a opção "melhorar prompt" estiver marcada.
+  - id: melhorar
+    agente: refinador-de-prompt
+    quando: "{{ opcoes.melhorarPrompt }}"
+    # Com "editar antes de executar", o fluxo para aqui e o usuário revisa o prompt.
+    revisao: true
+  # Sem `agente`: usa o provedor e o modelo escolhidos na conversa.
+  - id: executar
+    entrada: "{{ etapas.melhorar.saida ?? pedido }}"

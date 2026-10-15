@@ -1,0 +1,117 @@
+import { parse } from 'yaml';
+import { z } from 'zod';
+
+const stepSchema = z.object({
+  id: z.string().regex(/^[a-z][a-z0-9_]*$/i),
+  /** Agent file name. Without it the step uses the provider and model the user chose for the conversation. */
+  agente: z.string().regex(/^[a-z0-9][a-z0-9-]*$/).optional(),
+  /** Template; the step is skipped when it evaluates to something falsy. */
+  quando: z.string().optional(),
+  /** Template for the prompt of the step (default: the original request). */
+  entrada: z.string().optional(),
+  /** The user may review and edit this step's output before the next step runs (when they asked for it). */
+  revisao: z.boolean().optional(),
+});
+
+const pipelineSchema = z.object({
+  nome: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
+  etapas: z.array(stepSchema).min(1),
+});
+
+export type PipelineStep = z.infer<typeof stepSchema>;
+export type Pipeline = z.infer<typeof pipelineSchema>;
+
+export function parsePipeline(text: string): Pipeline {
+  const p = pipelineSchema.parse(parse(text));
+  const ids = new Set<string>();
+  for (const s of p.etapas) {
+    if (ids.has(s.id)) throw new Error(`Duplicate step id: ${s.id}`);
+    ids.add(s.id);
+  }
+  return p;
+}
+
+export interface PipelineState {
+  /** The user's original request. */
+  pedido: string;
+  opcoes: Record<string, unknown>;
+  etapas: Record<string, { saida?: string; ignorada?: boolean }>;
+}
+
+const FORBIDDEN = new Set(['__proto__', 'prototype', 'constructor']);
+const own = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
+
+/** Reads `a.b.c` from the state. Only own properties are followed, so `constructor` and friends resolve to nothing. */
+function lookup(path: string, state: PipelineState): unknown {
+  const parts = path.split('.');
+  let cur: unknown = state;
+  for (const part of parts) {
+    if (FORBIDDEN.has(part) || typeof cur !== 'object' || cur === null || !own(cur, part)) return undefined;
+    cur = (cur as Record<string, unknown>)[part];
+  }
+  return cur;
+}
+
+const ROOTS = new Set(['pedido', 'opcoes', 'etapas']);
+const PATH = /^[A-Za-z_][\w]*(\.[A-Za-z_][\w-]*)*$/;
+const STRING = /^(['"])(.*)\1$/;
+
+/** One operand: a string literal or a path that starts at `pedido`, `opcoes` or `etapas`. */
+function operand(raw: string, state: PipelineState): unknown {
+  const t = raw.trim();
+  const lit = t.match(STRING);
+  if (lit) return lit[2];
+  if (!PATH.test(t) || !ROOTS.has(t.split('.')[0]!)) throw new Error(`Unsupported expression: ${JSON.stringify(t)}`);
+  return lookup(t, state);
+}
+
+/** `a ?? b ?? 'x'`: first operand that is neither undefined nor null. NOT code: no calls, no operators beyond `??`. */
+export function evaluateExpression(expr: string, state: PipelineState): unknown {
+  for (const part of expr.split('??')) {
+    const v = operand(part, state);
+    if (v !== undefined && v !== null) return v;
+  }
+  return undefined;
+}
+
+const TEMPLATE = /\{\{([^{}]*)\}\}/g;
+
+/** Resolves `{{ ... }}` blocks in a string. Missing values become an empty string. */
+export function renderTemplate(template: string, state: PipelineState): string {
+  return template.replace(TEMPLATE, (_, expr: string) => {
+    const v = evaluateExpression(expr, state);
+    return v === undefined || v === null ? '' : String(v);
+  });
+}
+
+/** Truthiness of a `quando`: false, 0, empty and the strings "false"/"0" skip the step; a missing `quando` runs it. */
+export function isEnabled(quando: string | undefined, state: PipelineState): boolean {
+  if (quando === undefined) return true;
+  const m = quando.match(/^\s*\{\{([^{}]*)\}\}\s*$/);
+  const v = m ? evaluateExpression(m[1]!, state) : renderTemplate(quando, state);
+  if (typeof v === 'string') return !['', 'false', '0'].includes(v.trim().toLowerCase());
+  return Boolean(v);
+}
+
+export interface PlannedStep {
+  step: PipelineStep;
+  /** The resolved prompt for this step. */
+  entrada: string;
+}
+
+/**
+ * The next step to run, or null when the pipeline is finished. Steps already in `state.etapas` are done; steps whose
+ * `quando` is falsy are recorded as `ignorada` and passed over. The caller runs the step, stores its output in
+ * `state.etapas[id]` and asks again, which makes the pipeline resumable between any two steps.
+ */
+export function nextStep(pipeline: Pipeline, state: PipelineState): PlannedStep | null {
+  for (const step of pipeline.etapas) {
+    if (own(state.etapas, step.id)) continue;
+    if (!isEnabled(step.quando, state)) {
+      state.etapas[step.id] = { ignorada: true };
+      continue;
+    }
+    return { step, entrada: step.entrada === undefined ? state.pedido : renderTemplate(step.entrada, state) };
+  }
+  return null;
+}

@@ -78,7 +78,8 @@ export function RunPanel({ runs, stream, open, onToggle }: { runs: Run[]; stream
           <>
             <ul className="mt-1 space-y-1">
               {runs.map((r) => (
-                <li key={r.id} className="rounded border border-line bg-raised px-2 py-1 text-sm">
+                <li key={r.id} className={`rounded border border-line bg-raised px-2 py-1 text-sm ${r.parentRunId ? 'ml-4 border-l-2 border-l-accent' : ''}`}>
+                  {r.etapa && <div className="text-xs font-semibold uppercase tracking-wide text-muted">{r.etapa}</div>}
                   <div className="flex justify-between">
                     <span>{r.provedor}{r.modelo ? ` · ${r.modelo}` : ''}</span>
                     <span className={STATUS[r.status].cls}>{STATUS[r.status].label}</span>

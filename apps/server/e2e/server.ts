@@ -18,9 +18,10 @@ const fake = (id: string, scenario: string) => {
   });
   return { ...real, id, run: real.run };
 };
-// `claude-cli` answers immediately; `codex-cli` is replaced by one that hangs until cancelled.
+// `claude-cli` and `codex-cli` (the refiner) answer immediately; `fake-hang` stays running until cancelled.
 registerAdapter(fake('claude-cli', 'text'));
-registerAdapter(fake('codex-cli', 'hang'));
+registerAdapter(fake('codex-cli', 'text'));
+registerAdapter(fake('fake-hang', 'hang'));
 
 const dir = mkdtempSync(join(tmpdir(), 'owl-e2e-'));
 const db = openDb(join(dir, 'owl.sqlite'));

@@ -3,6 +3,15 @@ import type { createRepos, Run, RunStatus } from '@owl/db';
 
 type Repos = ReturnType<typeof createRepos>;
 
+/** What a step produced, handed to `SubmitInput.after` once it is stored. */
+export interface StepOutcome {
+  run: Run;
+  status: Exclude<RunStatus, 'rodando'>;
+  /** The reply as stored (last message for Codex, full text for Claude). */
+  result: string;
+  error?: string;
+}
+
 export interface SubmitInput {
   sessionId: string;
   texto: string;
@@ -10,6 +19,19 @@ export interface SubmitInput {
   model?: string;
   cwd: string;
   systemAppend?: string;
+  /** Pipeline step name, stored in `runs.etapa`. */
+  etapa?: string;
+  /** The run whose output feeds this one (`runs.parent_run_id`). */
+  parentRunId?: string;
+  /** Store `texto` as the user's message (default). Pipeline steps pass false: the request was stored once, at the start. */
+  recordUserMessage?: boolean;
+  /** Role of the stored reply: `assistente` (default) or `agente` for intermediate output such as a refined prompt. */
+  storeAs?: 'assistente' | 'agente';
+  /**
+   * Runs after the run is stored and BEFORE its terminal event reaches clients, so a follow-up run created here
+   * already exists when the client sees the first one end. It must not throw: failures are recorded in the session.
+   */
+  after?: (outcome: StepOutcome) => void;
 }
 
 export interface ExecutorOptions {
@@ -60,8 +82,16 @@ export class Executor {
   /** Stores the user message, creates the run and queues it. */
   submit(input: SubmitInput): Run {
     const { repos } = this;
-    repos.messages.add({ sessionId: input.sessionId, papel: 'usuario', conteudo: input.texto });
-    const run = repos.runs.start({ provedor: input.provider, sessionId: input.sessionId, ...(input.model ? { modelo: input.model } : {}) });
+    if (input.recordUserMessage !== false) {
+      repos.messages.add({ sessionId: input.sessionId, papel: 'usuario', conteudo: input.texto });
+    }
+    const run = repos.runs.start({
+      provedor: input.provider,
+      sessionId: input.sessionId,
+      ...(input.model ? { modelo: input.model } : {}),
+      ...(input.etapa ? { etapa: input.etapa } : {}),
+      ...(input.parentRunId ? { parentRunId: input.parentRunId } : {}),
+    });
     const entry: Entry = {
       run,
       input,
@@ -177,13 +207,15 @@ export class Executor {
 
     let status: Exclude<RunStatus, 'rodando'>;
     let erro: string | undefined;
+    let result = '';
     if (terminal.type === 'end') {
       status = 'ok';
+      result = terminal.result ?? text;
       repos.messages.add({
         sessionId: input.sessionId,
         runId: run.id,
-        papel: 'assistente',
-        conteudo: terminal.result ?? text,
+        papel: input.storeAs ?? 'assistente',
+        conteudo: result,
       });
       if (terminal.cliSessionId) repos.sessions.setCliSession(input.sessionId, input.provider, terminal.cliSessionId);
     } else if (terminal.type === 'cancelled') {
@@ -199,9 +231,25 @@ export class Executor {
       ...(cost !== undefined ? { custoEstimado: cost } : {}),
       ...(erro !== undefined ? { erro } : {}),
     });
+    this.runAfter(entry, status, result, erro);
     // Persist first, announce after: a client that reacts to the terminal event must find the final state.
     this.emit(entry, terminal);
     this.settle(entry);
+  }
+
+  private runAfter(entry: Entry, status: Exclude<RunStatus, 'rodando'>, result: string, erro: string | undefined): void {
+    const { after } = entry.input;
+    if (!after) return;
+    try {
+      after({ run: this.repos.runs.get(entry.run.id)!, status, result, ...(erro !== undefined ? { error: erro } : {}) });
+    } catch (err) {
+      this.repos.messages.add({
+        sessionId: entry.input.sessionId,
+        runId: entry.run.id,
+        papel: 'sistema',
+        conteudo: `Falha ao encadear a próxima etapa: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
   }
 
   private emit(entry: Entry, event: RunEvent): void {

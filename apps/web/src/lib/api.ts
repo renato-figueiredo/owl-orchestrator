@@ -1,4 +1,4 @@
-import type { Project, ProviderInfo, Session, SessionDetail } from './types';
+import type { Project, ProviderInfo, RefinerInfo, Session, SessionDetail } from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -11,6 +11,15 @@ export class ApiError extends Error {
 }
 
 export const API = '/api';
+
+export interface SendInput {
+  texto: string;
+  provider: string;
+  model?: string;
+  melhorarPrompt?: boolean;
+  editarAntes?: boolean;
+  refinador?: { provider: string; model?: string };
+}
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API}${path}`, {
@@ -34,7 +43,14 @@ export const api = {
   createSession: (input: { projectId?: string; titulo?: string }) =>
     call<{ session: Session }>('POST', '/sessions', input).then((r) => r.session),
   session: (id: string) => call<SessionDetail>('GET', `/sessions/${encodeURIComponent(id)}`),
-  send: (sessionId: string, input: { texto: string; provider: string; model?: string }) =>
+  send: (sessionId: string, input: SendInput) =>
     call<{ runId: string }>('POST', `/sessions/${encodeURIComponent(sessionId)}/messages`, input).then((r) => r.runId),
+  refiner: () => call<RefinerInfo>('GET', '/refiner'),
+  /** Approve a paused pipeline. `texto` is the user's edit of the refined prompt (omit to keep it). */
+  continueRun: (runId: string, texto?: string) =>
+    call<{ runId: string }>('POST', `/runs/${encodeURIComponent(runId)}/continue`, texto ? { texto } : {}).then((r) => r.runId),
+  retryRun: (runId: string, via: { provider: string; model?: string }) =>
+    call<{ runId: string }>('POST', `/runs/${encodeURIComponent(runId)}/retry`, via).then((r) => r.runId),
+  discardRun: (runId: string) => call<{ status: string }>('POST', `/runs/${encodeURIComponent(runId)}/discard`),
   cancel: (runId: string) => call<{ status: string }>('POST', `/runs/${encodeURIComponent(runId)}/cancel`),
 };

@@ -155,3 +155,24 @@ O prompt melhorado aparece na interface e pode ser editado antes de seguir (opci
   equivalente no `exec` e são ignorados. Imagens: `-i` é variádico e engoliria o `-` do stdin; ficam para o prompt 08, com teste real.
 - O adaptador emite `start` assim que o processo sobe (`startEarly`), porque a primeira linha (`thread.started`) não traz nada para mostrar.
 - Sessões do Codex ficam no diretório da própria CLI (sem `--ephemeral`, necessário para o `resume`).
+
+## Decisões (prompt 06, melhorar prompt e pipelines)
+- **Arquivos:** agente em `examples/agents/<nome>.md` (front matter YAML + prompt) e pipeline em `examples/pipelines/<nome>.yaml`.
+  Lidos do disco a cada uso (editar não exige reiniciar); nomes validados (`isSafeName`), sem caminhos. `OWL`: refinador = `codex-cli`,
+  alternativas em `fallback:` (hoje `claude-cli` + `haiku`; Ollama entra aqui no prompt 18).
+- **Executor de pipeline = "stepper" puro** (`packages/core/src/pipeline.ts`): `nextStep(pipeline, state)` devolve a próxima etapa (ou
+  `null`), avaliando `quando` e `entrada`. Não executa nada; por isso o fluxo pode parar e retomar entre duas etapas.
+- **Templates sem `eval`:** só caminhos (`pedido`, `opcoes.x`, `etapas.id.saida`), literais e `??`. Só propriedades próprias (sem
+  `constructor`/`__proto__`). Texto do usuário é dado: `{{ ... }}` dentro do pedido nunca é avaliado.
+- **Orquestração** (`apps/server/src/pipeline-runner.ts`): cada etapa é um `run` (`etapa`, `parent_run_id` = run que a alimentou). O `after`
+  do executor cria a etapa seguinte **antes** de o `end` da anterior chegar ao cliente (sem janela em que o cliente perde a próxima etapa).
+  Checkbox desmarcado: fluxo direto, **um** run (sem depender dos arquivos).
+- **Mensagens:** o pedido original é gravado uma vez (`usuario`); o prompt melhorado é uma mensagem `agente` ligada ao run `melhorar`;
+  a resposta é `assistente`. O prompt efetivamente executado fica auditável (saída do run `melhorar` ou a edição, em `approvals.comentario`).
+- **Pausas viram `approvals` pendentes** (portão humano): "Revisar o prompt melhorado" (com *editar antes*) e "Falha ao melhorar o prompt".
+  Ações: `POST /runs/:id/continue {texto?}`, `/retry {provider, model?}`, `/discard`. **Nunca troca de provedor sozinho** (trocar para o haiku
+  gasta a assinatura do Claude): a interface pergunta. O contexto da pausa fica em memória; após reiniciar o servidor responde 410 e a
+  aprovação é fechada (o usuário reenvia o pedido).
+- Servidor: `GET /refiner` (padrão e alternativas), `GET /sessions/:id` inclui `approvals` pendentes.
+- Teste real (2026-10-15): Codex refinou ("o botão de login não funciona, arruma" → Objetivo/Contexto/Restrições/Formato, 13k tokens) e o
+  haiku executou, com `parent_run_id` ligado.

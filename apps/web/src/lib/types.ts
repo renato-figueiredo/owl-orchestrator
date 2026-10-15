@@ -31,6 +31,8 @@ export interface Message {
 }
 export interface Run {
   id: string;
+  etapa: string | null;
+  parentRunId: string | null;
   provedor: string;
   modelo: string | null;
   status: RunStatus;
@@ -45,8 +47,19 @@ export interface ProviderInfo {
   id: string;
   available: boolean;
 }
+export interface Approval {
+  id: string;
+  runId: string;
+  motivo: string;
+}
+export interface RefinerInfo {
+  provedor: string;
+  modelo: string | null;
+  fallback: Array<{ provedor: string; modelo?: string }>;
+}
 export interface SessionDetail {
   session: Session;
   messages: Message[];
   runs: Run[];
+  approvals: Approval[];
 }

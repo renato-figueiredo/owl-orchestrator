@@ -39,7 +39,7 @@ test('answer streams in, persists after reload, and the session is reachable by 
 test('cancel stops a running run and the page shows it as cancelled', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Nova conversa' }).click();
-  await page.getByLabel('Provedor').selectOption('codex-cli');
+  await page.getByLabel('Provedor').selectOption('fake-hang');
   await page.getByLabel('Mensagem').fill('algo demorado');
   await page.getByLabel('Mensagem').press('Enter');
 
@@ -69,4 +69,44 @@ test('a project keeps its conversations apart and refuses folders outside the wo
   await expect(page.getByRole('button', { name: 'Enviar' })).toBeVisible({ timeout: 15_000 });
   const nav = page.getByRole('navigation', { name: 'Projetos e conversas' });
   await expect(nav.getByRole('button', { name: 'dentro do projeto' })).toBeVisible();
+});
+
+test('melhorar prompt: the refined prompt can be edited and the edit is what runs; both steps show in the panel', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Nova conversa' }).click();
+  await page.getByLabel('Melhorar prompt').check();
+  await page.getByLabel('Editar antes de executar').check();
+  await page.getByLabel('Mensagem').fill('conserte o login');
+  await page.getByLabel('Mensagem').press('Enter');
+
+  const editor = page.getByLabel('Prompt melhorado (editável)');
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await expect(editor).not.toHaveValue('');
+  await editor.fill('PROMPT EDITADO: conserte o login sem mexer no banco');
+  await page.getByRole('button', { name: 'Executar com a minha edição' }).click();
+
+  // second step runs; the refined prompt collapses into the history
+  await expect(page.getByText('Prompt melhorado usado nesta execução')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Enviar' })).toBeVisible({ timeout: 15_000 });
+  const history = page.getByLabel('Histórico de execuções');
+  await expect(history.getByText('melhorar', { exact: true })).toBeVisible();
+  await expect(history.getByText('executar', { exact: true })).toBeVisible();
+
+  // persists after a reload, with both steps
+  await page.reload();
+  await page.getByRole('button', { name: 'conserte o login' }).click();
+  await expect(page.getByText('Prompt melhorado usado nesta execução')).toBeVisible();
+  await expect(page.getByLabel('Histórico de execuções').getByText('executar', { exact: true })).toBeVisible();
+});
+
+test('melhorar prompt without review chains both steps by itself', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Nova conversa' }).click();
+  await page.getByLabel('Melhorar prompt').check();
+  await page.getByLabel('Refinador').selectOption({ label: 'haiku' });
+  await page.getByLabel('Mensagem').fill('liste os arquivos');
+  await page.getByLabel('Mensagem').press('Enter');
+  await expect(page.getByLabel('Histórico de execuções').getByText('executar', { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Enviar' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByLabel('Histórico de execuções').getByText('ok', { exact: true })).toHaveCount(2);
 });

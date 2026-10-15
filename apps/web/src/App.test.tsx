@@ -61,7 +61,7 @@ beforeEach(() => {
       if (detail) return json({ session: server.sessions.find((s) => s.id === detail[1]), messages: server.messages, runs: server.runs });
       if (path.match(/^\/sessions\/\w+\/messages$/)) {
         server.messages.push({ id: 1, sessionId: 's1', runId: null, papel: 'usuario', conteudo: body.texto, criadoEm: '' });
-        server.runs.push({ id: 'run1', provedor: body.provider, modelo: null, status: 'rodando', tokensIn: null, tokensOut: null, custoEstimado: null, inicio: '', fim: null, erro: null });
+        server.runs.push({ id: 'run1', etapa: null, parentRunId: null, provedor: body.provider, modelo: null, status: 'rodando', tokensIn: null, tokensOut: null, custoEstimado: null, inicio: '', fim: null, erro: null });
         server.sessions[0]!.titulo = body.texto;
         return json({ runId: 'run1' }, 202);
       }
@@ -139,7 +139,7 @@ describe('chat', () => {
     expect(FakeEventSource.all).toHaveLength(0);
 
     cleanup();
-    server.runs = [{ id: 'run1', provedor: 'claude-cli', modelo: null, status: 'rodando', tokensIn: null, tokensOut: null, custoEstimado: null, inicio: '', fim: null, erro: null }];
+    server.runs = [{ id: 'run1', etapa: null, parentRunId: null, provedor: 'claude-cli', modelo: null, status: 'rodando', tokensIn: null, tokensOut: null, custoEstimado: null, inicio: '', fim: null, erro: null }];
     render(<App />);
     await user.click(await screen.findByRole('button', { name: 'Antiga' }));
     await waitFor(() => expect(FakeEventSource.all).toHaveLength(1));

@@ -9,6 +9,7 @@
     "try": "tsx scripts/try.ts"
   },
   "dependencies": {
+    "yaml": "^2.9.1",
     "zod": "*"
   }
 }
