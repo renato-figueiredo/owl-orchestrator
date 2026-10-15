@@ -80,6 +80,16 @@ export function runsRepo(db: Db) {
         id,
       );
     },
+    /** When the most recent other finished run of this session started (undefined when there is none). */
+    previousStart(sessionId: string, exceptRunId: string): string | undefined {
+      const row = db
+        .prepare(
+          `SELECT inicio FROM runs WHERE session_id = ? AND id <> ? AND status <> 'rodando'
+           ORDER BY rowid DESC LIMIT 1`,
+        )
+        .get(sessionId, exceptRunId) as { inicio: string } | undefined;
+      return row?.inicio;
+    },
     listBySession(sessionId: string): Run[] {
       return db
         .prepare(`SELECT ${COLS} FROM runs WHERE session_id = ? ORDER BY inicio, rowid`)

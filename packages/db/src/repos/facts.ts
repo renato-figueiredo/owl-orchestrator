@@ -62,6 +62,33 @@ export function factsRepo(db: Db) {
         }) as FactRow[];
       return rows.map(toFact);
     },
+    /**
+     * Facts of exactly one scope: a project, or `null` for conversations that belong to no project. Unlike `list`,
+     * `projectId: null` means "no project", never "all". `desde` keeps only facts created STRICTLY after that time
+     * (timestamps have one-second resolution: a fact made in the very second a run started counts as already seen).
+     */
+    listScope(scope: { projectId: string | null; apenasFixados?: boolean; desde?: string }): Fact[] {
+      const rows = db
+        .prepare(
+          `SELECT ${COLS} FROM facts
+           WHERE agent_id IS NULL
+             AND ((@projectId IS NULL AND project_id IS NULL) OR project_id = @projectId)
+             AND (@apenasFixados = 0 OR fixado = 1)
+             AND (@desde IS NULL OR criado_em > @desde)
+           ORDER BY criado_em, rowid`,
+        )
+        .all({
+          projectId: scope.projectId,
+          apenasFixados: scope.apenasFixados ? 1 : 0,
+          desde: scope.desde ?? null,
+        }) as FactRow[];
+      return rows.map(toFact);
+    },
+    update(id: string, changes: { texto?: string; fixado?: boolean }): Fact | undefined {
+      if (changes.texto !== undefined) db.prepare('UPDATE facts SET texto = ? WHERE id = ?').run(changes.texto, id);
+      if (changes.fixado !== undefined) db.prepare('UPDATE facts SET fixado = ? WHERE id = ?').run(changes.fixado ? 1 : 0, id);
+      return get(id);
+    },
     setPinned(id: string, fixado: boolean): void {
       db.prepare('UPDATE facts SET fixado = ? WHERE id = ?').run(fixado ? 1 : 0, id);
     },

@@ -58,6 +58,15 @@ switch (scenario) {
     setInterval(() => {}, 1000);
     await new Promise(() => {});
     break;
+  case 'summary-ok':
+  case 'summary-bad': {
+    const result =
+      scenario === 'summary-ok'
+        ? JSON.stringify({ resumo: 'Resumo novo da conversa.', fatos_novos: ['Usar pnpm no projeto', 'Responder em português'], pendencias: ['Escrever os testes'] })
+        : 'Desculpe, não consegui gerar o JSON. {resumo: sem aspas';
+    emit(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result, session_id: '0ebc5870-da74-48ab-88a4-2e4c4aaeb936', usage: { input_tokens: 50, output_tokens: 20 } }) + '\n');
+    break;
+  }
   case 'empty':
     emit(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: '', session_id: '0ebc5870-da74-48ab-88a4-2e4c4aaeb936', usage: {} }) + '\n');
     break;

@@ -33,6 +33,8 @@ interface Context {
   req: PipelineRequest;
   pipeline: Pipeline;
   state: PipelineState;
+  /** Id of the stored original request: it and everything after it is the current turn, not history. */
+  userMessageId?: number;
   /** The step this context is waiting on (a review or a failure). */
   waitingOn?: PipelineStep;
 }
@@ -65,7 +67,7 @@ export class PipelineRunner {
       pipeline,
       state: { pedido: req.pedido, opcoes: { ...opcoes, editarAntes: req.editarAntes }, etapas: {} },
     };
-    this.deps.repos.messages.add({ sessionId: req.sessionId, papel: 'usuario', conteudo: req.pedido });
+    ctx.userMessageId = this.deps.repos.messages.add({ sessionId: req.sessionId, papel: 'usuario', conteudo: req.pedido }).id;
     const run = this.advance(ctx);
     if (!run) throw new Error('Pipeline has no step to run');
     return run;
@@ -148,6 +150,7 @@ export class PipelineRunner {
       etapa: step.id,
       ...(parentRunId ? { parentRunId } : {}),
       recordUserMessage: false,
+      ...(ctx.userMessageId !== undefined ? { contextBeforeMessageId: ctx.userMessageId } : {}),
       storeAs: agent ? 'agente' : 'assistente',
       ...(agent ? { stateless: true } : {}),
       ...(agent?.ferramentas.length ? { allowedTools: agent.ferramentas } : {}),

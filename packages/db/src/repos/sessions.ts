@@ -64,6 +64,17 @@ export function sessionsRepo(db: Db) {
         id,
       );
     },
+    /** The user's own edit of the summary: previous version kept, "summarized up to" unchanged. */
+    editSummary(id: string, resumo: string): void {
+      db.prepare('UPDATE sessions SET resumo_anterior = resumo, resumo = ? WHERE id = ?').run(resumo, id);
+    },
+    /**
+     * Undo: swaps the summary with the previous one (a second call redoes). The "summarized up to" marker is NOT
+     * moved: messages already folded into either version are not summarized again.
+     */
+    swapSummary(id: string): void {
+      db.prepare('UPDATE sessions SET resumo = resumo_anterior, resumo_anterior = resumo WHERE id = ?').run(id);
+    },
     /** Stores a new summary, keeping the previous one so it can be undone. */
     setSummary(id: string, resumo: string, ateMessageId: number): void {
       db.prepare(

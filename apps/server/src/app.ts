@@ -4,6 +4,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { z, ZodError } from 'zod';
 import type { Executor } from './executor.js';
 import { Library } from './library.js';
+import { MemoryService, memorySettingsPatchSchema } from './memory.js';
 import { PipelineError, PipelineRunner } from './pipeline-runner.js';
 import { FolderError, registerGuards, resolveWorkspace } from './security.js';
 
@@ -59,6 +60,13 @@ const sendMessage = z.object({
   /** Use this provider/model for the refiner instead of the agent's own (e.g. haiku after the limit ran out). */
   refinador: z.object({ provider: z.string().min(1).max(64), model: modelId.optional() }).optional(),
 });
+const factBody = z.object({
+  projectId: z.string().min(1).optional(),
+  texto: z.string().trim().min(1).max(500),
+  fixado: z.boolean().default(false),
+});
+const factPatch = z.object({ texto: z.string().trim().min(1).max(500).optional(), fixado: z.boolean().optional() });
+const summaryBody = z.object({ resumo: z.string().trim().min(1).max(8000) });
 const continueBody = z.object({ texto: z.string().max(200_000).optional() });
 const retryBody = z.object({ provider: z.string().min(1).max(64), model: modelId.optional() });
 
@@ -77,6 +85,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   const app = Fastify({ logger: false });
   const library = new Library(deps.libraryDir);
   const runner = new PipelineRunner({ repos, executor, library });
+  const memory = new MemoryService({ repos, executor });
 
   registerGuards(app, deps.allowedOrigins);
 
@@ -244,6 +253,76 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     for (const event of sub.history) write(event);
     if (sub.done) reply.raw.end();
     req.raw.on('close', () => sub.unsubscribe());
+  });
+
+  // ---- memory: settings, facts, summary ---------------------------------------------------------------------
+
+  app.get('/settings', async () => ({ memory: memory.settings() }));
+
+  app.put('/settings', async (req) => {
+    const patch = z.object({ memory: memorySettingsPatchSchema }).parse(req.body);
+    const provider = patch.memory.resumidor?.provider;
+    if (provider && !listAdapters().some((a) => a.id === provider)) {
+      throw new HttpError(400, 'unknown_provider', `Unknown provider: ${provider}`);
+    }
+    return { memory: memory.save(patch.memory) };
+  });
+
+  app.get('/facts', async (req) => {
+    const q = listSessions.parse(req.query);
+    return { facts: repos.facts.listScope({ projectId: q.projectId ?? null }) };
+  });
+
+  app.post('/facts', async (req, reply) => {
+    const body = factBody.parse(req.body);
+    if (body.projectId && !repos.projects.get(body.projectId)) {
+      throw new HttpError(404, 'project_not_found', `Project not found: ${body.projectId}`);
+    }
+    const fact = repos.facts.add({ texto: body.texto, fixado: body.fixado, ...(body.projectId ? { projectId: body.projectId } : {}) });
+    return reply.status(201).send({ fact });
+  });
+
+  app.patch('/facts/:id', async (req) => {
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const changes = factPatch.parse(req.body);
+    if (!repos.facts.get(id)) throw new HttpError(404, 'fact_not_found', `Fact not found: ${id}`);
+    return {
+      fact: repos.facts.update(id, {
+        ...(changes.texto !== undefined ? { texto: changes.texto } : {}),
+        ...(changes.fixado !== undefined ? { fixado: changes.fixado } : {}),
+      }),
+    };
+  });
+
+  app.delete('/facts/:id', async (req) => {
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    if (!repos.facts.get(id)) throw new HttpError(404, 'fact_not_found', `Fact not found: ${id}`);
+    repos.facts.delete(id);
+    return { status: 'deleted' };
+  });
+
+  app.put('/sessions/:id/summary', async (req) => {
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const body = summaryBody.parse(req.body);
+    liveSession(id);
+    repos.sessions.editSummary(id, body.resumo);
+    return { session: repos.sessions.get(id) };
+  });
+
+  app.post('/sessions/:id/summary/undo', async (req) => {
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const session = liveSession(id);
+    if (session.resumoAnterior === null) throw new HttpError(409, 'nothing_to_undo', 'There is no previous summary');
+    repos.sessions.swapSummary(id);
+    return { session: repos.sessions.get(id) };
+  });
+
+  /** Writes the summary now and answers when it is done (a few seconds with a small model). */
+  app.post('/sessions/:id/summarize', async (req) => {
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    liveSession(id);
+    const result = await memory.summarize(id);
+    return { ...result, session: repos.sessions.get(id) };
   });
 
   app.get('/refiner', async () => {

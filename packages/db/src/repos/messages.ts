@@ -22,10 +22,10 @@ const COLS = `id, session_id AS sessionId, run_id AS runId, papel, conteudo, cri
  * Turns free text into a safe FTS5 query: every token is quoted (so operators such as
  * AND/NEAR/"/* in user input are literal) and tokens are ANDed. Empty input yields null.
  */
-export function toFtsQuery(consulta: string): string | null {
+export function toFtsQuery(consulta: string, modo: 'todas' | 'qualquer' = 'todas'): string | null {
   const tokens = consulta.split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return null;
-  return tokens.map((t) => `"${t.replaceAll('"', '""')}"`).join(' ');
+  return tokens.map((t) => `"${t.replaceAll('"', '""')}"`).join(modo === 'qualquer' ? ' OR ' : ' ');
 }
 
 export function messagesRepo(db: Db) {
@@ -69,8 +69,9 @@ export function buscarMensagens(
   consulta: string,
   escopo: { sessionId?: string; projectId?: string } = {},
   limite = 5,
+  modo: 'todas' | 'qualquer' = 'todas',
 ): MessageHit[] {
-  const match = toFtsQuery(consulta);
+  const match = toFtsQuery(consulta, modo);
   if (match === null) return [];
   return db
     .prepare(

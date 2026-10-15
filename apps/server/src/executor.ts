@@ -12,6 +12,12 @@ export interface StepOutcome {
   error?: string;
 }
 
+/** Supplies the memory block for a run (see `MemoryService`). */
+export interface MemoryProvider {
+  /** Text placed before the request, or undefined. `resume`: the CLI continues its own session, so only news go in. */
+  contextFor(input: { sessionId: string; runId: string; texto: string; beforeMessageId: number | undefined; resume: boolean }): string | undefined;
+}
+
 export interface SubmitInput {
   sessionId: string;
   texto: string;
@@ -32,8 +38,16 @@ export interface SubmitInput {
   parentRunId?: string;
   /** Store `texto` as the user's message (default). Pipeline steps pass false: the request was stored once, at the start. */
   recordUserMessage?: boolean;
-  /** Role of the stored reply: `assistente` (default) or `agente` for intermediate output such as a refined prompt. */
-  storeAs?: 'assistente' | 'agente';
+  /**
+   * Role of the stored reply: `assistente` (default), `agente` for intermediate output such as a refined prompt, or
+   * `false` to store nothing (the caller reads the result from `after`, e.g. the summarizer).
+   */
+  storeAs?: 'assistente' | 'agente' | false;
+  /**
+   * Messages with an id below this are the history; this and later ones belong to the current request and are kept
+   * out of the memory block. Set automatically for a recorded user message; pipeline steps pass it explicitly.
+   */
+  contextBeforeMessageId?: number;
   /**
    * Runs after the run is stored and BEFORE its terminal event reaches clients, so a follow-up run created here
    * already exists when the client sees the first one end. It must not throw: failures are recorded in the session.
@@ -49,6 +63,9 @@ export interface ExecutorOptions {
   resolveAdapter?: (id: string) => ProviderAdapter;
   /** Finished runs whose events stay replayable from memory. */
   keepFinished?: number;
+  memory?: MemoryProvider;
+  /** Called for every finished run, after it is stored and before its terminal event is announced. Must not throw. */
+  afterRun?: (outcome: StepOutcome & { input: SubmitInput }) => void;
 }
 
 type Listener = (event: RunEvent) => void;
@@ -73,6 +90,8 @@ export class Executor {
   private readonly concurrency: number;
   private readonly resolveAdapter: (id: string) => ProviderAdapter;
   private readonly keepFinished: number;
+  private memory: MemoryProvider | undefined;
+  private afterRun: ExecutorOptions['afterRun'];
   private readonly entries = new Map<string, Entry>();
   private readonly queue: Entry[] = [];
   private readonly activeSessions = new Set<string>();
@@ -84,13 +103,22 @@ export class Executor {
     this.concurrency = Math.max(1, opts.concurrency ?? 1);
     this.resolveAdapter = opts.resolveAdapter ?? getAdapter;
     this.keepFinished = opts.keepFinished ?? 200;
+    this.memory = opts.memory;
+    this.afterRun = opts.afterRun;
+  }
+
+  /** Wires memory and the per-run hook after construction (the memory service needs the executor itself). */
+  attach(parts: { memory?: MemoryProvider; afterRun?: ExecutorOptions['afterRun'] }): void {
+    if (parts.memory) this.memory = parts.memory;
+    if (parts.afterRun) this.afterRun = parts.afterRun;
   }
 
   /** Stores the user message, creates the run and queues it. */
   submit(input: SubmitInput): Run {
     const { repos } = this;
     if (input.recordUserMessage !== false) {
-      repos.messages.add({ sessionId: input.sessionId, papel: 'usuario', conteudo: input.texto });
+      const message = repos.messages.add({ sessionId: input.sessionId, papel: 'usuario', conteudo: input.texto });
+      input = { ...input, contextBeforeMessageId: input.contextBeforeMessageId ?? message.id };
     }
     const run = repos.runs.start({
       provedor: input.provider,
@@ -131,6 +159,7 @@ export class Executor {
     if (entry.state === 'queued') {
       this.queue.splice(this.queue.indexOf(entry), 1);
       this.repos.runs.finish(entry.run.id, { status: 'cancelado' });
+      this.runAfter(entry, 'cancelado', '', undefined); // callers waiting on this run (e.g. a summary) must hear about it
       this.emit(entry, { type: 'cancelled' });
       this.settle(entry);
       return 'cancelled';
@@ -185,9 +214,17 @@ export class Executor {
       // Read now, not at submit time: a queued run must see the session id the previous run just stored.
       const session = repos.sessions.get(input.sessionId);
       const resume = !input.stateless && session?.cliProvider === input.provider ? session.cliSessionId : null;
+      // Without a native session to resume the CLI knows nothing: give it the memory block. With one, only the news.
+      const memory = input.stateless ? undefined : this.memory?.contextFor({
+        sessionId: input.sessionId,
+        runId: run.id,
+        texto: input.texto,
+        beforeMessageId: input.contextBeforeMessageId,
+        resume: Boolean(resume),
+      });
       const stream = adapter.run(
         {
-          prompt: input.texto,
+          prompt: memory ? `${memory}${input.texto}` : input.texto,
           cwd: input.cwd,
           runId: run.id,
           ...(input.model ? { model: input.model } : {}),
@@ -220,7 +257,7 @@ export class Executor {
       status = 'ok';
       result = terminal.result ?? text;
       // An empty reply is not a message: nothing to show, and a pipeline treats it as a failed step.
-      if (result.trim()) {
+      if (result.trim() && input.storeAs !== false) {
         repos.messages.add({
           sessionId: input.sessionId,
           runId: run.id,
@@ -250,9 +287,11 @@ export class Executor {
 
   private runAfter(entry: Entry, status: Exclude<RunStatus, 'rodando'>, result: string, erro: string | undefined): void {
     const { after } = entry.input;
-    if (!after) return;
+    if (!after && !this.afterRun) return;
     try {
-      after({ run: this.repos.runs.get(entry.run.id)!, status, result, ...(erro !== undefined ? { error: erro } : {}) });
+      const outcome: StepOutcome = { run: this.repos.runs.get(entry.run.id)!, status, result, ...(erro !== undefined ? { error: erro } : {}) };
+      after?.(outcome);
+      this.afterRun?.({ ...outcome, input: entry.input });
     } catch (err) {
       this.repos.messages.add({
         sessionId: entry.input.sessionId,
