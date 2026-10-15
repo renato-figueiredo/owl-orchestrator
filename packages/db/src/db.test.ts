@@ -1,0 +1,214 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  buscarMensagens,
+  createRepos,
+  foreignKeysEnabled,
+  migrate,
+  openDb,
+  toFtsQuery,
+  type Db,
+} from './index.js';
+
+const open: Db[] = [];
+const dirs: string[] = [];
+function fresh(file?: string): Db {
+  const db = openDb(file);
+  open.push(db);
+  return db;
+}
+function tmpFile(name = 'owl.db'): string {
+  const dir = mkdtempSync(join(tmpdir(), 'owl-db-'));
+  dirs.push(dir);
+  return join(dir, name);
+}
+function setup() {
+  const db = fresh();
+  migrate(db);
+  return { db, r: createRepos(db) };
+}
+const count = (db: Db, table: string) =>
+  (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
+
+afterEach(() => {
+  for (const db of open.splice(0)) db.close();
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+});
+
+describe('connection', () => {
+  it('has foreign_keys ON on every connection', () => {
+    const file = tmpFile();
+    expect(foreignKeysEnabled(fresh(file))).toBe(true);
+    expect(foreignKeysEnabled(fresh(file))).toBe(true);
+    expect(foreignKeysEnabled(fresh())).toBe(true);
+  });
+
+  it('uses WAL and incremental auto_vacuum on a new file database', () => {
+    const db = fresh(tmpFile());
+    migrate(db);
+    expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
+    expect(db.pragma('auto_vacuum', { simple: true })).toBe(2); // INCREMENTAL
+  });
+});
+
+describe('migrate', () => {
+  it('applies from scratch and is idempotent', () => {
+    const db = fresh();
+    expect(migrate(db)).toEqual(['0001_initial.sql']);
+    expect(migrate(db)).toEqual([]);
+    expect(count(db, 'schema_migrations')).toBe(1);
+    for (const t of ['projects', 'agents', 'teams', 'sessions', 'tickets', 'runs', 'messages', 'blobs', 'approvals']) {
+      expect(count(db, t)).toBe(0);
+    }
+  });
+
+  it('refuses to run when an applied migration was edited', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'owl-mig-'));
+    dirs.push(dir);
+    writeFileSync(join(dir, '0001_a.sql'), 'CREATE TABLE a (x INTEGER);');
+    const db = fresh();
+    migrate(db, dir);
+    writeFileSync(join(dir, '0001_a.sql'), 'CREATE TABLE a (x INTEGER, y INTEGER);');
+    expect(() => migrate(db, dir)).toThrow(/modified/);
+  });
+
+  it('rolls back a failing migration', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'owl-mig-'));
+    dirs.push(dir);
+    writeFileSync(join(dir, '0001_bad.sql'), 'CREATE TABLE ok (x INTEGER); SELECT * FROM missing;');
+    const db = fresh();
+    expect(() => migrate(db, dir)).toThrow();
+    expect(count(db, 'schema_migrations')).toBe(0);
+    expect(() => count(db, 'ok')).toThrow();
+  });
+});
+
+describe('FTS search', () => {
+  it('finds messages, and stops finding them after delete', () => {
+    const { db, r } = setup();
+    const s = r.sessions.create({ titulo: 't' });
+    const m = r.messages.add({ sessionId: s.id, papel: 'usuario', conteudo: 'preciso migrar o banco para sqlite' });
+    r.messages.add({ sessionId: s.id, papel: 'assistente', conteudo: 'outra coisa sem relacao' });
+
+    expect(buscarMensagens(db, 'sqlite', { sessionId: s.id }).map((h) => h.id)).toEqual([m.id]);
+    r.messages.delete(m.id);
+    expect(buscarMensagens(db, 'sqlite', { sessionId: s.id })).toEqual([]);
+  });
+
+  it('keeps the index in sync on update', () => {
+    const { db, r } = setup();
+    const s = r.sessions.create();
+    const m = r.messages.add({ sessionId: s.id, papel: 'usuario', conteudo: 'texto antigo' });
+    db.prepare('UPDATE messages SET conteudo = ? WHERE id = ?').run('texto novo', m.id);
+    expect(buscarMensagens(db, 'antigo')).toEqual([]);
+    expect(buscarMensagens(db, 'novo')).toHaveLength(1);
+  });
+
+  it('treats FTS operators in user input as literal text', () => {
+    const { db, r } = setup();
+    const s = r.sessions.create();
+    r.messages.add({ sessionId: s.id, papel: 'usuario', conteudo: 'erro "quoted" AND OR NEAR * (x)' });
+    expect(() => buscarMensagens(db, 'AND OR " ( * NEAR')).not.toThrow();
+    expect(buscarMensagens(db, '"quoted"')).toHaveLength(1);
+    expect(buscarMensagens(db, '   ')).toEqual([]);
+    expect(toFtsQuery('a "b')).toBe('"a" """b"');
+  });
+
+  it('scopes by project and hides trashed sessions', () => {
+    const { db, r } = setup();
+    db.prepare("INSERT INTO projects (id, nome, pasta) VALUES ('p1','A','/a'), ('p2','B','/b')").run();
+    const s1 = r.sessions.create({ projectId: 'p1' });
+    const s2 = r.sessions.create({ projectId: 'p2' });
+    r.messages.add({ sessionId: s1.id, papel: 'usuario', conteudo: 'deploy do servidor' });
+    r.messages.add({ sessionId: s2.id, papel: 'usuario', conteudo: 'deploy do cliente' });
+
+    expect(buscarMensagens(db, 'deploy', { projectId: 'p1' })).toHaveLength(1);
+    expect(buscarMensagens(db, 'deploy')).toHaveLength(2);
+    r.sessions.softDelete(s1.id);
+    expect(buscarMensagens(db, 'deploy')).toHaveLength(1);
+    r.sessions.restore(s1.id);
+    expect(buscarMensagens(db, 'deploy')).toHaveLength(2);
+  });
+
+  it('respects the limit and ranks best first', () => {
+    const { db, r } = setup();
+    const s = r.sessions.create();
+    for (let i = 0; i < 4; i++) r.messages.add({ sessionId: s.id, papel: 'usuario', conteudo: `cache ${i}` });
+    expect(buscarMensagens(db, 'cache', {}, 2)).toHaveLength(2);
+  });
+});
+
+describe('cascade delete', () => {
+  it('purging a session removes runs, messages, attachments and FTS rows; blobs become orphans', () => {
+    const { db, r } = setup();
+    const s = r.sessions.create();
+    const run = r.runs.start({ sessionId: s.id, provedor: 'fake' });
+    const m = r.messages.add({ sessionId: s.id, runId: run.id, papel: 'usuario', conteudo: 'olha este print' });
+    const blob = r.blobs.upsert({ hash: 'abc', caminho: 'data/attachments/abc.png', mime: 'image/png', bytes: 10 });
+    r.attachments.add({ messageId: m.id, blobHash: blob.hash, nomeOriginal: 'print.png' });
+    expect(r.blobs.orphans()).toEqual([]);
+
+    r.sessions.purge(s.id);
+
+    expect(count(db, 'runs')).toBe(0);
+    expect(count(db, 'messages')).toBe(0);
+    expect(count(db, 'attachments')).toBe(0);
+    expect(buscarMensagens(db, 'print')).toEqual([]);
+    expect(r.blobs.orphans().map((b) => b.hash)).toEqual(['abc']);
+    r.blobs.delete('abc');
+    expect(count(db, 'blobs')).toBe(0);
+  });
+});
+
+describe('repositories', () => {
+  it('dedupes blobs by hash and caches descriptions', () => {
+    const { r } = setup();
+    r.blobs.upsert({ hash: 'h', caminho: 'a', mime: 'image/png', bytes: 1 });
+    const again = r.blobs.upsert({ hash: 'h', caminho: 'b', mime: 'image/png', bytes: 2 });
+    expect(again.caminho).toBe('a');
+    r.blobs.setDescription('h', 'um gráfico', 'texto ocr');
+    expect(r.blobs.get('h')).toMatchObject({ descricao: 'um gráfico', ocr: 'texto ocr' });
+  });
+
+  it('keeps the previous summary when a new one is stored', () => {
+    const { r } = setup();
+    const s = r.sessions.create();
+    r.sessions.setSummary(s.id, 'v1', 3);
+    r.sessions.setSummary(s.id, 'v2', 9);
+    expect(r.sessions.get(s.id)).toMatchObject({ resumo: 'v2', resumoAnterior: 'v1', resumoAteMessageId: 9 });
+  });
+
+  it('lists the last N messages in order and pages after an id', () => {
+    const { r } = setup();
+    const s = r.sessions.create();
+    const ids = [1, 2, 3, 4].map((i) => r.messages.add({ sessionId: s.id, papel: 'usuario', conteudo: `m${i}` }).id);
+    expect(r.messages.lastN(s.id, 2).map((m) => m.conteudo)).toEqual(['m3', 'm4']);
+    expect(r.messages.list(s.id, { afterId: ids[1]! }).map((m) => m.conteudo)).toEqual(['m3', 'm4']);
+  });
+
+  it('tracks run lifecycle', () => {
+    const { r } = setup();
+    const s = r.sessions.create();
+    const run = r.runs.start({ sessionId: s.id, provedor: 'fake', modelo: 'x' });
+    expect(run.status).toBe('rodando');
+    r.runs.finish(run.id, { status: 'ok', tokensIn: 10, tokensOut: 5 });
+    expect(r.runs.get(run.id)).toMatchObject({ status: 'ok', tokensIn: 10, tokensOut: 5 });
+    expect(r.runs.get(run.id)?.fim).not.toBeNull();
+  });
+
+  it('filters facts by project, agent and pin', () => {
+    const { db, r } = setup();
+    db.prepare("INSERT INTO projects (id, nome, pasta) VALUES ('p','P','/p')").run();
+    r.facts.add({ texto: 'usar pnpm', projectId: 'p', fixado: true });
+    r.facts.add({ texto: 'talvez', projectId: 'p' });
+    expect(r.facts.list({ projectId: 'p' })).toHaveLength(2);
+    expect(r.facts.list({ projectId: 'p', apenasFixados: true }).map((f) => f.texto)).toEqual(['usar pnpm']);
+  });
+
+  it('enforces foreign keys', () => {
+    const { r } = setup();
+    expect(() => r.messages.add({ sessionId: 'nope', papel: 'usuario', conteudo: 'x' })).toThrow(/FOREIGN KEY/);
+  });
+});

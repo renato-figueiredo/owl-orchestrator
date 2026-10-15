@@ -1,0 +1,89 @@
+import { randomUUID } from 'node:crypto';
+import type { Db } from '../connection.js';
+
+export type RunStatus = 'rodando' | 'ok' | 'erro' | 'cancelado';
+
+export interface Run {
+  id: string;
+  sessionId: string | null;
+  ticketId: string | null;
+  parentRunId: string | null;
+  agentId: string | null;
+  provedor: string;
+  modelo: string | null;
+  etapa: string | null;
+  status: RunStatus;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  custoEstimado: number | null;
+  complexidade: string | null;
+  inicio: string;
+  fim: string | null;
+  erro: string | null;
+}
+
+const COLS = `id, session_id AS sessionId, ticket_id AS ticketId, parent_run_id AS parentRunId,
+  agent_id AS agentId, provedor, modelo, etapa, status, tokens_in AS tokensIn,
+  tokens_out AS tokensOut, custo_estimado AS custoEstimado, complexidade, inicio, fim, erro`;
+
+export function runsRepo(db: Db) {
+  const get = (id: string) =>
+    db.prepare(`SELECT ${COLS} FROM runs WHERE id = ?`).get(id) as Run | undefined;
+  return {
+    get,
+    start(input: {
+      provedor: string;
+      sessionId?: string;
+      ticketId?: string;
+      parentRunId?: string;
+      agentId?: string;
+      modelo?: string;
+      etapa?: string;
+    }): Run {
+      const id = randomUUID();
+      db.prepare(
+        `INSERT INTO runs (id, session_id, ticket_id, parent_run_id, agent_id, provedor, modelo, etapa, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'rodando')`,
+      ).run(
+        id,
+        input.sessionId ?? null,
+        input.ticketId ?? null,
+        input.parentRunId ?? null,
+        input.agentId ?? null,
+        input.provedor,
+        input.modelo ?? null,
+        input.etapa ?? null,
+      );
+      return get(id)!;
+    },
+    finish(
+      id: string,
+      result: {
+        status: Exclude<RunStatus, 'rodando'>;
+        tokensIn?: number;
+        tokensOut?: number;
+        custoEstimado?: number;
+        complexidade?: string;
+        erro?: string;
+      },
+    ): void {
+      db.prepare(
+        `UPDATE runs SET status = ?, tokens_in = ?, tokens_out = ?, custo_estimado = ?,
+           complexidade = ?, erro = ?, fim = datetime('now') WHERE id = ?`,
+      ).run(
+        result.status,
+        result.tokensIn ?? null,
+        result.tokensOut ?? null,
+        result.custoEstimado ?? null,
+        result.complexidade ?? null,
+        result.erro ?? null,
+        id,
+      );
+    },
+    listBySession(sessionId: string): Run[] {
+      return db
+        .prepare(`SELECT ${COLS} FROM runs WHERE session_id = ? ORDER BY inicio, rowid`)
+        .all(sessionId) as Run[];
+    },
+  };
+}
