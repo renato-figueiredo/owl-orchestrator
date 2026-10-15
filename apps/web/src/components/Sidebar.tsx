@@ -18,11 +18,12 @@ interface Props {
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
   onOpenAgents: () => void;
+  onOpenMetrics?: () => void;
   onOpenBoard: (projectId: string) => void;
   onOpenProject?: (projectId: string) => void;
 }
 
-export function Sidebar({ projects, sessions, selectedId, onSelect, onNewSession, onDeleteSession, trashVersion, onRestored, onCreateProject, theme, onToggleTheme, onOpenAgents, onOpenBoard, onOpenProject }: Props) {
+export function Sidebar({ projects, sessions, selectedId, onSelect, onNewSession, onDeleteSession, trashVersion, onRestored, onCreateProject, theme, onToggleTheme, onOpenAgents, onOpenMetrics, onOpenBoard, onOpenProject }: Props) {
   const listRef = useRef<HTMLElement>(null);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -164,6 +165,11 @@ export function Sidebar({ projects, sessions, selectedId, onSelect, onNewSession
         <button type="button" onClick={onOpenAgents} className="w-full rounded border border-line px-3 py-1.5 text-left text-sm hover:bg-raised">
           Agentes
         </button>
+        {onOpenMetrics && (
+          <button type="button" onClick={onOpenMetrics} className="mt-2 w-full rounded border border-line px-3 py-1.5 text-left text-sm hover:bg-raised">
+            Métricas e roteador
+          </button>
+        )}
       </div>
       <TrashPanel version={trashVersion} onRestored={onRestored} />
       <StorageSettings />

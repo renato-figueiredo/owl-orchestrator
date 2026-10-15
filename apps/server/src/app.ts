@@ -9,6 +9,8 @@ import { z, ZodError } from 'zod';
 import { registerAuth, type SessionAuth } from './auth.js';
 import { BoardFlow } from './board-flow.js';
 import { registerBoardRoutes } from './board-routes.js';
+import { RouterService } from './router.js';
+import { registerRouterRoutes } from './router-routes.js';
 import { BackupService, backupSettingsPatchSchema } from './backup.js';
 import { CleanupService, NotInTrashError, SessionBusyError, trashSettingsPatchSchema } from './cleanup.js';
 import { AttachmentError, AttachmentService, cleanName, HASH, MAX_NAME_CHARS } from './attachments.js';
@@ -144,8 +146,10 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   const runner = new PipelineRunner({ repos, executor, library });
   const board = new LocalBoard(repos);
   const worktrees = new WorktreeService({ repos, dir: deps.worktreesDir ?? mkdtempSync(join(tmpdir(), 'owl-worktrees-')) });
+  const router = new RouterService({ repos });
   const flow = new BoardFlow({
     repos,
+    router,
     executor,
     library,
     board,
@@ -236,6 +240,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.get('/projects', async () => ({ projects: repos.projects.list() }));
 
   registerBoardRoutes(app, { repos, board, flow, library, worktrees });
+  registerRouterRoutes(app, { repos, router });
   registerProjectRoutes(app, {
     repos,
     worktrees,

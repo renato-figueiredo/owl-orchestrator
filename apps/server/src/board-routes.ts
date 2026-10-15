@@ -1,4 +1,5 @@
 import { agentActor, BoardError, HUMAN, TICKET_STATUSES, type LocalBoard } from '@owl/board';
+import { RELATION_TYPES } from '@owl/db';
 import { isSafeName } from '@owl/core';
 import type { createRepos } from '@owl/db';
 import type { FastifyInstance } from 'fastify';
@@ -12,6 +13,9 @@ type Repos = ReturnType<typeof createRepos>;
 const id = z.object({ id: z.string().min(1).max(100) });
 const agentName = z.string().refine(isSafeName, 'invalid agent name').max(64);
 const status = z.enum(TICKET_STATUSES);
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'dates look like 2026-10-31');
+const labelName = z.string().trim().min(1).max(40);
+const color = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'color looks like #a1b2c3');
 /** Present only when an agent (not the person at the keyboard) makes the call: the agent's rules then apply. */
 const asAgent = { agente: agentName.optional() };
 
@@ -22,6 +26,8 @@ const newTicket = z.object({
   parentId: z.string().min(1).optional(),
   status: status.optional(),
   prioridade: z.number().int().min(0).max(4).optional(),
+  estimativa: z.number().int().min(0).max(1000).optional(),
+  prazo: day.optional(),
   orcamentoTokens: z.number().int().min(1).max(100_000_000).optional(),
   requerAprovacao: z.boolean().optional(),
   responsavel: agentName.optional(),
@@ -32,6 +38,8 @@ const patchTicket = z.object({
   descricao: z.string().trim().max(50_000).nullable().optional(),
   criteriosAceite: z.string().trim().max(20_000).nullable().optional(),
   prioridade: z.number().int().min(0).max(4).optional(),
+  estimativa: z.number().int().min(0).max(1000).nullable().optional(),
+  prazo: day.nullable().optional(),
   orcamentoTokens: z.number().int().min(1).max(100_000_000).nullable().optional(),
   requerAprovacao: z.boolean().optional(),
 });
@@ -48,8 +56,10 @@ const action = z.object({ acao: z.string().trim().min(1).max(2000), ...asAgent }
 const runBody = z.object({
   agente: agentName.optional(),
   tarefa: z.string().trim().min(1).max(5000).default('Trabalhe neste ticket conforme a descrição e os critérios de aceite.'),
+  ignorarBloqueio: z.boolean().optional(),
 });
 const goal = z.object({ objetivo: z.string().trim().min(1).max(20_000) });
+const asAgentBody = z.object(asAgent);
 const decide = z.object({ decisao: z.enum(['aprovado', 'rejeitado']), comentario: z.string().trim().max(20_000).optional() });
 
 /** Routes of the local board (prompt 13). Everything is scoped by project; the board is the agents' message bus. */
@@ -78,8 +88,9 @@ export function registerBoardRoutes(
   app.get('/projects/:id/board', async (req) => {
     const { id: pid } = id.parse(req.params);
     project(pid);
-    const tickets = board.listTickets(pid).map((t) => ({ ...t, uso: repos.tickets.usage(t.id) }));
-    return { estados: TICKET_STATUSES, tickets, aprovacoes: repos.approvals.pendingByProject(pid) };
+    const labels = repos.quadro.labels.ofProject(pid);
+    const tickets = board.listTickets(pid).map((t) => ({ ...t, uso: repos.tickets.usage(t.id), etiquetas: labels.get(t.id) ?? [], bloqueadoPor: board.openBlockers(t.id).map((b) => b.identificador) }));
+    return { estados: TICKET_STATUSES, tickets, aprovacoes: repos.approvals.pendingByProject(pid), etiquetas: repos.quadro.labels.list(pid), ciclos: repos.quadro.cycles.list(pid) };
   });
 
   app.get('/projects/:id/approvals', async (req) => {
@@ -101,6 +112,8 @@ export function registerBoardRoutes(
         ...(body.parentId ? { parentId: body.parentId } : {}),
         ...(body.status ? { status: body.status } : {}),
         ...(body.prioridade !== undefined ? { prioridade: body.prioridade } : {}),
+        ...(body.estimativa !== undefined ? { estimativa: body.estimativa } : {}),
+        ...(body.prazo ? { prazo: body.prazo } : {}),
         ...(body.orcamentoTokens ? { orcamentoTokens: body.orcamentoTokens } : {}),
         ...(body.requerAprovacao !== undefined ? { requerAprovacao: body.requerAprovacao } : {}),
         ...(body.responsavel ? { responsavelAgentId: agentRow(body.responsavel).id } : {}),
@@ -138,6 +151,8 @@ export function registerBoardRoutes(
       ...(body.descricao !== undefined ? { descricao: body.descricao } : {}),
       ...(body.criteriosAceite !== undefined ? { criteriosAceite: body.criteriosAceite } : {}),
       ...(body.prioridade !== undefined ? { prioridade: body.prioridade } : {}),
+      ...(body.estimativa !== undefined ? { estimativa: body.estimativa } : {}),
+      ...(body.prazo !== undefined ? { prazo: body.prazo } : {}),
       ...(body.orcamentoTokens !== undefined ? { orcamentoTokens: body.orcamentoTokens } : {}),
       ...(body.requerAprovacao !== undefined ? { requerAprovacao: body.requerAprovacao } : {}),
     });
@@ -192,8 +207,77 @@ export function registerBoardRoutes(
     if (repos.approvals.pendingByTicket(tid).length > 0) {
       throw new BoardError(409, 'waiting_approval', 'The ticket is waiting for a decision');
     }
-    const run = flow.run(tid, nome, body.tarefa);
+    const run = flow.run(tid, nome, body.tarefa, body.ignorarBloqueio ? { ignorarBloqueio: true } : {});
     return reply.status(202).send({ runId: run?.id ?? null, ticket: repos.tickets.get(tid), aprovacoes: repos.approvals.pendingByTicket(tid) });
+  });
+
+  // --- labels, relations and cycles (prompt 16)
+  const labelBody = z.object({ nome: labelName, cor: color.optional() });
+  app.get('/projects/:id/labels', async (req) => ({ etiquetas: repos.quadro.labels.list(project(id.parse(req.params).id).id) }));
+  app.post('/projects/:id/labels', async (req, reply) => {
+    const { id: pid } = id.parse(req.params);
+    const b = labelBody.parse(req.body);
+    return reply.status(201).send({ etiqueta: board.createLabel(project(pid).id, b.nome, b.cor) });
+  });
+  app.patch('/labels/:id', async (req) => ({ etiqueta: board.updateLabel(id.parse(req.params).id, labelBody.partial().parse(req.body)) }));
+  app.delete('/labels/:id', async (req, reply) => {
+    board.deleteLabel(id.parse(req.params).id);
+    return reply.status(204).send();
+  });
+  app.put('/tickets/:id/labels/:labelId', async (req) => {
+    const p = z.object({ id: z.string().min(1).max(100), labelId: z.string().min(1).max(100) }).parse(req.params);
+    board.addLabel(p.id, p.labelId, actor(asAgentBody.parse(req.body ?? {}).agente));
+    return { etiquetas: repos.quadro.labels.ofTicket(p.id) };
+  });
+  app.delete('/tickets/:id/labels/:labelId', async (req) => {
+    const p = z.object({ id: z.string().min(1).max(100), labelId: z.string().min(1).max(100) }).parse(req.params);
+    board.removeLabel(p.id, p.labelId, HUMAN);
+    return { etiquetas: repos.quadro.labels.ofTicket(p.id) };
+  });
+
+  const relationBody = z.object({ relacionadoId: z.string().min(1).max(100), tipo: z.enum(RELATION_TYPES), ...asAgent });
+  app.post('/tickets/:id/relations', async (req, reply) => {
+    const { id: tid } = id.parse(req.params);
+    const b = relationBody.parse(req.body);
+    const r = board.addRelation(tid, b.relacionadoId, b.tipo, actor(b.agente));
+    return reply.status(201).send({ relacao: r, ...board.detail(tid).relacoes });
+  });
+  app.delete('/relations/:id', async (req, reply) => {
+    board.removeRelation(id.parse(req.params).id, HUMAN);
+    return reply.status(204).send();
+  });
+
+  const cycleBody = z.object({ nome: z.string().trim().min(1).max(80).nullable().optional(), inicio: day, fim: day });
+  app.get('/projects/:id/cycles', async (req) => {
+    const { id: pid } = id.parse(req.params);
+    project(pid);
+    return { ciclos: repos.quadro.cycles.list(pid).map((c) => ({ ...c, progresso: board.cycleProgress(c.id) })) };
+  });
+  app.post('/projects/:id/cycles', async (req, reply) => {
+    const { id: pid } = id.parse(req.params);
+    const b = cycleBody.parse(req.body);
+    const c = board.createCycle(project(pid).id, { inicio: b.inicio, fim: b.fim, ...(b.nome ? { nome: b.nome } : {}) });
+    return reply.status(201).send({ ciclo: { ...c, progresso: board.cycleProgress(c.id) } });
+  });
+  app.patch('/cycles/:id', async (req) => {
+    const b = cycleBody.partial().parse(req.body);
+    const c = board.updateCycle(id.parse(req.params).id, b);
+    return { ciclo: { ...c, progresso: board.cycleProgress(c.id) } };
+  });
+  app.delete('/cycles/:id', async (req, reply) => {
+    board.deleteCycle(id.parse(req.params).id);
+    return reply.status(204).send();
+  });
+  app.get('/cycles/:id', async (req) => {
+    const { id: cid } = id.parse(req.params);
+    const c = repos.quadro.cycles.get(cid);
+    if (!c) throw new BoardError(404, 'cycle_not_found', `Cycle not found: ${cid}`);
+    return { ciclo: { ...c, progresso: board.cycleProgress(cid) }, tickets: repos.tickets.list(c.projectId).filter((t) => t.cicloId === cid) };
+  });
+  app.put('/tickets/:id/cycle', async (req) => {
+    const { id: tid } = id.parse(req.params);
+    const b = z.object({ cicloId: z.string().min(1).max(100).nullable(), ...asAgent }).parse(req.body);
+    return { ticket: board.assignCycle(tid, b.cicloId, actor(b.agente)) };
   });
 
   app.post('/approvals/:id/decide', async (req) => {

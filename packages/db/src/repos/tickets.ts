@@ -36,6 +36,11 @@ export interface Ticket {
   /** Library name of the assignee (joined from `agents`), for display. */
   responsavel: string | null;
   prioridade: number;
+  /** Points, null when not estimated. */
+  estimativa: number | null;
+  /** Due date, YYYY-MM-DD. */
+  prazo: string | null;
+  cicloId: string | null;
   ordem: number;
   orcamentoTokens: number | null;
   requerAprovacao: boolean;
@@ -65,7 +70,7 @@ export interface TicketEvent {
   ticketId: string;
   autor: string;
   autorTipo: ActorKind;
-  tipo: 'criado' | 'status' | 'atribuido' | 'comentario' | 'aprovacao' | 'execucao';
+  tipo: 'criado' | 'status' | 'atribuido' | 'comentario' | 'aprovacao' | 'execucao' | 'roteamento' | 'aviso' | 'etiqueta' | 'relacao' | 'ciclo';
   de: string | null;
   para: string | null;
   detalhe: string | null;
@@ -88,7 +93,7 @@ interface Row extends Omit<Ticket, 'requerAprovacao' | 'identificador'> {
 
 const SELECT = `SELECT t.id, t.project_id AS projectId, t.parent_id AS parentId, t.numero, t.titulo, t.descricao,
   t.criterios_aceite AS criteriosAceite, t.status, t.responsavel_agent_id AS responsavelAgentId, a.nome AS responsavel,
-  t.prioridade, t.ordem, t.orcamento_tokens AS orcamentoTokens, t.requer_aprovacao AS requerAprovacao, t.resumo,
+  t.prioridade, t.estimativa, t.prazo, t.cycle_id AS cicloId, t.ordem, t.orcamento_tokens AS orcamentoTokens, t.requer_aprovacao AS requerAprovacao, t.resumo,
   t.session_id AS sessionId, t.branch, t.worktree, t.worktree_estado AS worktreeEstado, t.criado_em AS criadoEm, t.atualizado_em AS atualizadoEm, t.concluido_em AS concluidoEm,
   p.prefixo AS prefixo, p.nome AS projetoNome
   FROM tickets t JOIN projects p ON p.id = t.project_id LEFT JOIN agents a ON a.id = t.responsavel_agent_id`;
@@ -113,6 +118,8 @@ export interface NewTicket {
   status?: TicketStatus;
   responsavelAgentId?: string;
   prioridade?: number;
+  estimativa?: number;
+  prazo?: string;
   orcamentoTokens?: number;
   requerAprovacao?: boolean;
 }
@@ -151,8 +158,8 @@ export function ticketsRepo(db: Db) {
           (db.prepare('SELECT COALESCE(MAX(numero), 0) + 1 AS n FROM tickets WHERE project_id = ?').get(input.projectId) as { n: number }).n;
         db.prepare(
           `INSERT INTO tickets (id, project_id, parent_id, titulo, descricao, criterios_aceite, status, responsavel_agent_id,
-             prioridade, orcamento_tokens, requer_aprovacao, numero, ordem)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             prioridade, orcamento_tokens, requer_aprovacao, numero, ordem, estimativa, prazo)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).run(
           id,
           input.projectId,
@@ -167,6 +174,8 @@ export function ticketsRepo(db: Db) {
           input.requerAprovacao ? 1 : 0,
           numero,
           lastOrder(input.projectId, status) + 1,
+          input.estimativa ?? null,
+          input.prazo ?? null,
         );
         addEvent({ ticketId: id, ator, tipo: 'criado', para: status });
       })();
@@ -198,7 +207,7 @@ export function ticketsRepo(db: Db) {
     /** Edits plain fields (never the status: that goes through `setStatus` and its rules). */
     update(
       id: string,
-      changes: { titulo?: string; descricao?: string | null; criteriosAceite?: string | null; prioridade?: number; orcamentoTokens?: number | null; requerAprovacao?: boolean; resumo?: string | null },
+      changes: { titulo?: string; descricao?: string | null; criteriosAceite?: string | null; prioridade?: number; estimativa?: number | null; prazo?: string | null; orcamentoTokens?: number | null; requerAprovacao?: boolean; resumo?: string | null },
     ): void {
       const sets: string[] = [];
       const values: unknown[] = [];
@@ -210,6 +219,8 @@ export function ticketsRepo(db: Db) {
       if (changes.descricao !== undefined) put('descricao', changes.descricao);
       if (changes.criteriosAceite !== undefined) put('criterios_aceite', changes.criteriosAceite);
       if (changes.prioridade !== undefined) put('prioridade', changes.prioridade);
+      if (changes.estimativa !== undefined) put('estimativa', changes.estimativa);
+      if (changes.prazo !== undefined) put('prazo', changes.prazo);
       if (changes.orcamentoTokens !== undefined) put('orcamento_tokens', changes.orcamentoTokens);
       if (changes.requerAprovacao !== undefined) put('requer_aprovacao', changes.requerAprovacao ? 1 : 0);
       if (changes.resumo !== undefined) put('resumo', changes.resumo);

@@ -4,6 +4,7 @@ import { Board } from './components/Board';
 import { Pairing } from './components/Pairing';
 import { Chat } from './components/Chat';
 import { MemoryPanel } from './components/MemoryPanel';
+import { MetricsPanel } from './components/MetricsPanel';
 import { ProjectScreen } from './components/ProjectScreen';
 import { RunPanel } from './components/RunPanel';
 import { Sidebar } from './components/Sidebar';
@@ -40,7 +41,7 @@ function Workspace() {
   const [memBusy, setMemBusy] = useState(false);
   const [memMessage, setMemMessage] = useState<string | null>(null);
   const [trashVersion, setTrashVersion] = useState(0);
-  const [view, setView] = useState<'chat' | 'agents' | 'board' | 'project'>('chat');
+  const [view, setView] = useState<'chat' | 'agents' | 'board' | 'project' | 'metrics'>('chat');
   const [boardProjectId, setBoardProjectId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -225,6 +226,7 @@ function Workspace() {
         theme={theme}
         onToggleTheme={toggleTheme}
         onOpenAgents={() => setView('agents')}
+        onOpenMetrics={() => setView('metrics')}
         onOpenBoard={(pid) => {
           setBoardProjectId(pid);
           setView('board');
@@ -235,6 +237,7 @@ function Workspace() {
         }}
       />
       {view === 'agents' && <AgentLibrary onClose={() => setView('chat')} />}
+      {view === 'metrics' && <MetricsPanel projects={projects} providers={providers} initialProjectId={boardProjectId} onClose={() => setView('chat')} />}
       {view === 'board' && projects.some((p) => p.id === boardProjectId) && (
         <Board
           project={projects.find((p) => p.id === boardProjectId)!}

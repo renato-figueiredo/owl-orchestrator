@@ -106,6 +106,21 @@ Na barra lateral, **Equipe** num projeto abre a tela dele (o quadro tem um botã
 - **Nada chega na sua branch sozinho.** No ticket, **Trabalho isolado** mostra a branch e quantos commits ela tem à frente. *Pedir mesclagem* e *Descartar trabalho* só colocam um pedido na fila de aprovações; aprovar uma mesclagem faz `git merge --no-ff` na branch base, e só se a sua pasta estiver nela e sem alterações não commitadas (senão diz o motivo e não muda nada). Conflito aborta a mesclagem. Rejeitar uma mesclagem não reabre o ticket.
 - **Limites**: `OWL_CONCURRENCY` (global) e o limite do projeto valem juntos.
 
+## Etiquetas, relações e ciclos
+Tudo local, por projeto, no quadro.
+- **Etiquetas**: **Etiquetas e ciclos** (acima das colunas) cria etiquetas com cor; no ticket, marque as que valem. Aparecem nos cartões, e o filtro **Etiqueta** esconde os outros tickets.
+- **Relações**: no ticket, *este ticket* **bloqueia**, **é relacionado a** ou **é duplicado de** outro ticket do mesmo projeto. Um bloqueio que fecharia um ciclo (A bloqueia B bloqueia A) é recusado. Um ticket bloqueado por outro não concluído mostra ⛔ no cartão e **nenhum agente o inicia** (a execução é recusada e o ticket vai para *Bloqueado* com o motivo); você ainda pode rodar à mão com `ignorarBloqueio` na API ou mover o cartão. Concluir o bloqueador o libera.
+- **Ciclos**: um período (data de início e fim) com número. Coloque tickets nele pelo painel do ticket; o filtro **Ciclo** mostra o progresso (tickets e pontos concluídos). Apagar um ciclo mantém os tickets.
+- **Estimativa e prazo**: pontos e uma data por ticket, mostrados no cartão.
+
+## Roteamento, orçamentos e métricas
+Clique em **Métricas e roteador** (barra lateral).
+- **Roteador**: um agente com `roteamento: auto` no arquivo não roda sempre no mesmo modelo. Regras gratuitas decidem primeiro (o papel do agente, o tamanho do pedido, palavras de risco como *migração* ou *segurança*, o tamanho do diff para revisores); só quando elas não conseguem, o tier **pequeno** classifica o pedido. Três tiers (**pequeno**, **médio**, **forte**) apontam cada um para um provedor e um modelo; edite no painel. Agentes sem essa linha mantêm o próprio provedor, como antes.
+- **Sem certeza?** Se o classificador ficar abaixo da *confiança mínima* (60% por padrão), ou não responder, o ticket espera na fila de aprovações com o tier que ele sugere (**Baixa confiança do roteador**). Aprove para rodar nesse tier; rejeite para não rodar nada.
+- **Escalonamento**: cada entrega rejeitada ou reprovação do revisor sobe o retrabalho um tier, até o forte. O histórico do ticket mostra cada escolha e o motivo.
+- **Orçamentos** (em tokens): o teto do próprio ticket avisa em 80% e para o próximo passo ao passar de 100%; o **orçamento diário** (no painel, vazio = sem limite) faz o mesmo para tudo o que você rodou hoje, contando também as classificações do roteador. Um passo que passaria do limite espera a sua aprovação (**Custo acima do teto**); aprovar deixa aquele passo passar.
+- **Métricas**: custo e tokens por ticket, agente e modelo, taxa de sucesso (ok ÷ ok+erro; canceladas não contam), retrabalho (uma execução repetida do mesmo agente no mesmo ticket) e o que o próprio roteador gastou. Filtre por projeto e por dias. Tudo é lido das execuções gravadas. O valor em dólar é só o que a CLI informa (o Claude informa, o Codex não); por isso os tokens são a medida confiável.
+
 ## Teclado e temas
 - Na lista de conversas: **↑ / ↓** movem, **Enter** abre, **Tab** sai da lista.
 - O botão ☾ / ☀ alterna claro e escuro (começa pela configuração do sistema e lembra a sua escolha).

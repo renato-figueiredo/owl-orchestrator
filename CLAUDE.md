@@ -24,7 +24,7 @@ apps/server          Fastify, routes, SSE
 apps/web             React UI
 packages/core        types, adapters, pipeline executor, router
 packages/db          connection, migrations, repositories
-packages/board       BoardProvider: local (SQLite) + linear mirror
+packages/board       BoardProvider: local board (SQLite): tickets, gates, labels, relations, cycles
 packages/memory      context assembler, summaries, FTS
 packages/mcp-memory  MCP memory server
 packages/ui          shared components + motion primitives

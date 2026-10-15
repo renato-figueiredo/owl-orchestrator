@@ -259,6 +259,24 @@ export class WorktreeService {
     return { branch: t.branch, worktree: path ?? null, estado: t.worktreeEstado, base, commitsAdiante, alterado };
   }
 
+  /** Files and lines the ticket branch changed against the base branch (the router's size signal). Undefined when it cannot tell. */
+  diffStat(ticket: Ticket, project: Project): { arquivos: number; linhas: number } | undefined {
+    const t = this.repos.tickets.get(ticket.id) ?? ticket;
+    const root = this.repoRoot(project.pasta);
+    const base = this.baseOf(project);
+    if (!root || !t.branch || !base || !this.branchExists(root, t.branch)) return undefined;
+    const r = this.git(root, ['diff', '--numstat', `${base}...${t.branch}`]);
+    if (!r.ok) return undefined;
+    let arquivos = 0;
+    let linhas = 0;
+    for (const line of r.out.split('\n').filter(Boolean)) {
+      const [add, del] = line.split('\t');
+      arquivos++;
+      linhas += (Number(add) || 0) + (Number(del) || 0); // binary files show "-": they count as a file, not as lines
+    }
+    return { arquivos, linhas };
+  }
+
   /**
    * Merges the ticket branch into the base branch of the project, with a merge commit. Only called after a person
    * approved the gate. It refuses (and changes nothing) when the project folder is not on the base branch or has

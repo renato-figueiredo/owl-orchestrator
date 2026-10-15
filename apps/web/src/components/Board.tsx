@@ -1,3 +1,4 @@
+import { applyFilters, FilterBar, LabelChip, NO_FILTER, OrganizePanel, type Filters } from './BoardExtras';
 import { DndContext, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
@@ -24,7 +25,7 @@ const GATE_LABEL: Record<GateKind, string> = {
   confianca: 'Baixa confiança do roteador',
 };
 const PRIORITY = ['', 'baixa', 'média', 'alta', 'urgente'];
-const EVENT_LABEL: Record<string, string> = { criado: 'criou', status: 'moveu', atribuido: 'atribuiu', comentario: 'comentou', aprovacao: 'aprovação', execucao: 'executou' };
+const EVENT_LABEL: Record<string, string> = { criado: 'criou', status: 'moveu', atribuido: 'atribuiu', comentario: 'comentou', aprovacao: 'aprovação', execucao: 'executou', roteamento: 'roteou', aviso: 'avisou', etiqueta: 'etiquetou', relacao: 'relacionou', ciclo: 'moveu de ciclo' };
 
 interface Props {
   project: Project;
@@ -61,6 +62,7 @@ export function Board({ project, onClose, projects, onSwitch, onOpenProject, pol
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState<'ticket' | 'goal' | null>(null);
   const [busy, setBusy] = useState(false);
+  const [filters, setFilters] = useState<Filters>(NO_FILTER);
   const dragging = useRef(false);
 
   const load = useCallback(async () => {
@@ -108,10 +110,10 @@ export function Board({ project, onClose, projects, onSwitch, onOpenProject, pol
 
   const byStatus = useMemo(() => {
     const m = new Map<TicketStatus, Ticket[]>(TICKET_STATUSES.map((s) => [s, []]));
-    for (const t of data?.tickets ?? []) m.get(t.status)?.push(t);
+    for (const t of applyFilters(data?.tickets ?? [], filters)) m.get(t.status)?.push(t);
     for (const list of m.values()) list.sort((a, b) => a.ordem - b.ordem);
     return m;
-  }, [data]);
+  }, [data, filters]);
   const titles = useMemo(() => new Map((data?.tickets ?? []).map((t) => [t.id, t])), [data]);
 
   const submitTicket = (e: FormEvent<HTMLFormElement>) => {
@@ -215,6 +217,8 @@ export function Board({ project, onClose, projects, onSwitch, onOpenProject, pol
         </form>
       )}
 
+      {data && <FilterBar projectId={project.id} data={data} filters={filters} onChange={setFilters} busy={busy} act={act} />}
+
       {data && data.aprovacoes.length > 0 && (
         <section aria-label="Fila de aprovações" className="m-4 mb-0 space-y-2 rounded border border-accent p-3">
           <h2 className="text-sm font-semibold">Aguardando você ({data.aprovacoes.length})</h2>
@@ -290,7 +294,17 @@ function Card({ ticket: t, parent, onOpen }: { ticket: Ticket; parent: Ticket | 
           {t.prioridade > 0 && <span>{PRIORITY[t.prioridade]}</span>}
         </span>
         <span className="mt-0.5 block font-medium">{t.titulo}</span>
+        {(t.etiquetas?.length ?? 0) > 0 && (
+          <span className="mt-1 flex flex-wrap gap-1">
+            {t.etiquetas!.map((l) => (
+              <LabelChip key={l.id} label={l} />
+            ))}
+          </span>
+        )}
+        {(t.bloqueadoPor?.length ?? 0) > 0 && <span className="mt-1 block text-xs text-danger">⛔ bloqueado por {t.bloqueadoPor!.join(', ')}</span>}
         <span className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted">
+          {t.estimativa != null && <span>{t.estimativa} pt</span>}
+          {t.prazo && <span>até {t.prazo.split('-').reverse().join('/')}</span>}
           {parent && <span>↳ {parent.identificador}</span>}
           {t.responsavel && <span>@{t.responsavel}</span>}
           {t.uso && t.uso.runs > 0 && <span>{fmtTokens(t.uso.tokensIn + t.uso.tokensOut)} tokens</span>}
@@ -403,6 +417,8 @@ function TicketPanel({ ticketId, busy, onClose, onOpen, act, version }: { ticket
               </ul>
             </div>
           )}
+
+          <OrganizePanel detail={d} board={version} busy={busy} act={act} onOpen={onOpen} />
 
           {d.branch?.branch && <BranchPanel ticketId={t.id} branch={d.branch} busy={busy} pending={pending.length > 0} running={running} act={act} />}
 

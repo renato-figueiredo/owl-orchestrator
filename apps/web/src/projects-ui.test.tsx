@@ -31,7 +31,7 @@ beforeEach(() => {
     concorrencia: { projeto: 2, padraoDoServidor: 2, global: 1, emExecucao: 0 },
     equipes: [{ id: 't1', projectId: 'p1', nome: 'Core', membros: [{ agentId: 'a1', agente: 'tech-lead', papel: 'techlead' }] }],
   };
-  const ticket = { id: '2', projectId: 'p1', parentId: null, identificador: 'ALF-2', titulo: 'Função', descricao: null, criteriosAceite: null, status: 'concluido' as const, responsavel: 'dev-back', prioridade: 0, ordem: 1, orcamentoTokens: null, requerAprovacao: false, resumo: null };
+  const ticket = { id: '2', projectId: 'p1', parentId: null, identificador: 'ALF-2', titulo: 'Função', descricao: null, criteriosAceite: null, status: 'concluido' as const, responsavel: 'dev-back', prioridade: 0, estimativa: null, prazo: null, cicloId: null, ordem: 1, orcamentoTokens: null, requerAprovacao: false, resumo: null };
   detail = {
     ticket,
     parent: null,
@@ -41,9 +41,13 @@ beforeEach(() => {
     runs: [],
     uso: { runs: 0, tokensIn: 0, tokensOut: 0, custoEstimado: 0 },
     aprovacoes: [],
+    etiquetas: [],
+    relacoes: { saem: [], entram: [] },
+    bloqueadoPor: [],
+    ciclo: null,
     branch: { branch: 'owl/alf-2-funcao', worktree: null, estado: 'removido', base: 'main', commitsAdiante: 2, alterado: false },
   };
-  const board: BoardData = { estados: [], tickets: [ticket], aprovacoes: [] };
+  const board: BoardData = { estados: [], tickets: [ticket], aprovacoes: [], etiquetas: [], ciclos: [] };
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string, init?: RequestInit) => {

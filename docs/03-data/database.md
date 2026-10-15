@@ -72,7 +72,9 @@ CREATE TABLE runs (
   provedor TEXT NOT NULL, modelo TEXT, etapa TEXT,
   status TEXT NOT NULL,                    -- rodando | ok | erro | cancelado
   tokens_in INTEGER, tokens_out INTEGER, custo_estimado REAL,
-  complexidade TEXT,                       -- do roteador
+  complexidade TEXT,                       -- do roteador: baixa | media | alta
+  tier TEXT,                               -- pequeno | medio | forte (NULL = provedor do próprio agente) — 0010
+  roteamento_json TEXT,                    -- {origem, motivo, confianca, falhas} — 0010
   inicio TEXT NOT NULL DEFAULT (datetime('now')), fim TEXT, erro TEXT
 );
 
@@ -142,6 +144,8 @@ CREATE TABLE approvals (
 CREATE INDEX idx_messages_session ON messages(session_id, id);
 CREATE INDEX idx_runs_session ON runs(session_id);
 CREATE INDEX idx_runs_ticket ON runs(ticket_id);
+CREATE INDEX idx_runs_inicio ON runs(inicio);      -- 0010: métricas por período e orçamento do dia
+CREATE INDEX idx_runs_agent ON runs(agent_id);     -- 0010
 CREATE INDEX idx_tickets_project_status ON tickets(project_id, status);
 CREATE INDEX idx_attachments_blob ON attachments(blob_hash);
 ```
@@ -158,3 +162,14 @@ Arquivos `packages/db/migrations/0001_*.sql`, aplicados em ordem, com tabela `sc
 `projects.max_concorrencia` (NULL = padrão do servidor) e `projects.branch_base`; `teams` ganhou índice único `(project_id, nome)`; `tickets.branch`, `tickets.worktree` (caminho
 absoluto enquanto a pasta existe) e `tickets.worktree_estado` (`ativo | removido | mesclado | descartado`); `approvals.retomar_json` pode levar `acao: 'merge' | 'descartar'`
 (portão que libera uma ação do servidor sem mover o ticket). Índice `facts(project_id, agent_id)` para a memória do agente dentro do projeto.
+
+## Roteador e métricas (migração 0010, prompt 15)
+`runs.tier` (`pequeno | medio | forte`; NULL = rodou no provedor do próprio agente) e `runs.roteamento_json` (`{origem, motivo, confianca, falhas}`); `runs.complexidade` (que já existia) passa a ser
+preenchida com `baixa | media | alta`. Índices `runs(inicio)` e `runs(agent_id)` para o painel de métricas e para o orçamento do dia. As métricas são **só consultas sobre `runs`**: nenhum agregado é gravado.
+`ticket_events.tipo` ganha `roteamento` e `aviso`; `approvals.retomar_json` pode levar `tier` (portão `confianca`). Configuração do roteador na tabela `settings`, chave `router`.
+
+
+## Quadro avançado (migração 0011, prompt 16)
+`labels(project_id, nome único sem diferenciar maiúsculas, cor)` e `ticket_labels`; `ticket_relations(ticket_id, related_id, tipo ∈ bloqueia | relacionado | duplicado)` com `UNIQUE(ticket_id, related_id, tipo)` e `CHECK(ticket_id <> related_id)`;
+`cycles(project_id, numero por projeto, nome, inicio, fim)`; `tickets.estimativa` (pontos), `tickets.prazo` (AAAA-MM-DD) e `tickets.cycle_id` (`ON DELETE SET NULL`). Tudo em cascata com o projeto/ticket: apagar não deixa órfão.
+`ticket_events.tipo` ganha `etiqueta`, `relacao` e `ciclo`. Formato inspirado no esquema público do Linear (IssueLabel, IssueRelation, Cycle), sem código nem nome de terceiros.

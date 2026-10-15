@@ -12,6 +12,8 @@ export interface ResumeInfo {
   /** The instruction the paused agent step was given, so it can be resumed as it was. */
   tarefa?: string;
   statusAnterior?: string;
+  /** Tier the router proposed (gate `confianca`): approving it runs the step on this tier without asking the router again. */
+  tier?: string;
   /** A server-side action the approval releases (prompt 14): merge the ticket branch, or discard its worktree and branch. */
   acao?: 'merge' | 'descartar';
 }

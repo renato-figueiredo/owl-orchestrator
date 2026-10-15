@@ -1,4 +1,4 @@
-import type { AgentFact, AgentLibrary, AgentProject, ProjectView, Team, BoardData, TicketDetail, TicketStatus, BackupInfo, BackupSettings, BackupStatus, Fact, MemorySettings, PurgeResult, SweepReport, TrashSettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './types';
+import type { RelationType, Label, DayUsage, Metrics, RouterSettings, AgentFact, AgentLibrary, AgentProject, ProjectView, Team, BoardData, TicketDetail, TicketStatus, BackupInfo, BackupSettings, BackupStatus, Fact, MemorySettings, PurgeResult, SweepReport, TrashSettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -121,8 +121,22 @@ export const api = {
   moveTicket: (id: string, status: TicketStatus, ordem?: number) =>
     call<unknown>('POST', `/tickets/${encodeURIComponent(id)}/status`, { status, ...(ordem !== undefined ? { ordem } : {}) }),
   commentTicket: (id: string, texto: string) => call<unknown>('POST', `/tickets/${encodeURIComponent(id)}/comments`, { texto }),
-  runTicket: (id: string, agente?: string) =>
-    call<{ runId: string | null }>('POST', `/tickets/${encodeURIComponent(id)}/run`, agente ? { agente } : {}),
+  runTicket: (id: string, agente?: string, ignorarBloqueio?: boolean) =>
+    call<{ runId: string | null }>('POST', `/tickets/${encodeURIComponent(id)}/run`, { ...(agente ? { agente } : {}), ...(ignorarBloqueio ? { ignorarBloqueio } : {}) }),
+  patchTicket: (id: string, patch: { estimativa?: number | null; prazo?: string | null; prioridade?: number }) =>
+    call<unknown>('PATCH', `/tickets/${encodeURIComponent(id)}`, patch),
+  createLabel: (projectId: string, nome: string, cor?: string) =>
+    call<{ etiqueta: Label }>('POST', `/projects/${encodeURIComponent(projectId)}/labels`, { nome, ...(cor ? { cor } : {}) }),
+  deleteLabel: (id: string) => call<unknown>('DELETE', `/labels/${encodeURIComponent(id)}`),
+  addTicketLabel: (ticketId: string, labelId: string) => call<unknown>('PUT', `/tickets/${encodeURIComponent(ticketId)}/labels/${encodeURIComponent(labelId)}`, {}),
+  removeTicketLabel: (ticketId: string, labelId: string) => call<unknown>('DELETE', `/tickets/${encodeURIComponent(ticketId)}/labels/${encodeURIComponent(labelId)}`),
+  addRelation: (ticketId: string, relacionadoId: string, tipo: RelationType) =>
+    call<unknown>('POST', `/tickets/${encodeURIComponent(ticketId)}/relations`, { relacionadoId, tipo }),
+  removeRelation: (id: string) => call<unknown>('DELETE', `/relations/${encodeURIComponent(id)}`),
+  createCycle: (projectId: string, input: { nome?: string; inicio: string; fim: string }) =>
+    call<unknown>('POST', `/projects/${encodeURIComponent(projectId)}/cycles`, input),
+  deleteCycle: (id: string) => call<unknown>('DELETE', `/cycles/${encodeURIComponent(id)}`),
+  assignCycle: (ticketId: string, cicloId: string | null) => call<unknown>('PUT', `/tickets/${encodeURIComponent(ticketId)}/cycle`, { cicloId }),
   decideApproval: (id: string, decisao: 'aprovado' | 'rejeitado', comentario?: string) =>
     call<unknown>('POST', `/approvals/${encodeURIComponent(id)}/decide`, { decisao, ...(comentario ? { comentario } : {}) }),
   projectView: (id: string) => call<ProjectView>('GET', `/projects/${encodeURIComponent(id)}`),
@@ -146,5 +160,13 @@ export const api = {
   /** Opens a gate to merge the ticket branch into the base branch, or to discard it. Nothing happens until it is approved. */
   requestBranchAction: (ticketId: string, acao: 'merge' | 'descartar') =>
     call<unknown>('POST', `/tickets/${encodeURIComponent(ticketId)}/branch/${acao}`),
+  router: () => call<{ router: RouterSettings; dia: DayUsage }>('GET', '/router'),
+  saveRouter: (patch: { tiers?: Partial<RouterSettings['tiers']>; limiarConfianca?: number; orcamentoDiaTokens?: number | null }) =>
+    call<{ router: RouterSettings; dia: DayUsage }>('PUT', '/router', patch),
+  /** Cost, success rate and rework from the stored runs. Days are local, `YYYY-MM-DD`, both ends included. */
+  metrics: (f: { projectId?: string; desde?: string; ate?: string } = {}) => {
+    const q = new URLSearchParams(Object.entries(f).filter(([, v]) => v) as Array<[string, string]>).toString();
+    return call<{ metrics: Metrics; dia: DayUsage }>('GET', `/metrics${q ? `?${q}` : ''}`);
+  },
   cancel: (runId: string) => call<{ status: string }>('POST', `/runs/${encodeURIComponent(runId)}/cancel`),
 };

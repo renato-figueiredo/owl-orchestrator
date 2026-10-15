@@ -17,6 +17,10 @@ export interface Run {
   tokensOut: number | null;
   custoEstimado: number | null;
   complexidade: string | null;
+  /** Router tier the run used (`pequeno|medio|forte`), null when the agent's own provider/model ran. */
+  tier: string | null;
+  /** Why the router chose it: `{origem, motivo, confianca, falhas}`; null when not routed. */
+  roteamento: Record<string, unknown> | null;
   inicio: string;
   fim: string | null;
   erro: string | null;
@@ -26,20 +30,21 @@ export interface Run {
 
 const COLS = `id, session_id AS sessionId, ticket_id AS ticketId, parent_run_id AS parentRunId,
   agent_id AS agentId, provedor, modelo, etapa, status, tokens_in AS tokensIn,
-  tokens_out AS tokensOut, custo_estimado AS custoEstimado, complexidade, inicio, fim, erro, memoria_chamadas AS memoriaChamadas`;
+  tokens_out AS tokensOut, custo_estimado AS custoEstimado, complexidade, tier, roteamento_json AS roteamento, inicio, fim, erro, memoria_chamadas AS memoriaChamadas`;
 
-type RunRow = Omit<Run, 'memoriaChamadas'> & { memoriaChamadas: string | null };
+type RunRow = Omit<Run, 'memoriaChamadas' | 'roteamento'> & { memoriaChamadas: string | null; roteamento: string | null };
+
+function parseJson<T>(text: string | null): T | null {
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null; // a damaged note reads as "none"
+  }
+}
 
 function toRun(r: RunRow): Run {
-  let calls: Run['memoriaChamadas'] = null;
-  if (r.memoriaChamadas) {
-    try {
-      calls = JSON.parse(r.memoriaChamadas) as Record<string, number>;
-    } catch {
-      calls = null;
-    }
-  }
-  return { ...r, memoriaChamadas: calls };
+  return { ...r, memoriaChamadas: parseJson<Record<string, number>>(r.memoriaChamadas), roteamento: parseJson<Record<string, unknown>>(r.roteamento) };
 }
 
 export function runsRepo(db: Db) {
@@ -71,11 +76,15 @@ export function runsRepo(db: Db) {
       etapa?: string;
       /** The run neither resumes nor updates the session's CLI conversation (summarizer, refiner). */
       semEstado?: boolean;
+      /** The router's decision for this run (prompt 15). */
+      complexidade?: string;
+      tier?: string;
+      roteamento?: Record<string, unknown>;
     }): Run {
       const id = randomUUID();
       db.prepare(
-        `INSERT INTO runs (id, session_id, ticket_id, parent_run_id, agent_id, provedor, modelo, etapa, sem_estado, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'rodando')`,
+        `INSERT INTO runs (id, session_id, ticket_id, parent_run_id, agent_id, provedor, modelo, etapa, sem_estado, complexidade, tier, roteamento_json, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'rodando')`,
       ).run(
         id,
         input.sessionId ?? null,
@@ -86,6 +95,9 @@ export function runsRepo(db: Db) {
         input.modelo ?? null,
         input.etapa ?? null,
         input.semEstado ? 1 : 0,
+        input.complexidade ?? null,
+        input.tier ?? null,
+        input.roteamento ? JSON.stringify(input.roteamento) : null,
       );
       return get(id)!;
     },
@@ -102,7 +114,7 @@ export function runsRepo(db: Db) {
     ): void {
       db.prepare(
         `UPDATE runs SET status = ?, tokens_in = ?, tokens_out = ?, custo_estimado = ?,
-           complexidade = ?, erro = ?, fim = datetime('now') WHERE id = ?`,
+           complexidade = COALESCE(?, complexidade), erro = ?, fim = datetime('now') WHERE id = ?`,
       ).run(
         result.status,
         result.tokensIn ?? null,

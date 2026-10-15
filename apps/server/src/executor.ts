@@ -58,6 +58,8 @@ export interface SubmitInput {
   ticketId?: string;
   /** Pipeline step name, stored in `runs.etapa`. */
   etapa?: string;
+  /** What the router decided for this run (prompt 15): stored in `runs.complexidade`, `runs.tier`, `runs.roteamento_json`. */
+  routing?: { complexidade: string; tier: string; detalhe: Record<string, unknown> };
   /** The run whose output feeds this one (`runs.parent_run_id`). */
   parentRunId?: string;
   /** Store `texto` as the user's message (default). Pipeline steps pass false: the request was stored once, at the start. */
@@ -169,6 +171,7 @@ export class Executor {
       ...(input.ticketId ? { ticketId: input.ticketId } : {}),
       ...(input.stateless ? { semEstado: true } : {}),
       ...(input.parentRunId ? { parentRunId: input.parentRunId } : {}),
+      ...(input.routing ? { complexidade: input.routing.complexidade, tier: input.routing.tier, roteamento: input.routing.detalhe } : {}),
     });
     const entry: Entry = {
       run,

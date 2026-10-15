@@ -1,9 +1,10 @@
 import { agentActor, BoardError, type Decision, HUMAN, LocalBoard, SYSTEM, ticketBrief, ticketContext, estimateTokens } from '@owl/board';
-import { analyzeTools, type AgentDefinition } from '@owl/core';
+import { analyzeTools, CLASSIFIER_PROMPT, complexityOf, fromClassification, needsApproval, routeByRules, withEscalation, type AgentDefinition, type RouteDecision, type Tier } from '@owl/core';
 import type { Actor, createRepos, Project, Run, Ticket } from '@owl/db';
 import { z } from 'zod';
 import type { Executor, StepOutcome } from './executor.js';
 import type { Library } from './library.js';
+import { WARN_AT, type RouterService } from './router.js';
 import { WorktreeError, type WorktreeService } from './worktrees.js';
 
 type Repos = ReturnType<typeof createRepos>;
@@ -13,6 +14,7 @@ const CONTEXT_TOKENS = 1500;
 /** Rough size of an answer, added to the prompt when checking the ticket's token ceiling. */
 const EXPECTED_OUTPUT_TOKENS = 2000;
 const MAX_SUBTASKS = 8;
+const TIER_NAMES = new Set<string>(['pequeno', 'medio', 'forte']);
 /** Roles that do not take over the ticket: it stays in its column while they work. */
 const STAYS = new Set(['po', 'techlead', 'qa', 'revisor', 'memoria']);
 
@@ -84,6 +86,8 @@ export interface BoardFlowDeps {
   board: LocalBoard;
   /** One git worktree per development ticket; agents that write only run inside one. */
   worktrees: WorktreeService;
+  /** Tiers, confidence threshold and daily budget (prompt 15). */
+  router: RouterService;
   /** Working folder of a project's runs (already checked against the allowed roots). */
   cwdOf: (project: Project) => string;
   /** Agent names of the example flow (override to use other ones). */
@@ -92,6 +96,18 @@ export interface BoardFlowDeps {
 
 const MEMORY_TASK = 'Resuma o que foi decidido e entregue neste ticket e liste os fatos duráveis.';
 const QA_TASK = 'Verifique a entrega contra os critérios de aceite, um a um. Termine com uma linha "VEREDITO: aprovado" ou "VEREDITO: reprovado" e o motivo.';
+
+/**
+ * `force`: an approved cost gate lets this step past the budgets. `tier`: a person approved this tier (gate `confianca`).
+ * `decision`: the router already decided (the classifier answered), so it is not asked again.
+ */
+interface RunOptions {
+  force?: boolean;
+  /** A person chose to run a ticket that other tickets still block. */
+  ignorarBloqueio?: boolean;
+  tier?: Tier;
+  decision?: RouteDecision;
+}
 
 type Role = 'po' | 'techlead' | 'dev' | 'qa' | 'revisor' | 'memoria' | string;
 
@@ -121,7 +137,7 @@ export class BoardFlow {
    * Runs `agente` on a ticket with `tarefa`. Returns undefined when a gate stopped it (ceiling exceeded: a person
    * decides) or the agent cannot run (the reason becomes a comment and the ticket is blocked).
    */
-  run(ticketId: string, agente: string, tarefa: string, opts: { force?: boolean } = {}): Run | undefined {
+  run(ticketId: string, agente: string, tarefa: string, opts: RunOptions = {}): Run | undefined {
     const { repos, board } = this.deps;
     const ticket = this.need(ticketId);
     const project = repos.projects.get(ticket.projectId)!;
@@ -154,6 +170,12 @@ export class BoardFlow {
       this.fail(ticket, agente, `ferramentas do agente não são permitidas: ${tools.problems.join('; ')}`);
       return undefined;
     }
+    // A ticket that other tickets still block does not start by itself; a person can run it anyway (`force`).
+    const open = opts.ignorarBloqueio ? [] : board.openBlockers(ticketId);
+    if (open.length) {
+      this.fail(ticket, agente, `bloqueado por ${open.map((b) => `${b.identificador} (${b.status})`).join(', ')}; termine-o antes ou rode ignorando o bloqueio`);
+      return undefined;
+    }
     const projectCwd = this.deps.cwdOf(project);
     let cwd = projectCwd;
     if (tools.writes) {
@@ -179,22 +201,52 @@ export class BoardFlow {
     const memory = ticketContext({ fatos: facts, resumo: ticket.resumo ?? parent?.resumo, orcamentoTokens: CONTEXT_TOKENS });
     const texto = `${memory}${brief}`;
 
-    if (!opts.force && board.overBudget(ticketId, estimateTokens(texto + systemAppend) + EXPECTED_OUTPUT_TOKENS)) {
+    const estimate = estimateTokens(texto + systemAppend) + EXPECTED_OUTPUT_TOKENS;
+    const resume = { agente, tarefa, statusAnterior: ticket.status === 'aguardando_aprovacao' ? 'em_andamento' : ticket.status };
+    if (!opts.force && board.overBudget(ticketId, estimate)) {
       const u = repos.tickets.usage(ticketId);
       board.requestGate(
         ticketId,
         {
           tipo: 'custo',
           motivo: `Custo acima do teto do ticket: ${u.tokensIn + u.tokensOut} de ${ticket.orcamentoTokens} tokens já usados; o próximo passo (${agente}) passaria do limite`,
-          retomar: { agente, tarefa, statusAnterior: ticket.status === 'aguardando_aprovacao' ? 'em_andamento' : ticket.status },
+          retomar: resume,
+        },
+        agentActor(agente),
+      );
+      return undefined;
+    }
+    if (!opts.force && this.deps.router.overDaily(estimate)) {
+      const d = this.deps.router.dayUsage();
+      board.requestGate(
+        ticketId,
+        {
+          tipo: 'custo',
+          motivo: `Orçamento diário estourado: ${d.usado} de ${d.limite} tokens usados hoje; o próximo passo (${agente}) passaria do limite`,
+          retomar: resume,
         },
         agentActor(agente),
       );
       return undefined;
     }
 
-    // Planners, reviewers and the memory agent work on the ticket where it is; an executor puts it in progress.
     const role = teamRole ?? def.papel ?? '';
+    // Tier routing: only for agents that ask for it (`roteamento: auto`); the others always run on their own provider.
+    let provider = def.provedor;
+    let model = def.modelo;
+    let routing: { complexidade: string; tier: string; detalhe: Record<string, unknown> } | undefined;
+    if (def.roteamento === 'auto') {
+      const routed = this.route({ ticket, project, role, agente, tarefa, opts, cwd: projectCwd, falhas: this.deps.router.failures(ticketId) });
+      if ('done' in routed) return routed.done;
+      const d = routed.decision;
+      const t = this.deps.router.target(d.tier);
+      provider = t.provedor;
+      model = t.modelo;
+      routing = { complexidade: d.complexidade, tier: d.tier, detalhe: { origem: d.origem, motivo: d.motivo, confianca: d.confianca, falhas: routed.falhas } };
+      repos.tickets.addEvent({ ticketId, ator: agentActor(agente), tipo: 'roteamento', para: d.tier, detalhe: `${agente} → ${t.provedor}${t.modelo ? `/${t.modelo}` : ''} (${d.complexidade}, ${d.origem}): ${d.motivo}`.slice(0, 500) });
+    }
+
+    // Planners, reviewers and the memory agent work on the ticket where it is; an executor puts it in progress.
     const keepsStatus = STAYS.has(role);
     const expected = keepsStatus ? ticket.status : 'em_andamento';
     if (!keepsStatus) {
@@ -206,8 +258,9 @@ export class BoardFlow {
     return this.deps.executor.submit({
       sessionId,
       texto,
-      provider: def.provedor,
-      ...(def.modelo ? { model: def.modelo } : {}),
+      provider,
+      ...(model ? { model } : {}),
+      ...(routing ? { routing } : {}),
       cwd,
       systemAppend,
       etapa: `quadro:${def.papel ?? agente}`,
@@ -219,6 +272,99 @@ export class BoardFlow {
       ...(def.ferramentas.length ? { allowedTools: def.ferramentas } : {}),
       noTools: def.ferramentas.length === 0,
       after: (outcome) => this.afterRun(ticketId, agente, role, expected, outcome, tools.writes),
+    });
+  }
+
+  /**
+   * Picks the tier for a step of an `auto` agent: free rules first, then (only if they do not decide) a small model, and
+   * a person when the model is not sure. Returns the decision, or `done` when the step was handed to the classifier or
+   * to a gate (the caller returns that run).
+   */
+  private route(a: { ticket: Ticket; project: Project; role: string; agente: string; tarefa: string; opts: RunOptions; cwd: string; falhas: number }): { decision: RouteDecision; falhas: number } | { done: Run | undefined } {
+    const { router, repos, board, worktrees } = this.deps;
+    const { ticket, opts } = a;
+    if (opts.tier) {
+      // A person already chose this tier at the gate: no rules, no model, no escalation on top.
+      return { decision: { complexidade: complexityOf(opts.tier), tier: opts.tier, confianca: 1, motivo: 'aprovado por uma pessoa', origem: 'manual' }, falhas: a.falhas };
+    }
+    let base = opts.decision;
+    if (!base) {
+      const stat = ['qa', 'revisor'].includes(a.role) ? worktrees.diffStat(ticket, a.project) : undefined;
+      const request = this.requestText(ticket, a.tarefa);
+      base = routeByRules({
+        papel: a.role,
+        texto: request,
+        criterios: (ticket.criteriosAceite ?? '').split('\n').filter((l) => l.trim()).length,
+        subtarefas: repos.tickets.children(ticket.id).length,
+        ...(stat ? { arquivos: stat.arquivos, linhasDiff: stat.linhas } : {}),
+      });
+      if (!base) return { done: this.classify({ ...a, request }) };
+    }
+    const decision = withEscalation(base, a.falhas);
+    if (needsApproval(decision, router.settings().limiarConfianca)) {
+      board.requestGate(
+        ticket.id,
+        {
+          tipo: 'confianca',
+          motivo: `O roteador não tem certeza (${Math.round(decision.confianca * 100)}%): sugere o tier ${decision.tier} para ${a.agente}. ${decision.motivo}`.slice(0, 500),
+          retomar: { agente: a.agente, tarefa: a.tarefa, tier: decision.tier, statusAnterior: ticket.status === 'aguardando_aprovacao' ? 'em_andamento' : ticket.status },
+        },
+        agentActor(a.agente),
+      );
+      return { done: undefined };
+    }
+    return { decision, falhas: a.falhas };
+  }
+
+  /** The request as the router reads it: the ticket's own words plus the instruction (never comments or history). */
+  private requestText(ticket: Ticket, tarefa: string): string {
+    return [ticket.titulo, ticket.descricao, ticket.criteriosAceite, tarefa].filter(Boolean).join('\n');
+  }
+
+  /**
+   * Phase 2: a small model classifies the request. Its answer (or its failure) is turned into a decision and the step
+   * starts over with it, so the budget checks and the gates see the classifier's own tokens. A reply that is not
+   * valid JSON has confidence 0: a person decides, nothing is guessed.
+   */
+  private classify(a: { ticket: Ticket; role: string; agente: string; tarefa: string; opts: RunOptions; cwd: string; request: string }): Run {
+    const { router, library } = this.deps;
+    const target = router.target('pequeno');
+    let system = CLASSIFIER_PROMPT;
+    try {
+      system = library.systemPrompt(library.agent('roteador'));
+    } catch {
+      /* no agent file: the built-in prompt */
+    }
+    // Strip until stable: a single pass turns `</pe</pedido>dido>` back into a closing tag.
+    let safe = a.request.slice(0, 4000);
+    for (let prev = ''; prev !== safe; ) {
+      prev = safe;
+      safe = safe.replace(/<\/?pedido>/gi, '');
+    }
+    return this.deps.executor.submit({
+      sessionId: this.sessionOf(a.ticket),
+      texto: `Papel de quem vai executar: ${a.role || 'desconhecido'}\n<pedido>\n${safe}\n</pedido>`,
+      provider: target.provedor,
+      ...(target.modelo ? { model: target.modelo } : {}),
+      cwd: a.cwd,
+      systemAppend: system,
+      etapa: 'roteador',
+      ticketId: a.ticket.id,
+      stateless: true,
+      recordUserMessage: false,
+      storeAs: false,
+      noTools: true,
+      after: (outcome) => {
+        const parsed = outcome.status === 'ok' ? fromClassification(extractJson(outcome.result)) : undefined;
+        const decision: RouteDecision = parsed ?? {
+          complexidade: 'media',
+          tier: 'medio',
+          confianca: 0,
+          motivo: outcome.status === 'ok' ? 'o classificador não devolveu um JSON válido' : `o classificador falhou: ${outcome.error ?? outcome.status}`,
+          origem: 'modelo',
+        };
+        this.run(a.ticket.id, a.agente, a.tarefa, { ...a.opts, decision });
+      },
     });
   }
 
@@ -236,7 +382,10 @@ export class BoardFlow {
       }
       const r = decision.retomar;
       // The paused step goes on; an approved cost gate lets exactly this step past the ceiling.
-      if (r?.agente && r.tarefa) return this.run(ticket.id, r.agente, r.tarefa, { force: approval.tipo === 'custo' });
+      if (r?.agente && r.tarefa) {
+        const tier = approval.tipo === 'confianca' && TIER_NAMES.has(r.tier ?? '') ? (r.tier as Tier) : undefined;
+        return this.run(ticket.id, r.agente, r.tarefa, { force: approval.tipo === 'custo', ...(tier ? { tier } : {}) });
+      }
       // A reproval the person confirmed: the author reworks it.
       if (approval.tipo === 'reprovacao') return this.rework(ticket);
       return undefined;
@@ -289,6 +438,22 @@ export class BoardFlow {
     }
   }
 
+  /** Tells the ticket (once) when its token ceiling reaches 80%, and the day's budget once per day. Exceeding either stops the next step at a gate. */
+  private warnBudgets(ticket: Ticket): void {
+    const { repos, board, router } = this.deps;
+    if (ticket.orcamentoTokens != null) {
+      const u = repos.tickets.usage(ticket.id);
+      const used = u.tokensIn + u.tokensOut;
+      const warned = repos.tickets.events(ticket.id).some((e) => e.tipo === 'aviso' && e.para === 'orcamento-ticket');
+      if (!warned && used >= ticket.orcamentoTokens * WARN_AT && used < ticket.orcamentoTokens) {
+        repos.tickets.addEvent({ ticketId: ticket.id, ator: SYSTEM, tipo: 'aviso', para: 'orcamento-ticket', detalhe: `${used} de ${ticket.orcamentoTokens} tokens` });
+        board.comment(ticket.id, SYSTEM, `Atenção: o ticket já usou ${Math.floor((used / ticket.orcamentoTokens) * 100)}% do teto (${used} de ${ticket.orcamentoTokens} tokens). Ao passar do teto, o próximo passo pede aprovação.`);
+      }
+    }
+    const day = router.takeDailyWarning();
+    if (day) board.comment(ticket.id, SYSTEM, day);
+  }
+
   private rework(ticket: Ticket): Run | undefined {
     const t = this.need(ticket.id);
     if (t.status !== 'em_andamento' || !t.responsavel) return undefined;
@@ -300,6 +465,7 @@ export class BoardFlow {
     const ticket = repos.tickets.get(ticketId);
     if (!ticket) return;
     const who = agentActor(agente);
+    this.warnBudgets(ticket);
     if (outcome.status !== 'ok' || !outcome.result.trim()) {
       const why = outcome.status === 'cancelado' ? 'execução cancelada' : (outcome.error ?? 'o agente não devolveu nenhum texto');
       this.fail(ticket, agente, why, outcome.run.id);

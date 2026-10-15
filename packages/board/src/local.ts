@@ -1,5 +1,9 @@
-import type { Actor, Approval, createRepos, GateKind, NewTicket, ResumeInfo, Ticket, TicketComment, TicketEvent, TicketStatus } from '@owl/db';
+import type { Actor, Approval, createRepos, Cycle, CycleProgress, GateKind, Label, Relation, RelationType, NewTicket, ResumeInfo, Ticket, TicketComment, TicketEvent, TicketStatus } from '@owl/db';
 import { canAgentMove, GATE_LABEL, isDestructive } from './rules.js';
+
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const validDate = (d: string) => DATE.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
+const COLOR = /^#[0-9a-fA-F]{6}$/;
 
 type Repos = ReturnType<typeof createRepos>;
 
@@ -99,6 +103,10 @@ export class LocalBoard implements BoardProvider {
     if (ator.tipo === 'agente') {
       if (!canAgentMove(t.status, status)) {
         throw new BoardError(409, 'transition_not_allowed', `An agent cannot move a ticket from ${t.status} to ${status}`);
+      }
+      if (status === 'em_andamento') {
+        const open = this.openBlockers(id);
+        if (open.length) throw new BoardError(409, 'blocked_by_open_ticket', `Blocked by ${open.map((b) => b.identificador).join(', ')}, still open`);
       }
       if (status === 'aguardando_aprovacao') return this.requestGate(id, { tipo: 'entrega', motivo: GATE_LABEL.entrega }, ator);
       if (status === 'concluido' && t.requerAprovacao) return this.requestGate(id, { tipo: 'entrega', motivo: GATE_LABEL.entrega }, ator);
@@ -216,6 +224,10 @@ export class LocalBoard implements BoardProvider {
     runs: ReturnType<Repos['tickets']['runs']>;
     uso: ReturnType<Repos['tickets']['usage']>;
     aprovacoes: Approval[];
+    etiquetas: Label[];
+    relacoes: { saem: Relation[]; entram: Relation[] };
+    bloqueadoPor: Array<{ id: string; identificador: string; titulo: string; status: string }>;
+    ciclo: (Cycle & { progresso: CycleProgress }) | null;
   } {
     const ticket = this.need(id);
     return {
@@ -227,7 +239,133 @@ export class LocalBoard implements BoardProvider {
       runs: this.repos.tickets.runs(id),
       uso: this.repos.tickets.usage(id),
       aprovacoes: this.repos.approvals.byTicket(id),
+      etiquetas: this.repos.quadro.labels.ofTicket(id),
+      relacoes: this.repos.quadro.relations.ofTicket(id),
+      bloqueadoPor: this.openBlockers(id),
+      ciclo: ticket.cicloId ? { ...this.repos.quadro.cycles.get(ticket.cicloId)!, progresso: this.cycleProgress(ticket.cicloId) } : null,
     };
+  }
+
+  // --- labels, relations, cycles (prompt 16). Each is per project; every change lands in the ticket's history.
+
+  private sameProject(a: Ticket, b: { projectId: string }, what: string): void {
+    if (a.projectId !== b.projectId) throw new BoardError(400, 'other_project', `${what} belongs to another project`);
+  }
+
+  createLabel(projectId: string, nome: string, cor = '#8b8b99'): Label {
+    if (!this.repos.projects.get(projectId)) throw new BoardError(404, 'project_not_found', `Project not found: ${projectId}`);
+    const name = nome.trim();
+    if (!name || name.length > 40) throw new BoardError(400, 'invalid_label', 'A label name has 1 to 40 characters');
+    if (!COLOR.test(cor)) throw new BoardError(400, 'invalid_color', 'The color must look like #a1b2c3');
+    if (this.repos.quadro.labels.byName(projectId, name)) throw new BoardError(409, 'label_exists', `The label "${name}" already exists in this project`);
+    return this.repos.quadro.labels.create(projectId, name, cor);
+  }
+
+  updateLabel(id: string, ch: { nome?: string | undefined; cor?: string | undefined }): Label {
+    const l = this.repos.quadro.labels.get(id);
+    if (!l) throw new BoardError(404, 'label_not_found', `Label not found: ${id}`);
+    const name = ch.nome?.trim();
+    if (name !== undefined) {
+      if (!name || name.length > 40) throw new BoardError(400, 'invalid_label', 'A label name has 1 to 40 characters');
+      const same = this.repos.quadro.labels.byName(l.projectId, name);
+      if (same && same.id !== id) throw new BoardError(409, 'label_exists', `The label "${name}" already exists in this project`);
+    }
+    if (ch.cor !== undefined && !COLOR.test(ch.cor)) throw new BoardError(400, 'invalid_color', 'The color must look like #a1b2c3');
+    this.repos.quadro.labels.update(id, { ...(name !== undefined ? { nome: name } : {}), ...(ch.cor !== undefined ? { cor: ch.cor } : {}) });
+    return this.repos.quadro.labels.get(id)!;
+  }
+
+  deleteLabel(id: string): void {
+    if (!this.repos.quadro.labels.get(id)) throw new BoardError(404, 'label_not_found', `Label not found: ${id}`);
+    this.repos.quadro.labels.delete(id);
+  }
+
+  addLabel(ticketId: string, labelId: string, ator: Actor): void {
+    const t = this.need(ticketId);
+    const l = this.repos.quadro.labels.get(labelId);
+    if (!l) throw new BoardError(404, 'label_not_found', `Label not found: ${labelId}`);
+    this.sameProject(t, l, 'The label');
+    if (this.repos.quadro.labels.attach(ticketId, labelId)) this.repos.tickets.addEvent({ ticketId, ator, tipo: 'etiqueta', para: l.nome });
+  }
+
+  removeLabel(ticketId: string, labelId: string, ator: Actor): void {
+    this.need(ticketId);
+    const l = this.repos.quadro.labels.get(labelId);
+    if (this.repos.quadro.labels.detach(ticketId, labelId) && l) this.repos.tickets.addEvent({ ticketId, ator, tipo: 'etiqueta', de: l.nome });
+  }
+
+  /**
+   * `ticketId` blocks / duplicates / relates to `relatedId`. Refused: another project, itself, the same pair twice (a
+   * `relacionado` or `duplicado` pair counts in either direction), and a block that would close a loop (A blocks B
+   * blocks C blocks A would leave all three waiting forever).
+   */
+  addRelation(ticketId: string, relatedId: string, tipo: RelationType, ator: Actor): Relation {
+    const a = this.need(ticketId);
+    if (ticketId === relatedId) throw new BoardError(400, 'self_relation', 'A ticket cannot be related to itself');
+    const b = this.need(relatedId);
+    this.sameProject(a, b, 'The other ticket');
+    if (this.repos.quadro.relations.exists(ticketId, relatedId, tipo)) throw new BoardError(409, 'relation_exists', 'These tickets are already related this way');
+    if (tipo === 'bloqueia' && (ticketId === relatedId || this.repos.quadro.relations.blocksTransitively(relatedId, ticketId))) {
+      throw new BoardError(409, 'blocking_loop', `${b.identificador} already (directly or not) blocks ${a.identificador}: this would make them wait for each other`);
+    }
+    const r = this.repos.quadro.relations.create(ticketId, relatedId, tipo);
+    this.repos.tickets.addEvent({ ticketId, ator, tipo: 'relacao', para: `${tipo} ${b.identificador}` });
+    this.repos.tickets.addEvent({ ticketId: relatedId, ator, tipo: 'relacao', para: `${tipo} (de ${a.identificador})` });
+    return r;
+  }
+
+  removeRelation(relationId: string, ator: Actor): void {
+    const r = this.repos.quadro.relations.get(relationId);
+    if (!r) throw new BoardError(404, 'relation_not_found', `Relation not found: ${relationId}`);
+    this.repos.quadro.relations.delete(relationId);
+    this.repos.tickets.addEvent({ ticketId: r.ticketId, ator, tipo: 'relacao', de: `${r.tipo} ${this.repos.tickets.get(r.relatedId)?.identificador ?? r.relatedId}` });
+    this.repos.tickets.addEvent({ ticketId: r.relatedId, ator, tipo: 'relacao', de: `${r.tipo} (de ${this.repos.tickets.get(r.ticketId)?.identificador ?? r.ticketId})` });
+  }
+
+  /** Tickets that block this one and are not `concluido`. An agent does not start a ticket while this is not empty. */
+  openBlockers(ticketId: string) {
+    return this.repos.quadro.relations.openBlockers(ticketId);
+  }
+
+  createCycle(projectId: string, input: { nome?: string; inicio: string; fim: string }): Cycle {
+    if (!this.repos.projects.get(projectId)) throw new BoardError(404, 'project_not_found', `Project not found: ${projectId}`);
+    this.checkDates(input.inicio, input.fim);
+    return this.repos.quadro.cycles.create(projectId, input);
+  }
+
+  updateCycle(id: string, ch: { nome?: string | null | undefined; inicio?: string | undefined; fim?: string | undefined }): Cycle {
+    const c = this.repos.quadro.cycles.get(id);
+    if (!c) throw new BoardError(404, 'cycle_not_found', `Cycle not found: ${id}`);
+    this.checkDates(ch.inicio ?? c.inicio, ch.fim ?? c.fim);
+    this.repos.quadro.cycles.update(id, { ...(ch.nome !== undefined ? { nome: ch.nome } : {}), ...(ch.inicio !== undefined ? { inicio: ch.inicio } : {}), ...(ch.fim !== undefined ? { fim: ch.fim } : {}) });
+    return this.repos.quadro.cycles.get(id)!;
+  }
+
+  deleteCycle(id: string): void {
+    if (!this.repos.quadro.cycles.get(id)) throw new BoardError(404, 'cycle_not_found', `Cycle not found: ${id}`);
+    this.repos.quadro.cycles.delete(id);
+  }
+
+  /** Puts the ticket in a cycle (or takes it out with `null`). A ticket is in one cycle at a time. */
+  assignCycle(ticketId: string, cycleId: string | null, ator: Actor): Ticket {
+    const t = this.need(ticketId);
+    const c = cycleId ? this.repos.quadro.cycles.get(cycleId) : undefined;
+    if (cycleId && !c) throw new BoardError(404, 'cycle_not_found', `Cycle not found: ${cycleId}`);
+    if (c) this.sameProject(t, c, 'The cycle');
+    if (t.cicloId === cycleId) return t;
+    const old = t.cicloId ? this.repos.quadro.cycles.get(t.cicloId) : undefined;
+    this.repos.quadro.cycles.assign(ticketId, cycleId);
+    this.repos.tickets.addEvent({ ticketId, ator, tipo: 'ciclo', de: old ? `Ciclo ${old.numero}` : null, para: c ? `Ciclo ${c.numero}` : null });
+    return this.need(ticketId);
+  }
+
+  cycleProgress(cycleId: string): CycleProgress {
+    return this.repos.quadro.cycles.progress(cycleId);
+  }
+
+  private checkDates(inicio: string, fim: string): void {
+    if (!validDate(inicio) || !validDate(fim)) throw new BoardError(400, 'invalid_date', 'Dates look like 2026-10-31');
+    if (fim < inicio) throw new BoardError(400, 'invalid_period', 'A cycle cannot end before it starts');
   }
 
   private move(t: Ticket, to: TicketStatus, ator: Actor, ordem?: number): void {

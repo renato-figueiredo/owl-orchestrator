@@ -39,3 +39,26 @@ export {
 } from './memory/summary.js';
 export { isDestructive } from './destructive.js';
 export { analyzeTools, parseTool, readOnlyTools, type ToolReport } from './tools.js';
+export {
+  CLASSIFIER_PROMPT,
+  classificationSchema,
+  COMPLEXITIES,
+  complexityOf,
+  DEFAULT_ROUTER,
+  escalate,
+  fromClassification,
+  needsApproval,
+  routeByRules,
+  routerConfigSchema,
+  TIERS,
+  tierOf,
+  tierTargetSchema,
+  withEscalation,
+  type Complexity,
+  type RouteDecision,
+  type RouteInput,
+  type RouteSource,
+  type RouterConfig,
+  type Tier,
+  type TierTarget,
+} from './router.js';

@@ -20,6 +20,11 @@ const agentSchema = z.strictObject({
   ferramentas: z.array(z.string().min(1)).default([]),
   /** Names of skill folders (`skills/<name>/SKILL.md`) the agent uses. */
   skills: z.array(z.string().regex(NAME)).default([]),
+  /**
+   * `fixo` (default): always `provedor`/`modelo`. `auto`: the router picks the provider and model by the ticket's
+   * complexity (tiers in the router settings); `provedor`/`modelo` are then only the fallback if routing is unavailable.
+   */
+  roteamento: z.enum(['fixo', 'auto']).default('fixo'),
   /** May approve other agents' work (used by the board, prompt 13). */
   pode_aprovar: z.boolean().default(false),
 });
@@ -68,6 +73,7 @@ export function serializeAgent(def: AgentDefinition): string {
   if (meta.fallback.length) clean.fallback = meta.fallback;
   clean.ferramentas = meta.ferramentas;
   if (meta.skills.length) clean.skills = meta.skills;
+  if (meta.roteamento === 'auto') clean.roteamento = 'auto';
   clean.pode_aprovar = meta.pode_aprovar;
   return `---\n${stringify(clean).trimEnd()}\n---\n${prompt}\n`;
 }

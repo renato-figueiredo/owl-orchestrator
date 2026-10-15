@@ -230,11 +230,45 @@ export interface Ticket {
   status: TicketStatus;
   responsavel: string | null;
   prioridade: number;
+  estimativa: number | null;
+  prazo: string | null;
+  cicloId: string | null;
   ordem: number;
   orcamentoTokens: number | null;
   requerAprovacao: boolean;
   resumo: string | null;
   uso?: TicketUsage;
+  /** Only in the board list (not in the ticket detail). */
+  etiquetas?: Label[];
+  bloqueadoPor?: string[];
+}
+export interface Label {
+  id: string;
+  nome: string;
+  cor: string;
+}
+export type RelationType = 'bloqueia' | 'relacionado' | 'duplicado';
+export interface Relation {
+  id: string;
+  ticketId: string;
+  relatedId: string;
+  tipo: RelationType;
+}
+export interface CycleProgress {
+  tickets: number;
+  concluidos: number;
+  pontos: number;
+  pontosConcluidos: number;
+  semEstimativa: number;
+  porStatus: Record<string, number>;
+}
+export interface Cycle {
+  id: string;
+  numero: number;
+  nome: string | null;
+  inicio: string;
+  fim: string;
+  progresso?: CycleProgress;
 }
 export type GateKind = 'entrega' | 'custo' | 'destrutiva' | 'reprovacao' | 'confianca';
 export interface TicketApproval {
@@ -252,6 +286,8 @@ export interface BoardData {
   estados: TicketStatus[];
   tickets: Ticket[];
   aprovacoes: TicketApproval[];
+  etiquetas: Label[];
+  ciclos: Cycle[];
 }
 export interface TicketComment {
   id: string;
@@ -264,7 +300,7 @@ export interface TicketEvent {
   id: number;
   autor: string;
   autorTipo: 'humano' | 'agente' | 'sistema';
-  tipo: 'criado' | 'status' | 'atribuido' | 'comentario' | 'aprovacao' | 'execucao';
+  tipo: 'criado' | 'status' | 'atribuido' | 'comentario' | 'aprovacao' | 'execucao' | 'roteamento' | 'aviso' | 'etiqueta' | 'relacao' | 'ciclo';
   de: string | null;
   para: string | null;
   detalhe: string | null;
@@ -291,5 +327,46 @@ export interface TicketDetail {
   runs: TicketRun[];
   uso: TicketUsage;
   aprovacoes: TicketApproval[];
+  etiquetas: Label[];
+  relacoes: { saem: Relation[]; entram: Relation[] };
+  bloqueadoPor: Array<{ id: string; identificador: string; titulo: string; status: string }>;
+  ciclo: (Cycle & { progresso: CycleProgress }) | null;
   branch?: BranchInfo | null;
+}
+
+export type Tier = 'pequeno' | 'medio' | 'forte';
+export interface TierTarget {
+  provedor: string;
+  modelo?: string;
+}
+export interface RouterSettings {
+  tiers: Record<Tier, TierTarget>;
+  limiarConfianca: number;
+  orcamentoDiaTokens: number | null;
+}
+export interface DayUsage {
+  limite: number | null;
+  usado: number;
+  percentual: number | null;
+  aviso: boolean;
+  estourado: boolean;
+}
+export interface MetricsRow {
+  chave: string;
+  rotulo: string;
+  runs: number;
+  ok: number;
+  erro: number;
+  cancelados: number;
+  taxaSucesso: number | null;
+  tokensIn: number;
+  tokensOut: number;
+  custo: number;
+  retrabalho: number;
+}
+export interface Metrics {
+  totais: Omit<MetricsRow, 'chave' | 'rotulo'> & { roteador: { runs: number; tokens: number }; taxaRetrabalho: number | null };
+  porTicket: Array<MetricsRow & { titulo: string }>;
+  porAgente: MetricsRow[];
+  porModelo: MetricsRow[];
 }

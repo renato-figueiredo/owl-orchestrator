@@ -35,3 +35,6 @@ Source: Linear's **public** GraphQL schema (`linear/linear`, `packages/sdk/src/s
 
 ## Not copying
 UI assets, icons, copy, keyboard-shortcut maps as a product clone, or anything from the Linear web bundle.
+
+## Status
+Implementado no prompt 16: `IssueLabel` → `labels`, `IssueRelation` → `ticket_relations`, `Cycle` → `cycles`, `estimate` e `dueDate` em `tickets`. Ainda não: estados de workflow por equipe, `triage`, `duplicate` como estado, histórico de escopo do ciclo.

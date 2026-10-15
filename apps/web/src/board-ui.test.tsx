@@ -18,6 +18,9 @@ const ticket = (id: string, over: Partial<Ticket> = {}): Ticket => ({
   status: 'pronto',
   responsavel: null,
   prioridade: 0,
+  estimativa: null,
+  prazo: null,
+  cicloId: null,
   ordem: Number(id),
   orcamentoTokens: null,
   requerAprovacao: false,
@@ -32,7 +35,7 @@ let detail: TicketDetail;
 
 beforeEach(() => {
   calls = [];
-  data = { estados: [], tickets: [ticket('1'), ticket('2', { status: 'em_andamento', uso: { runs: 1, tokensIn: 100, tokensOut: 50, custoEstimado: 0.01 } })], aprovacoes: [] };
+  data = { estados: [], tickets: [ticket('1'), ticket('2', { status: 'em_andamento', uso: { runs: 1, tokensIn: 100, tokensOut: 50, custoEstimado: 0.01 } })], aprovacoes: [], etiquetas: [], ciclos: [] };
   detail = {
     ticket: data.tickets[1]!,
     parent: null,
@@ -42,6 +45,10 @@ beforeEach(() => {
     runs: [{ id: 'r1', agente: 'dev-back', etapa: 'quadro:dev', provedor: 'claude-cli', modelo: 'sonnet', status: 'ok', tokensIn: 100, tokensOut: 50, custoEstimado: 0.01, erro: null }],
     uso: { runs: 1, tokensIn: 100, tokensOut: 50, custoEstimado: 0.01 },
     aprovacoes: [],
+    etiquetas: [],
+    relacoes: { saem: [], entram: [] },
+    bloqueadoPor: [],
+    ciclo: null,
   };
   vi.stubGlobal(
     'fetch',

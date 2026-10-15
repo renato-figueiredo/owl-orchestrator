@@ -106,6 +106,21 @@ In the sidebar, **Team** on a project opens its screen (the board has a button t
 - **Nothing reaches your branch by itself.** In the ticket, **Trabalho isolado** shows the branch and how many commits it is ahead. *Pedir mesclagem* and *Descartar trabalho* only add a request to the approvals queue; approving a merge does a `git merge --no-ff` into the base branch, and only if your folder is on that branch with no uncommitted changes (otherwise it tells you why and changes nothing). A conflict aborts the merge. Rejecting a merge does not reopen the ticket.
 - **Limits**: `OWL_CONCURRENCY` (global) and the per-project limit both apply.
 
+## Labels, relations and cycles
+All of it is local, per project, and lives on the board.
+- **Labels**: **Etiquetas e ciclos** (above the columns) creates labels with a color; in a ticket, tick the ones that apply. They show on the cards, and the **Etiqueta** filter hides the other tickets.
+- **Relations**: in a ticket, *this ticket* **blocks**, **is related to** or **is a duplicate of** another ticket of the same project. A block that would close a loop (A blocks B blocks A) is refused. A ticket that is blocked by an unfinished one shows ⛔ on its card and **no agent starts it** (the run is refused and the ticket goes to *Bloqueado* with the reason); you can still run it by hand with *ignorarBloqueio* in the API, or move the card yourself. Finishing the blocker frees it.
+- **Cycles**: a period (start and end date) with a number. Put tickets in it from the ticket panel; the **Ciclo** filter shows the progress (tickets and points done). Deleting a cycle keeps its tickets.
+- **Estimate and due date**: points and a date per ticket, shown on the card.
+
+## Routing, budgets and metrics
+Click **Metrics and router** (sidebar).
+- **Router**: an agent with `roteamento: auto` in its file does not always run on the same model. Free rules decide first (the agent's role, the size of the request, risk words such as *migration* or *security*, the size of the diff for reviewers); only when they cannot, the **small** tier classifies the request. Three tiers (**small**, **medium**, **strong**) map to a provider and a model each; edit them in the panel. Agents without that line keep their own provider, exactly as before.
+- **Not sure?** If the classifier is below the *minimum confidence* (60% by default), or does not answer, the ticket waits in the approvals queue with the tier it suggests (**Low router confidence**). Approve to run on that tier; reject to run nothing.
+- **Escalation**: every rejected delivery or review sends the rework one tier up, until the strong one. The ticket history shows each choice and why.
+- **Budgets** (tokens): a ticket's own ceiling warns at 80% and stops the next step past 100%; the **daily budget** (panel, empty = none) does the same for everything you ran today, counting the router's own classifications. A step that would pass the limit waits for your approval (**Cost above the ceiling**); approving lets that step through.
+- **Metrics**: cost and tokens by ticket, agent and model, success rate (ok ÷ ok+failed; cancelled runs do not count), rework (a repeated run of the same agent on the same ticket) and what the router itself spent. Filter by project and by days. All of it is read from the stored runs. The dollar figure is only what the CLI reports (Claude does, Codex does not), so tokens are the reliable measure.
+
 ## Keyboard and themes
 - In the session list: **↑ / ↓** move, **Enter** opens, **Tab** leaves the list.
 - The ☾ / ☀ button switches light and dark (it starts from your system setting and remembers your choice).

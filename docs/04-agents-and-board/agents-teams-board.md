@@ -17,6 +17,7 @@ modelo: padrao
 ferramentas: [Read, Grep, Glob]
 skills: [revisao-de-arquitetura]
 pode_aprovar: false
+roteamento: fixo   # ou auto: o roteador escolhe provedor/modelo pela complexidade (docs/02-architecture/routing-and-costs.md)
 ---
 Você é o tech lead. Quebra tickets em subtarefas pequenas, define a abordagem técnica,
 revisa entregas contra os critérios de aceite. Não escreve código de produção.
@@ -151,3 +152,12 @@ Organizar em **pacotes** (ex.: `pacote-codigo`, futuramente `pacote-video` com f
   cada vez que a fila anda, então mudar na tela vale para a próxima execução. Chat sem projeto só obedece ao global. Para dois tickets rodarem em paralelo é preciso `OWL_CONCURRENCY ≥ 2`.
 - **Interface**: seletor de projeto no cabeçalho do quadro e da tela do projeto; **Equipe** na barra lateral abre a tela do projeto (configurações, equipes, papéis, memória por agente);
   no painel do ticket, "Trabalho isolado" mostra a branch, os commits à frente e os dois pedidos de aprovação.
+
+
+## Decisões (prompt 16 — quadro avançado: etiquetas, relações, ciclos)
+O prompt 16 do pacote original era um espelho no Linear; foi **descartado** (o quadro é próprio, sem serviço de terceiros) e virou isto. Código em `packages/board/src/local.ts`, `packages/db/src/repos/quadro.ts`, rotas em `apps/server/src/board-routes.ts`, tela em `apps/web/src/components/BoardExtras.tsx`.
+- **Etiquetas** por projeto (nome único ignorando maiúsculas, cor `#rrggbb`), várias por ticket; só do mesmo projeto. **Relações** `bloqueia | relacionado | duplicado` entre tickets do mesmo projeto; recusadas: a si mesmo, par repetido (`relacionado` e `duplicado` não têm direção), outro projeto e **ciclo de bloqueio** (direto ou por um caminho). Cada mudança entra no histórico dos dois tickets.
+- **Bloqueio vale para agentes, não para pessoas**: um agente não move para `em_andamento` (409 `blocked_by_open_ticket`) e `BoardFlow.run` recusa rodar um ticket com bloqueador aberto (comentário do sistema + ticket `bloqueado`). A pessoa pode mover o cartão ou rodar com `ignorarBloqueio: true`. O bloqueador `concluido` libera.
+- **Ciclos** por projeto: número sequencial, datas válidas, `fim >= inicio`; um ticket está em um ciclo por vez; progresso = tickets e pontos por estado (`GET /cycles/:id`). Apagar o ciclo mantém os tickets (`cycle_id` volta a `NULL`).
+- **Estimativa** (0–1000 pontos) e **prazo** (data) em `tickets`. Sem ordenação/alerta por prazo ainda.
+- **Rotas**: `/projects/:id/labels`, `/labels/:id`, `/tickets/:id/labels/:labelId` (PUT/DELETE), `/tickets/:id/relations` (POST), `/relations/:id` (DELETE), `/projects/:id/cycles`, `/cycles/:id`, `/tickets/:id/cycle` (PUT). `GET /projects/:id/board` traz `etiquetas`, `ciclos` e, por ticket, `etiquetas` e `bloqueadoPor`.

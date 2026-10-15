@@ -19,8 +19,8 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [x] 12 Agentes como arquivos + pipelines YAML (`build/prompts/12`) — implementado em 2026-10-15; `qa-testes` e `revisor` rodam junto do 13
 - [x] 13 Quadro local + portões de aprovação (`build/prompts/13`) — implementado em 2026-10-15; `qa-testes` e `revisor` rodam junto do 12
 - [x] 14 Projetos, equipes, gerente multi-projeto, worktrees (`build/prompts/14`) — implementado em 2026-10-15; `qa-testes` e `revisor` rodados em 2026-10-15; achados 1–9 corrigidos
-- [ ] 15 Roteador e métricas (`build/prompts/15`)
-- [ ] 16 Integração com Linear (`build/prompts/16`)
+- [x] 15 Roteador e métricas (`build/prompts/15`) — implementado em 2026-10-15; `qa-testes` e `revisor` rodados em 2026-10-15; achados corrigidos (fim de mês em `/metrics`, delimitador do classificador, orçamento com execuções em andamento, configuração campo a campo, retrabalho independente do filtro, modelo validado no PUT). Roteamento implementado mas desligado por padrão (`roteamento: fixo`)
+- [x] 16 Quadro avançado: etiquetas, relações, ciclos, estimativa e prazo (`build/prompts/16-quadro-avancado.md`) — implementado em 2026-10-15; `qa-testes` e `revisor` pendentes, junto do 15. (A integração com o Linear real foi descartada: o quadro é próprio.)
 
 - [ ] 17 Motion e animações (`build/prompts/17-motion.md`)
 - [ ] 18 Adaptador Ollama (`build/prompts/18-ollama.md`)
@@ -34,9 +34,10 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Pacote de vídeo (ffmpeg, Remotion)
 
 ## Pendências (atualizado em 2026-10-14)
-**Próximo passo:** prompt 15 (roteador e métricas). Fase 1 concluída (prompt 11); 12 e 13 revisados. O 08/09 foi revisado de novo em 2026-10-15 (a lista antiga do revisor se perdeu): 9 itens corrigidos, 1 aberto abaixo.
+**Próximo passo:** `qa-testes` + `revisor` do 15 e do 16 em conjunto (como o usuário decidiu), depois prompt 17. Fase 1 concluída (prompt 11); 12, 13 e 14 revisados. O 08/09 foi revisado de novo em 2026-10-15 (a lista antiga do revisor se perdeu): 9 itens corrigidos, 1 aberto abaixo.
 
 **Revisão**
+- [ ] Prompt 16: ordenar/alertar por prazo e ciclo ativo automático (hoje só estimativa/prazo exibidos); revisar o bloqueio por relação no fluxo (`BoardFlow.run`) e o filtro do quadro.
 - [x] `qa-testes` e `revisor` nos prompts 02, 03 e 04 rodados em 2026-10-15; 3 bloqueantes corrigidos (NUL no adaptador, Host/Origin, raízes de pastas).
 - [ ] Revisão ainda sem registro para os prompts 02 (banco): confirmar se não houve bloqueantes.
 - [ ] Permitir o host Tailscale no guard quando o acesso remoto for implementado.
@@ -91,7 +92,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Fluxo de exemplo com `claude` real: o formato JSON do `po`/`tech-lead` e o `VEREDITO:` dependem de o modelo obedecer; testar e ajustar os prompts dos agentes de exemplo.
 - [ ] Prefixo do ticket editável por projeto (`projects.prefixo` existe, falta API/UI) e ordem/prioridade editáveis no painel do ticket (prioridade e teto só pela criação/PATCH).
 - [ ] O quadro atualiza por polling (3 s); trocar por SSE se pesar.
-- [ ] Portão `confianca` só existe na API (`requestGate`); o roteador (prompt 15) é quem vai abri-lo.
+- [x] Portão `confianca`: aberto pelo roteador (prompt 15) quando a confiança fica abaixo do limiar; aprovar roda o passo no tier proposto.
 - [ ] Sem exclusão de ticket (regra 5: apagar exige aprovação); definir se vira "cancelado" (Linear: `canceled`) em vez de apagar.
 - [x] Agentes escrevem em worktree (prompt 14). Mesclar e descartar a branch passam por portão `destrutiva` (`POST /tickets/:id/branch/merge|descartar`); `proposeAction` continua disponível para o agente anunciar ações.
 - [x] Equipes (`teams`/`team_members`) usadas pelo quadro: com ao menos um membro no projeto, só membros trabalham; o papel da equipe vale no projeto (prompt 14).
@@ -107,6 +108,15 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] `Read` continua sem escopo de pasta nos agentes do quadro (pendência da revisão 11): um agente pode ler fora do worktree.
 - [ ] Tela do projeto: sem E2E no navegador; testes de componente e de API cobrem.
 - [ ] Fluxo `dev` com `claude` real conferido uma vez em 2026-10-15 (repositório temporário, haiku): `dev-back` criou o arquivo só no worktree, o OWL commitou na branch, a pasta do usuário ficou intacta, o arquivo fora da pasta **não** foi criado e o `qa` reprovou (abriu o portão de reprovação). Falta uma bateria maior (testes que o projeto realmente roda, conflitos, vários tickets).
+
+**Roteador e métricas (prompt 15)** — feito: regras → classificador pequeno só se ambíguo (JSON validado, falha = confiança 0 = pessoa decide), tiers configuráveis (`PUT /router`), escalonamento por reprovação, aviso em 80% e portão `custo` por ticket e por dia (tokens), `GET /metrics`, painel *Métricas e roteador*, migração 0010. Escopo: **só o quadro**; agentes `roteamento: auto` (os exemplos continuam `fixo`). Abertos:
+- [ ] `qa-testes` + `revisor` do 15 (pontos: `board-flow.ts` `route`/`classify`, contagem de `failures`, orçamento diário em `RouterService`, SQL de `metrics`).
+- [ ] Roteador no chat e nos pipelines YAML (hoje só o quadro). Decidir se `outroProvedorQue` convive com tier.
+- [ ] Ligar `roteamento: auto` nos agentes de exemplo e medir antes: o gasto do classificador aparece em *Métricas*; só vale se economizar mais do que custa. Ajustar as regras com os `runs` reais (os limiares 600/6000 caracteres e 400 linhas são chutes).
+- [ ] Orçamento em USD (hoje só tokens; o Codex não informa custo) e orçamento por projeto/agente.
+- [ ] O orçamento diário pausa por ticket, no portão de cada um; não há "pausa global" que impeça novos objetivos. Estimativa do próximo passo = prompt + 2000 tokens fixos.
+- [ ] Retrabalho é calculado dentro do período filtrado (a 1ª execução de um ticket fora do período não conta como "primeira"). `diffStat` usa `git` síncrono (mesma pendência do prompt 14).
+- [ ] Tier por etapa de pipeline e animação/ícone do tier na interface (finalmentes). Ollama como tier `pequeno` fica para o prompt 18.
 
 **Adaptadores**
 - [x] Codex: JSON, resume e erros capturados do `codex-cli` 0.162 real (fixtures `codex-*.jsonl`). Falta: imagens (prompt 08).
