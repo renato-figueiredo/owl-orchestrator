@@ -1,4 +1,4 @@
-import type { Project, ProviderInfo, RefinerInfo, Session, SessionDetail } from './types';
+import type { Fact, MemorySettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -45,6 +45,21 @@ export const api = {
   session: (id: string) => call<SessionDetail>('GET', `/sessions/${encodeURIComponent(id)}`),
   send: (sessionId: string, input: SendInput) =>
     call<{ runId: string }>('POST', `/sessions/${encodeURIComponent(sessionId)}/messages`, input).then((r) => r.runId),
+  settings: () => call<{ memory: MemorySettings }>('GET', '/settings').then((r) => r.memory),
+  saveSettings: (patch: Partial<MemorySettings>) =>
+    call<{ memory: MemorySettings }>('PUT', '/settings', { memory: patch }).then((r) => r.memory),
+  facts: (projectId: string | null) =>
+    call<{ facts: Fact[] }>('GET', `/facts${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`).then((r) => r.facts),
+  addFact: (input: { texto: string; projectId?: string; fixado?: boolean }) =>
+    call<{ fact: Fact }>('POST', '/facts', input).then((r) => r.fact),
+  updateFact: (id: string, changes: { texto?: string; fixado?: boolean }) =>
+    call<{ fact: Fact }>('PATCH', `/facts/${encodeURIComponent(id)}`, changes).then((r) => r.fact),
+  deleteFact: (id: string) => call<{ status: string }>('DELETE', `/facts/${encodeURIComponent(id)}`),
+  saveSummary: (sessionId: string, resumo: string) =>
+    call<{ session: Session }>('PUT', `/sessions/${encodeURIComponent(sessionId)}/summary`, { resumo }),
+  undoSummary: (sessionId: string) => call<{ session: Session }>('POST', `/sessions/${encodeURIComponent(sessionId)}/summary/undo`),
+  /** Writes the summary now; resolves when it is done (a few seconds). */
+  summarize: (sessionId: string) => call<SummarizeResult>('POST', `/sessions/${encodeURIComponent(sessionId)}/summarize`),
   refiner: () => call<RefinerInfo>('GET', '/refiner'),
   /** Approve a paused pipeline. `texto` is the user's edit of the refined prompt (omit to keep it). */
   continueRun: (runId: string, texto?: string) =>

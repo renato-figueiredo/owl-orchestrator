@@ -22,12 +22,13 @@ own machine**, with a local web UI. It never reads, copies or stores your creden
 - **Projects**: each one has its own folder and instructions, and conversations never leak between projects.
 - **Improve prompt**: a refiner agent rewrites your request, you can edit it before it runs, and if the refiner fails (for
   example the Codex limit) OWL asks which model to use instead of switching silently.
+- **Memory**: pinned facts per project and an editable, incremental conversation summary; switching provider mid-conversation warns you and hands the new CLI the summary.
 - A run panel with the tools used, tokens, cost (when the CLI reports it) and the chained steps of a pipeline.
 - Light and dark themes, full keyboard navigation of the conversation list.
 - Safe by default: loopback only, DNS-rebinding and cross-site protection, agents confined to folders you allow.
 
 ## Coming next
-Layered memory and summaries · attachments and screenshots · trash and encrypted backup · agents as files, teams and a local
+Attachments and screenshots · trash and encrypted backup · agents as files, teams and a local
 Linear-style board with approval gates · git worktrees per agent · cost-aware routing · optional Linear mirror and Ollama.
 Details in the [roadmap](docs/roadmap.md).
 

@@ -41,6 +41,27 @@ run de verdade. O prompt melhorado é o que o provedor principal recebe; a sua m
 O refinador é um arquivo comum: [`examples/agents/refinador-de-prompt.md`](../../examples/agents/refinador-de-prompt.md), e o fluxo é
 [`examples/pipelines/melhorar-e-executar.yaml`](../../examples/pipelines/melhorar-e-executar.yaml). Edite e o próximo pedido já usa a mudança (sem reiniciar).
 
+## Memória
+O painel da direita tem duas abas: **Execução** e **Memória**.
+
+- **Resumo da conversa**: um resumo curto que o OWL mantém em dia (a cada N mensagens, ou quando você aperta **Resumir agora**). Dá para editar, e
+  **Desfazer** traz a versão anterior de volta. Um resumo que falha nunca substitui um bom.
+- **Fatos**: afirmações curtas que devem valer daqui para frente ("usar pnpm", "responder em português"). Pertencem ao **projeto**: todas as conversas dele
+  compartilham os fatos, e nenhum outro projeto os vê. **Só os fatos fixados (Fixar) são enviados ao modelo.** Quando o resumidor percebe uma decisão, ele a
+  propõe como fato, *sem fixar*, para você revisar.
+- **Configurações da memória**: quantas mensagens recentes (N), quando resumir, o orçamento do contexto em tokens, resumo automático, trechos
+  relacionados e quem escreve os resumos (padrão: Claude haiku, para poupar um limite pequeno do Codex).
+
+Quando o modelo recebe a memória? Quando a CLI **não tem sessão para retomar**: uma conversa nova num projeto, ou depois de trocar de provedor. Uma
+conversa que continua retomando a mesma sessão da CLI só recebe os fatos fixados *novos*.
+
+### Trocar de provedor no meio da conversa
+Cada CLI guarda uma sessão interna própria (resultados de ferramentas, cache). Trocar do Claude para o Codex (ou o contrário) **não leva isso junto**, então o OWL pergunta antes:
+- **Resumir e trocar**: atualiza o resumo e só então envia. O novo provedor recebe os fatos fixados, o resumo e as últimas mensagens.
+- **Trocar sem resumir**: envia agora, com o resumo que já existir.
+- **Cancelar**: nada é enviado e o seu texto continua na caixa.
+Se o resumo falhar, o OWL não troca sozinho: mostra o motivo e deixa você escolher.
+
 ## Teclado e temas
 - Na lista de conversas: **↑ / ↓** movem, **Enter** abre, **Tab** sai da lista.
 - O botão ☾ / ☀ alterna claro e escuro (começa pela configuração do sistema e lembra a sua escolha).
@@ -48,4 +69,4 @@ O refinador é um arquivo comum: [`examples/agents/refinador-de-prompt.md`](../.
 ## O que os agentes fazem (e não fazem) hoje
 - O Codex roda num **sandbox somente leitura**. O Claude roda sem nenhuma ferramenta pré-aprovada, e no modo não interativo a CLI nega o resto.
   Na prática os agentes **leem e explicam, ainda não editam seus arquivos**. O acesso seguro de escrita (git worktrees, aprovações) está no [roadmap](../roadmap.md).
-- Excluir conversas, anexos/imagens e memória entre conversas ainda não existem.
+- Excluir conversas e anexos/imagens ainda não existem.

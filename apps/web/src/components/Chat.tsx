@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import type { StreamState } from '../lib/stream';
-import type { Approval, Message, ProviderInfo, RefinerInfo } from '../lib/types';
+import type { Approval, Message, ProviderInfo, RefinerInfo, SummarizeResult } from '../lib/types';
 import type { SendInput } from '../lib/api';
 import { Logo } from './Logo';
 import { Markdown } from './Markdown';
@@ -23,6 +23,10 @@ interface Props {
   onContinue: (runId: string, texto?: string) => void;
   onRetry: (runId: string, via: { provider: string; model?: string }) => void;
   onDiscard: (runId: string) => void;
+  /** The CLI that owns the conversation's native session (null while it has none). */
+  sessionProvider: string | null;
+  /** Writes the summary now (used to hand a conversation over to another provider). */
+  onSummarize: () => Promise<SummarizeResult | null>;
 }
 
 const MODELS = ['haiku', 'sonnet', 'opus'];
@@ -36,13 +40,15 @@ function Bubble({ papel, children }: { papel: Message['papel']; children: React.
   );
 }
 
-export function Chat({ hasSession, messages, stream, providers, busy, error, onSend, onCancel, refiner, approvals, streamStep, onContinue, onRetry, onDiscard }: Props) {
+export function Chat({ hasSession, messages, stream, providers, busy, error, onSend, onCancel, refiner, approvals, streamStep, onContinue, onRetry, onDiscard, sessionProvider, onSummarize }: Props) {
   const [text, setText] = useState('');
   const [provider, setProvider] = useState('claude-cli');
   const [model, setModel] = useState('');
   const [improve, setImprove] = useState(false);
   const [reviewFirst, setReviewFirst] = useState(false);
   const [refinerIdx, setRefinerIdx] = useState(0);
+  /** A message waiting for the user's decision about switching provider. */
+  const [switching, setSwitching] = useState<{ input: SendInput; working: boolean; problem: string | null } | null>(null);
   const refinerOptions = refiner ? [{ provedor: refiner.provedor, ...(refiner.modelo ? { modelo: refiner.modelo } : {}) }, ...refiner.fallback] : [];
   const endRef = useRef<HTMLDivElement>(null);
   const streaming = stream !== null && (stream.phase === 'running' || stream.phase === 'connecting');
@@ -58,13 +64,9 @@ export function Chat({ hasSession, messages, stream, providers, busy, error, onS
     if (!ok && first) setProvider(first.id);
   }, [providers, provider]);
 
-  const submit = async (e?: FormEvent) => {
-    e?.preventDefault();
-    const texto = text.trim();
-    if (!texto || busy || streaming || !hasSession) return;
-    setText('');
+  const buildInput = (texto: string): SendInput => {
     const chosen = refinerOptions[refinerIdx];
-    await onSend({
+    return {
       texto,
       provider,
       ...(model.trim() ? { model: model.trim() } : {}),
@@ -76,7 +78,34 @@ export function Chat({ hasSession, messages, stream, providers, busy, error, onS
             ...(refinerIdx > 0 && chosen ? { refinador: { provider: chosen.provedor, ...(chosen.modelo ? { model: chosen.modelo } : {}) } } : {}),
           }
         : {}),
-    });
+    };
+  };
+  const reallySend = async (input: SendInput) => {
+    setSwitching(null);
+    setText('');
+    await onSend(input);
+  };
+
+  const submit = async (e?: FormEvent) => {
+    e?.preventDefault();
+    const texto = text.trim();
+    if (!texto || busy || streaming || !hasSession || switching) return;
+    const input = buildInput(texto);
+    // The conversation's native CLI session does not follow a change of provider: say so before it happens.
+    if (sessionProvider && provider !== sessionProvider) {
+      setSwitching({ input, working: false, problem: null });
+      return;
+    }
+    await reallySend(input);
+  };
+
+  const summarizeAndSwitch = async () => {
+    if (!switching) return;
+    setSwitching({ ...switching, working: true, problem: null });
+    const r = await onSummarize();
+    // "Nothing new to summarize" is fine: the summary is already up to date.
+    if (r === null || r.ok || r.code === 'nothing_to_summarize') return reallySend(switching.input);
+    setSwitching({ input: switching.input, working: false, problem: r.error });
   };
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -115,6 +144,13 @@ export function Chat({ hasSession, messages, stream, providers, busy, error, onS
               />
             ) : (
               <RefinedPromptDone key={m.id} texto={m.conteudo} />
+            );
+          }
+          if (m.papel === 'sistema') {
+            return (
+              <p key={m.id} className="text-center text-xs text-muted">
+                {m.conteudo}
+              </p>
             );
           }
           return (
@@ -163,6 +199,36 @@ export function Chat({ hasSession, messages, stream, providers, busy, error, onS
           <p role="alert" className="mb-2 text-sm text-danger">
             {error}
           </p>
+        )}
+        {switching && (
+          <section role="alertdialog" aria-label="Troca de provedor" className="mb-2 rounded-lg border border-accent bg-raised p-3 text-sm">
+            <p className="font-semibold">
+              Trocar de {sessionProvider} para {provider}?
+            </p>
+            <p className="mt-1">
+              A sessão nativa do {sessionProvider} (o contexto interno da CLI: resultados de ferramentas, cache) <strong>não acompanha</strong> a troca, então
+              o {provider} começa do zero. O OWL envia a ele os fatos fixados, o resumo da conversa e as últimas mensagens.
+            </p>
+            <p className="mt-1 text-muted">
+              &quot;Resumir e trocar&quot; deixa esse resumo em dia antes. Sem resumir, vale o resumo que já existe (ou nenhum).
+            </p>
+            {switching.problem && (
+              <p role="alert" className="mt-1 text-danger">
+                Não consegui resumir: {switching.problem}
+              </p>
+            )}
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button type="button" disabled={switching.working} onClick={() => void summarizeAndSwitch()} className="rounded-lg bg-accent px-3 py-1.5 font-medium text-accent-fg disabled:opacity-50">
+                {switching.working ? 'Resumindo…' : 'Resumir e trocar'}
+              </button>
+              <button type="button" disabled={switching.working} onClick={() => void reallySend(switching.input)} className="rounded-lg border border-line px-3 py-1.5 hover:bg-panel disabled:opacity-50">
+                {switching.problem ? 'Trocar mesmo assim' : 'Trocar sem resumir'}
+              </button>
+              <button type="button" disabled={switching.working} onClick={() => setSwitching(null)} className="ml-auto rounded-lg border border-line px-3 py-1.5 hover:bg-panel disabled:opacity-50">
+                Cancelar
+              </button>
+            </div>
+          </section>
         )}
         <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
           <label className="flex items-center gap-1">
@@ -220,7 +286,7 @@ export function Chat({ hasSession, messages, stream, providers, busy, error, onS
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={onKeyDown}
-            disabled={!hasSession}
+            disabled={!hasSession || switching !== null}
             rows={2}
             placeholder="Enter envia · Shift+Enter quebra a linha"
             className="max-h-48 min-h-[2.75rem] flex-1 resize-y rounded-lg border border-line bg-raised px-3 py-2 disabled:opacity-50"

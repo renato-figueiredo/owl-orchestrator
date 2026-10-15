@@ -13,6 +13,8 @@
 | Cartão "Falha ao melhorar o prompt" | O refinador falhou (muitas vezes o limite de uso do Codex). Escolha **Tentar com haiku**, **Executar sem melhorar** ou **Descartar**. |
 | "…o refinador não devolveu nenhum texto" | O refinador respondeu vazio. Mesmas opções acima. |
 | "The server restarted since this step" (410) | Um cartão de revisão/falha estava esperando quando o servidor reiniciou; o estado dele ficava em memória. Envie o pedido de novo. |
+| "…o resumidor respondeu algo inválido; o resumo anterior foi mantido" | O modelo que escreve os resumos não devolveu o JSON esperado. Nada se perdeu. Tente **Resumir agora** de novo, ou escolha outro resumidor em *Configurações da memória*. |
+| O modelo ignora um fato | Só os fatos **fixados** são enviados, e uma conversa que retoma a mesma sessão da CLI só recebe os fatos criados depois da última mensagem. Fixe-o (Fixar) e envie de novo. |
 | A resposta para no meio ou termina com erro | Veja o run no painel à direita (status e mensagem). Cancele e tente de novo, ou use outro modelo. |
 | As conversas sumiram depois de mudar `OWL_DATA_DIR` | Você está olhando outro banco. Aponte `OWL_DATA_DIR` de volta, ou procure o arquivo antigo (`owl.sqlite`). |
 

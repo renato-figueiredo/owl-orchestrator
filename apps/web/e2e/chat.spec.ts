@@ -110,3 +110,41 @@ test('melhorar prompt without review chains both steps by itself', async ({ page
   await expect(page.getByRole('button', { name: 'Enviar' })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByLabel('Histórico de execuções').getByText('ok', { exact: true })).toHaveCount(2);
 });
+
+test('switching provider: warns, summarizes first, hands the summary over, and the memory tab shows it', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Nova conversa' }).click();
+  await page.getByLabel('Mensagem').fill('primeira conversa sobre o login');
+  await page.getByLabel('Mensagem').press('Enter');
+  await expect(page.getByRole('button', { name: 'Enviar' })).toBeVisible({ timeout: 15_000 });
+
+  // choose who writes the summaries (the plain fake CLIs would answer "ok", which is not valid JSON)
+  await page.getByRole('tab', { name: 'Memória' }).click();
+  await page.getByText('Configurações da memória').click();
+  await page.getByLabel('Resumidor', { exact: true }).selectOption('fake-summarizer');
+  await page.getByRole('button', { name: 'Salvar configurações' }).click();
+  await expect(page.getByRole('status')).toContainText('Configurações salvas.');
+
+  await page.getByLabel('Provedor').selectOption('codex-cli');
+  await page.getByLabel('Mensagem').fill('agora continue no outro provedor');
+  await page.getByLabel('Mensagem').press('Enter');
+  const notice = page.getByRole('alertdialog', { name: 'Troca de provedor' });
+  await expect(notice).toContainText('não acompanha');
+  await notice.getByRole('button', { name: 'Resumir e trocar' }).click();
+
+  await expect(notice).toBeHidden({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Enviar' })).toBeVisible({ timeout: 15_000 });
+
+  // the summary and the facts the summarizer proposed are on the memory tab
+  await expect(page.getByLabel('Resumo (editável)')).toHaveValue(/Resumo novo da conversa\./);
+  await expect(page.getByText('Usar pnpm no projeto')).toBeVisible();
+  // pin one: pinned facts are what gets sent from now on
+  await page.getByRole('checkbox', { name: 'Fixar: Usar pnpm no projeto' }).check();
+  await expect(page.getByRole('checkbox', { name: 'Fixar: Usar pnpm no projeto' })).toBeChecked();
+
+  // the summary run is listed (usage is transparent) next to both chat runs
+  await page.getByRole('tab', { name: 'Execução' }).click();
+  const history = page.getByLabel('Histórico de execuções');
+  await expect(history.getByText('resumo', { exact: true })).toBeVisible();
+  await expect(history.getByText('codex-cli')).toBeVisible();
+});

@@ -22,12 +22,13 @@ própria máquina**, com uma interface web local. Ele nunca lê, copia ou guarda
 - **Projetos**: cada um tem a própria pasta e instruções, e as conversas nunca vazam entre projetos.
 - **Melhorar prompt**: um agente refinador reescreve o seu pedido, você pode editar antes de rodar, e se o refinador falhar (por
   exemplo, o limite do Codex) o OWL pergunta qual modelo usar em vez de trocar em silêncio.
+- **Memória**: fatos fixados por projeto e um resumo incremental editável da conversa; trocar de provedor no meio avisa e entrega o resumo à nova CLI.
 - Painel de execução com as ferramentas usadas, tokens, custo (quando a CLI informa) e as etapas encadeadas de um pipeline.
 - Temas claro e escuro, navegação completa por teclado na lista de conversas.
 - Seguro por padrão: só loopback, proteção contra DNS rebinding e requisições entre sites, agentes confinados às pastas que você permitir.
 
 ## O que vem a seguir
-Memória em camadas e resumos · anexos e prints · lixeira e backup criptografado · agentes como arquivos, equipes e um quadro local
+Anexos e prints · lixeira e backup criptografado · agentes como arquivos, equipes e um quadro local
 estilo Linear com portões de aprovação · git worktree por agente · roteamento por custo · espelho opcional no Linear e Ollama.
 Detalhes no [roadmap](docs/roadmap.md).
 

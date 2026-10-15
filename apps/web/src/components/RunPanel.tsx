@@ -1,3 +1,4 @@
+import { useState, type ReactNode } from 'react';
 import { fmtCost, fmtTokens } from '../lib/format';
 import type { StreamState } from '../lib/stream';
 import type { Run } from '../lib/types';
@@ -14,7 +15,17 @@ const preview = (v: unknown) => {
   return s && s.length > 140 ? `${s.slice(0, 140)}…` : (s ?? '');
 };
 
-export function RunPanel({ runs, stream, open, onToggle }: { runs: Run[]; stream: StreamState | null; open: boolean; onToggle: () => void }) {
+interface PanelProps {
+  runs: Run[];
+  stream: StreamState | null;
+  open: boolean;
+  onToggle: () => void;
+  /** When given, the panel gets a second tab with this content. */
+  memory?: ReactNode;
+}
+
+export function RunPanel({ runs, stream, open, onToggle, memory }: PanelProps) {
+  const [tab, setTab] = useState<'run' | 'memory'>('run');
   const totalIn = runs.reduce((a, r) => a + (r.tokensIn ?? 0), 0);
   const totalOut = runs.reduce((a, r) => a + (r.tokensOut ?? 0), 0);
   const totalCost = runs.reduce((a, r) => a + (r.custoEstimado ?? 0), 0);
@@ -31,13 +42,36 @@ export function RunPanel({ runs, stream, open, onToggle }: { runs: Run[]; stream
   return (
     <aside aria-label="Execução" className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-line bg-panel">
       <div className="flex items-center justify-between border-b border-line p-3">
-        <h2 className="font-semibold">Execução</h2>
+        {memory ? (
+          <div role="tablist" aria-label="Painel lateral" className="flex gap-1">
+            {(['run', 'memory'] as const).map((t) => (
+              <button
+                key={t}
+                role="tab"
+                type="button"
+                aria-selected={tab === t}
+                onClick={() => setTab(t)}
+                className={`rounded px-2 py-1 text-sm font-semibold ${tab === t ? 'bg-raised ring-1 ring-line' : 'text-muted hover:text-fg'}`}
+              >
+                {t === 'run' ? 'Execução' : 'Memória'}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <h2 className="font-semibold">Execução</h2>
+        )}
         <button type="button" onClick={onToggle} aria-expanded aria-label="Recolher painel de execução" className="rounded px-2 py-1 text-muted hover:bg-raised hover:text-fg">
           ▸
         </button>
       </div>
 
-      {stream && (
+      {memory && tab === 'memory' ? (
+        <div role="tabpanel" aria-label="Memória">
+          {memory}
+        </div>
+      ) : null}
+
+      {stream && !(memory && tab === 'memory') && (
         <section className="border-b border-line p-3" aria-label="Execução atual">
           <p className="text-sm">
             Status: <strong>{{ connecting: 'conectando', running: 'rodando', ended: 'concluída', error: 'erro', cancelled: 'cancelada' }[stream.phase]}</strong>
@@ -70,6 +104,7 @@ export function RunPanel({ runs, stream, open, onToggle }: { runs: Run[]; stream
         </section>
       )}
 
+      {!(memory && tab === 'memory') && (
       <section className="p-3" aria-label="Histórico de execuções">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Execuções da conversa</h3>
         {runs.length === 0 ? (
@@ -97,6 +132,7 @@ export function RunPanel({ runs, stream, open, onToggle }: { runs: Run[]; stream
           </>
         )}
       </section>
+      )}
     </aside>
   );
 }

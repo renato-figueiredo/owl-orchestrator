@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Chat } from './components/Chat';
+import { MemoryPanel } from './components/MemoryPanel';
 import { RunPanel } from './components/RunPanel';
 import { Sidebar } from './components/Sidebar';
 import { api, type SendInput } from './lib/api';
-import type { Project, ProviderInfo, RefinerInfo, Session, SessionDetail } from './lib/types';
+import type { Fact, MemorySettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './lib/types';
 import { useRunStream } from './lib/useRunStream';
 import { useTheme } from './lib/useTheme';
 
@@ -19,6 +20,10 @@ export function App() {
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
+  const [facts, setFacts] = useState<Fact[]>([]);
+  const [memSettings, setMemSettings] = useState<MemorySettings | null>(null);
+  const [memBusy, setMemBusy] = useState(false);
+  const [memMessage, setMemMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,6 +42,7 @@ export function App() {
         setProviders(pr);
       })
       .then(() => api.refiner().then(setRefiner).catch(() => setRefiner(null))) // optional: chat works without it
+      .then(() => api.settings().then(setMemSettings).catch(() => setMemSettings(null)))
       .catch((e) => setError(message(e)));
   }, []);
 
@@ -57,6 +63,50 @@ export function App() {
       cancelled = true;
     };
   }, [selectedId, loadDetail]);
+
+  // Facts belong to the project of the open conversation (or to "no project").
+  const selectedSession = sessions.find((x) => x.id === selectedId) ?? null;
+  const factsScope = selectedSession?.projectId ?? null;
+  const loadFacts = useCallback(() => api.facts(factsScope).then(setFacts), [factsScope]);
+  useEffect(() => {
+    setMemMessage(null);
+    if (!selectedId) return setFacts([]);
+    void loadFacts().catch((e) => setError(message(e)));
+  }, [selectedId, loadFacts]);
+
+  /** Runs a memory action, then refreshes what it may have changed. */
+  const memAction = async (action: () => Promise<string | void>) => {
+    setMemBusy(true);
+    setMemMessage(null);
+    try {
+      const note = await action();
+      if (note) setMemMessage(note);
+      if (selectedId) await loadDetail(selectedId);
+      await loadFacts();
+    } catch (e) {
+      setMemMessage(message(e));
+    } finally {
+      setMemBusy(false);
+    }
+  };
+  const describe = (r: SummarizeResult): string =>
+    r.ok
+      ? `Resumo atualizado${r.fatosNovos ? ` e ${r.fatosNovos} fato(s) novo(s) para você revisar` : ''}.`
+      : r.code === 'nothing_to_summarize'
+        ? 'Não há mensagens novas para resumir.'
+        : r.code === 'invalid_output'
+          ? 'O resumidor respondeu algo inválido; o resumo anterior foi mantido.'
+          : `Não foi possível resumir: ${r.error}`;
+  /** Summarizes now; the result is also returned so a caller (the provider switch) can decide what to do. */
+  const summarizeNow = async (): Promise<SummarizeResult | null> => {
+    if (!selectedId) return null;
+    let result: SummarizeResult | null = null;
+    await memAction(async () => {
+      result = await api.summarize(selectedId);
+      return describe(result);
+    });
+    return result;
+  };
 
   const stream = useRunStream(activeRunId, () => {
     // The server stores the reply before it announces the end, so a reload now returns the final state.
@@ -154,8 +204,40 @@ export function App() {
         onContinue={(runId, texto) => void decide(() => api.continueRun(runId, texto))}
         onRetry={(runId, via) => void decide(() => api.retryRun(runId, via))}
         onDiscard={(runId) => void decide(() => api.discardRun(runId).then(() => undefined))}
+        sessionProvider={detail?.session.cliProvider ?? null}
+        onSummarize={summarizeNow}
       />
-      <RunPanel runs={detail?.runs ?? []} stream={liveStream} open={panelOpen} onToggle={() => setPanelOpen((v) => !v)} />
+      <RunPanel
+        runs={detail?.runs ?? []}
+        stream={liveStream}
+        open={panelOpen}
+        onToggle={() => setPanelOpen((v) => !v)}
+        memory={
+          <MemoryPanel
+            session={detail?.session ?? null}
+            scopeName={projects.find((x) => x.id === factsScope)?.nome ?? null}
+            facts={facts}
+            settings={memSettings}
+            providers={providers}
+            busy={memBusy}
+            message={memMessage}
+            onSaveSummary={(resumo) => selectedId && void memAction(async () => void (await api.saveSummary(selectedId, resumo)))}
+            onUndoSummary={() => selectedId && void memAction(async () => void (await api.undoSummary(selectedId)))}
+            onSummarize={() => void summarizeNow()}
+            onAddFact={(texto, fixado) => void memAction(async () => void (await api.addFact({ texto, fixado, ...(factsScope ? { projectId: factsScope } : {}) })))}
+            onUpdateFact={(id, changes) => {
+              // Optimistic: the toggle must not flicker back while the request is in flight. A failure reloads the truth.
+              setFacts((list) => list.map((f) => (f.id === id ? { ...f, ...changes } : f)));
+              void api.updateFact(id, changes).catch((e) => {
+                setMemMessage(message(e));
+                void loadFacts();
+              });
+            }}
+            onDeleteFact={(id) => void memAction(async () => void (await api.deleteFact(id)))}
+            onSaveSettings={(patch) => void memAction(async () => { setMemSettings(await api.saveSettings(patch)); return 'Configurações salvas.'; })}
+          />
+        }
+      />
     </div>
   );
 }

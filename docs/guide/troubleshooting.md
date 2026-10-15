@@ -13,6 +13,8 @@
 | "Falha ao melhorar o prompt" card | The refiner failed (often the Codex usage limit). Choose **Tentar com haiku**, **Executar sem melhorar**, or **Descartar**. |
 | "…o refinador não devolveu nenhum texto" | The refiner answered with nothing. Same options as above. |
 | "The server restarted since this step" (410) | A review/failure card was waiting when the server restarted; its state lived in memory. Send the request again. |
+| "…the summarizer answered invalid JSON; the previous summary was kept" | The model that writes summaries did not return the expected JSON. Nothing was lost. Try **Resumir agora** again, or pick another summarizer in *Configurações da memória*. |
+| The model ignores a fact | Only **pinned** facts are sent, and a conversation that resumes the same CLI session only gets facts created since its last message. Pin it (Fixar) and send again. |
 | The answer stops mid-way or ends with an error | Look at the run in the right panel (status and message). Cancel and retry, or try another model. |
 | Conversations vanished after changing `OWL_DATA_DIR` | You are looking at a different database. Point `OWL_DATA_DIR` back, or find the old file (`owl.sqlite`). |
 

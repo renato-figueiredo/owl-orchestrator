@@ -22,6 +22,8 @@ const fake = (id: string, scenario: string) => {
 registerAdapter(fake('claude-cli', 'text'));
 registerAdapter(fake('codex-cli', 'text'));
 registerAdapter(fake('fake-hang', 'hang'));
+// A summarizer that answers with valid JSON (the plain fake CLIs answer "ok", which is not a summary).
+registerAdapter(fake('fake-summarizer', 'summary-ok'));
 
 const dir = mkdtempSync(join(tmpdir(), 'owl-e2e-'));
 const db = openDb(join(dir, 'owl.sqlite'));

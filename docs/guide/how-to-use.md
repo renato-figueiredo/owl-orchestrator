@@ -41,6 +41,27 @@ real run. The refined prompt is what the main provider receives; your original m
 The refiner is an ordinary file: [`examples/agents/refinador-de-prompt.md`](../../examples/agents/refinador-de-prompt.md), and the flow is
 [`examples/pipelines/melhorar-e-executar.yaml`](../../examples/pipelines/melhorar-e-executar.yaml). Edit them and the next request uses the change (no restart).
 
+## Memory
+The right panel has two tabs: **Execução** and **Memória**.
+
+- **Resumo da conversa**: a short summary OWL keeps up to date (after every N messages, or when you press **Resumir agora**). You can edit it,
+  and **Desfazer** brings back the previous version. A summary that fails never replaces a good one.
+- **Fatos**: short statements that must hold from now on ("use pnpm", "answer in Portuguese"). They belong to the **project**, so every
+  conversation of the project shares them and no other project sees them. **Only pinned facts (Fixar) are sent to the model.** When the summarizer spots a
+  decision it proposes it as a fact, *not pinned*, for you to review.
+- **Configurações da memória**: how many recent messages (N), when to summarize, the context budget in tokens, automatic summaries, related snippets,
+  and who writes the summaries (default: Claude haiku, to spare a small Codex limit).
+
+When does the model receive the memory? When the CLI has **no session to resume**: a new conversation in a project, or after a provider switch. A
+conversation that keeps resuming the same CLI session only gets the *new* pinned facts.
+
+### Switching provider in the middle of a conversation
+Each CLI keeps its own internal session (tool results, cache). Changing from Claude to Codex (or back) **does not carry that over**, so OWL asks first:
+- **Resumir e trocar**: updates the summary, then sends. The new provider receives pinned facts, the summary and the last messages.
+- **Trocar sem resumir**: sends now, with whatever summary already exists.
+- **Cancelar**: nothing is sent and your text stays in the box.
+If the summary fails, OWL does not switch by itself: it tells you why and lets you choose.
+
 ## Keyboard and themes
 - In the session list: **↑ / ↓** move, **Enter** opens, **Tab** leaves the list.
 - The ☾ / ☀ button switches light and dark (it starts from your system setting and remembers your choice).
@@ -48,4 +69,4 @@ The refiner is an ordinary file: [`examples/agents/refinador-de-prompt.md`](../.
 ## What agents can and cannot do today
 - Codex runs in a **read-only sandbox**. Claude runs without any tool pre-approved, and in non-interactive mode the CLI denies the rest.
   In practice agents **read and explain, they do not edit your files yet**. Safe write access (git worktrees, approvals) is on the [roadmap](../roadmap.md).
-- Deleting conversations, attachments/images and memory across conversations are not available yet.
+- Deleting conversations and attachments/images are not available yet.

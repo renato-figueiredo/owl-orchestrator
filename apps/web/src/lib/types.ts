@@ -20,7 +20,29 @@ export interface Session {
   projectId: string | null;
   titulo: string | null;
   criadoEm: string;
+  /** The CLI that owns the conversation's native session (null until the first run finishes). */
+  cliProvider?: string | null;
+  resumo?: string | null;
+  resumoAnterior?: string | null;
+  resumoAteMessageId?: number | null;
 }
+export interface Fact {
+  id: string;
+  projectId: string | null;
+  texto: string;
+  fixado: boolean;
+}
+export interface MemorySettings {
+  ultimasN: number;
+  resumirACada: number;
+  orcamentoTokens: number;
+  resumoAutomatico: boolean;
+  trechosFts: boolean;
+  resumidor: { provider: string; model?: string };
+}
+export type SummarizeResult =
+  | { ok: true; runId: string; resumo: string; fatosNovos: number }
+  | { ok: false; runId?: string; error: string; code: 'nothing_to_summarize' | 'invalid_output' | 'run_failed' };
 export interface Message {
   id: number;
   sessionId: string;

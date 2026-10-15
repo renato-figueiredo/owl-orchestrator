@@ -9,7 +9,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [x] 04 Servidor Fastify + SSE + executor simples (`build/prompts/04`)
 - [x] 05 Interface de chat com stream (`build/prompts/05`)
 - [x] 06 Pipeline "melhorar prompt" (`build/prompts/06`)
-- [ ] 07 Memória em camadas + resumo incremental (`build/prompts/07`)
+- [x] 07 Memória em camadas + resumo incremental (`build/prompts/07`)
 - [ ] 08 Anexos/prints (`build/prompts/08`)
 - [ ] 09 Exclusão, lixeira, limpeza, backup (`build/prompts/09`)
 - [ ] 10 Servidor MCP de memória (`build/prompts/10`)
@@ -34,7 +34,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Pacote de vídeo (ffmpeg, Remotion)
 
 ## Pendências (atualizado em 2026-10-14)
-**Próximo passo:** revisão geral do M0 (feita em 2026-10-15), depois prompt 07 (memória). 
+**Próximo passo:** `qa-testes` e `revisor` no prompt 07; depois prompt 08 (anexos). 
 
 **Revisão**
 - [x] `qa-testes` e `revisor` nos prompts 02, 03 e 04 rodados em 2026-10-15; 3 bloqueantes corrigidos (NUL no adaptador, Host/Origin, raízes de pastas).
@@ -47,6 +47,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Decidir sobre o nome do bot de dependências: manter Dependabot (personalizando prefixo/labels) ou migrar para Renovate com um GitHub App próprio.
 
 **Interface**
+- [ ] Rodar `qa-testes` e `revisor` no prompt 07 (contexto, resumo, fatos, troca de provedor).
 - [x] `qa-testes` e `revisor` no prompt 06 rodados em 2026-10-15; 3 itens importantes corrigidos (saída vazia, slot de sessão, pausas órfãs).
 - [ ] Slot de sessão por (sessão, provedor) para alternar Claude/Codex sem perder o `--resume`.
 - [x] `qa-testes` e `revisor` no prompt 05 rodados em 2026-10-15 (E2E: `pnpm --filter @owl/web test:e2e`; precisa de `pnpm exec playwright install chromium` uma vez).

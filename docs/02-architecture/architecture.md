@@ -189,3 +189,29 @@ O prompt melhorado aparece na interface e pode ser editado antes de seguir (opci
 - Após "executar sem melhorar", o run `executar` não tem `parent_run_id` (a etapa que falhou não o alimentou).
 - Agente `ferramentas:` chega ao CLI como `allowedTools`; lista vazia = padrão do adaptador (no `claude -p` o não aprovado é negado).
 - `??` dentro de literal de string não separa operandos. A UI segue só o run **filho** do que terminou (duas abas não se atrapalham).
+
+## Decisões (prompt 07, memória em camadas e resumo)
+- **`montarContexto`** (`packages/core/src/memory/context.ts`, puro): camadas fatos fixados → resumo → últimas N mensagens → trechos FTS, cada
+  uma pegando o que cabe no que sobrou. O total é medido em **caracteres (4 por token)** e **nunca passa do orçamento** (teste de propriedade com 3000
+  casos aleatórios + varredura de orçamentos; verificado quebrando de propósito a conta). Com pouco espaço, as mensagens **mais novas** vencem;
+  o resumo grande é cortado, não descartado; orçamento menor que a moldura devolve vazio.
+- **Quando entra:** sem `--resume` (conversa nova num projeto com fatos, ou troca de provedor) o bloco vai antes do pedido. Com `--resume` só
+  vão os **fatos fixados criados depois do início do run anterior** (`criado_em > inicio`, resolução de 1 s: um fato criado no mesmo segundo do
+  run conta como já visto). Etapas de agente (refinador) e o resumidor **não recebem memória**.
+- **Fatos por projeto** (`facts.project_id`); conversa sem projeto tem os seus próprios ("sem projeto"). Nada cruza projetos. Só os **fixados** são
+  enviados; os que o resumidor propõe entram **não fixados** para o usuário revisar. Duplicata (texto igual, sem diferenciar maiúsculas) não entra.
+- **Trechos FTS:** busca por *qualquer* das 6 palavras mais longas do pedido e só entra a mensagem em que **ao menos 2** aparecem (uma palavra comum é
+  coincidência). Escopo: o projeto; sem projeto, só a própria conversa. Exclui o que já está nas últimas N e o turno atual.
+- **Resumo incremental** (`apps/server/src/memory.ts`): envia o resumo anterior + **só** as mensagens depois de `resumo_ate_message_id` (apenas
+  papéis de conversa, teto de 60 mil caracteres por chamada). Resposta JSON validada com zod (tolera cerca de código e texto em volta; limites de
+  tamanho). **JSON inválido, falha ou limite não tocam em nada**: resumo, marcador e fatos ficam como estavam e uma nota de sistema avisa.
+  Roda como um `run` (etapa `resumo`, sem estado de sessão, em pasta vazia fora de qualquer projeto), então o uso aparece no painel.
+  Automático a cada X mensagens (após o run, nunca em loop) ou por pedido (`POST /sessions/:id/summarize`).
+- **Resumidor padrão: Claude haiku** (roda com frequência e esgotaria o limite baixo do Codex); configurável. Pendências do resumo ficam no texto.
+- **Resumo editável com desfazer:** editar/resumir guarda a versão anterior; desfazer troca as duas (refazer = desfazer de novo). O marcador não anda.
+- **Configurações** (`settings`, migração 0002, `GET/PUT /settings`): N, X, orçamento, resumo automático, trechos, resumidor. `PUT` é parcial (não aplica
+  defaults aos campos ausentes); valor salvo inválido volta aos padrões em vez de quebrar.
+- **Troca de provedor no meio da conversa (interface):** avisa que a sessão nativa da CLI **não acompanha** e o que segue (fatos fixados, resumo,
+  últimas mensagens), com **Resumir e trocar** (resume e só então envia; falha do resumo não troca sozinha), **Trocar sem resumir** e **Cancelar**.
+- Teste real (2026-10-15): haiku resumiu 2 mensagens em JSON válido e propôs 3 fatos; o Codex, sem `--resume`, respondeu corretamente sobre o app.
+- **Limitação:** o aviso só considera o provedor da sessão (slot único); alternar de volta não retoma a sessão nativa anterior.
