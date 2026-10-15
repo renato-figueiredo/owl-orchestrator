@@ -1,8 +1,10 @@
 import { applyFilters, FilterBar, LabelChip, NO_FILTER, OrganizePanel, type Filters } from './BoardExtras';
 import { DndContext, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { LayoutGroup, ListAnimated, motion, Pulse, useMotionPreference } from '@owl/ui';
 import { api } from '../lib/api';
 import { fmtCost, fmtTokens } from '../lib/format';
+import { Logo } from './Logo';
 import { ProjectSwitcher } from './ProjectSwitcher';
 import { TICKET_STATUSES, type BoardData, type BranchInfo, type GateKind, type Project, type Ticket, type TicketApproval, type TicketDetail, type TicketStatus } from '../lib/types';
 
@@ -230,11 +232,18 @@ export function Board({ project, onClose, projects, onSwitch, onOpenProject, pol
 
       <DndContext sensors={sensors} onDragStart={() => (dragging.current = true)} onDragCancel={() => (dragging.current = false)} onDragEnd={onDragEnd}>
         <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4" role="list" aria-label="Colunas">
-          {!data && <p className="text-sm text-muted">Carregando…</p>}
-          {data &&
-            TICKET_STATUSES.map((s) => (
-              <Column key={s} status={s} tickets={byStatus.get(s) ?? []} titles={titles} onOpen={setOpenId} />
-            ))}
+          {!data && (
+            <p className="flex items-center gap-2 text-sm text-muted">
+              <Logo size={24} blink /> Carregando…
+            </p>
+          )}
+          {data && (
+            <LayoutGroup>
+              {TICKET_STATUSES.map((s) => (
+                <Column key={s} status={s} tickets={byStatus.get(s) ?? []} titles={titles} onOpen={setOpenId} />
+              ))}
+            </LayoutGroup>
+          )}
         </div>
       </DndContext>
 
@@ -278,15 +287,22 @@ function Column({ status, tickets, titles, onOpen }: { status: TicketStatus; tic
 function Card({ ticket: t, parent, onOpen }: { ticket: Ticket; parent: Ticket | undefined; onOpen: () => void }) {
   const drag = useDraggable({ id: t.id });
   const drop = useDroppable({ id: t.id });
+  const { reduced } = useMotionPreference();
   const style = drag.transform ? { transform: `translate3d(${drag.transform.x}px, ${drag.transform.y}px, 0)` } : undefined;
+  // The <li> carries Motion's shared-layout travel between columns (layoutId); the inner box carries dnd-kit's drag
+  // transform, so the two never fight over the same `transform`. Reduced motion: the card just appears in place.
   return (
-    <li
+    <motion.li
+      {...(reduced ? { layout: false } : { layoutId: t.id, layout: 'position' as const })}
+      transition={{ type: 'spring', stiffness: 500, damping: 40, mass: 0.8 }}
+    >
+    <div
       ref={(n) => {
         drag.setNodeRef(n);
         drop.setNodeRef(n);
       }}
       style={style}
-      className={`rounded border bg-raised text-sm ${drop.isOver ? 'border-accent' : 'border-line'} ${drag.isDragging ? 'z-10 opacity-80 shadow-lg' : ''}`}
+      className={`rounded border bg-raised text-sm ${drop.isOver ? 'border-accent' : 'border-line'} ${drag.isDragging ? 'relative z-10 opacity-80 shadow-lg' : ''}`}
     >
       <button type="button" onClick={onOpen} {...drag.attributes} {...drag.listeners} aria-label={`${t.identificador}: ${t.titulo}`} className="block w-full cursor-grab p-2 text-left">
         <span className="flex items-center justify-between text-xs text-muted">
@@ -310,7 +326,8 @@ function Card({ ticket: t, parent, onOpen }: { ticket: Ticket; parent: Ticket | 
           {t.uso && t.uso.runs > 0 && <span>{fmtTokens(t.uso.tokensIn + t.uso.tokensOut)} tokens</span>}
         </span>
       </button>
-    </li>
+    </div>
+    </motion.li>
   );
 }
 
@@ -318,7 +335,7 @@ function Card({ ticket: t, parent, onOpen }: { ticket: Ticket; parent: Ticket | 
 function Gate({ approval: a, busy, onDecide, onOpen }: { approval: TicketApproval; busy: boolean; onDecide: (d: 'aprovado' | 'rejeitado', comentario?: string) => Promise<unknown>; onOpen?: () => void }) {
   const [text, setText] = useState('');
   return (
-    <div className="rounded border border-line bg-raised p-2 text-sm">
+    <Pulse className="rounded border border-line bg-raised p-2 text-sm">
       <p className="flex flex-wrap items-baseline gap-2">
         {a.ticketIdentificador && (
           <button type="button" onClick={onOpen} className="font-medium underline">
@@ -340,7 +357,7 @@ function Gate({ approval: a, busy, onDecide, onOpen }: { approval: TicketApprova
           Rejeitar
         </button>
       </div>
-    </div>
+    </Pulse>
   );
 }
 
@@ -459,7 +476,7 @@ function TicketPanel({ ticketId, busy, onClose, onOpen, act, version }: { ticket
         <div className="space-y-3">
           <div>
             <h3 className="font-semibold">Comentários</h3>
-            <ul className="mt-1 space-y-2">
+            <ListAnimated className="mt-1 space-y-2">
               {d.comments.length === 0 && <li className="text-muted">Nenhum comentário.</li>}
               {d.comments.map((c) => (
                 <li key={c.id} className="rounded border border-line bg-raised p-2">
@@ -470,7 +487,7 @@ function TicketPanel({ ticketId, busy, onClose, onOpen, act, version }: { ticket
                   <p className="whitespace-pre-wrap break-words">{c.texto}</p>
                 </li>
               ))}
-            </ul>
+            </ListAnimated>
             <form
               className="mt-2 flex gap-2"
               onSubmit={(e) => {

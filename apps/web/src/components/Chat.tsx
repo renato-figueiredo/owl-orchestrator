@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 import type { StreamState } from '../lib/stream';
 import type { Approval, Message, ProviderInfo, RefinerInfo, SummarizeResult } from '../lib/types';
 import type { SendInput } from '../lib/api';
+import { FadeIn, StreamCaret } from '@owl/ui';
 import { Logo } from './Logo';
 import { Markdown } from './Markdown';
 import { PendingStrip, Thumbs, useComposerImages, ACCEPTED } from './Attachments';
@@ -123,16 +124,16 @@ export function Chat({ hasSession, messages, stream, providers, busy, error, onS
     <section aria-label="Conversa" className="flex min-w-0 flex-1 flex-col">
       <div role="log" aria-live="polite" aria-relevant="additions text" className="flex-1 space-y-4 overflow-y-auto p-4">
         {!hasSession && (
-          <div className="mt-24 flex flex-col items-center gap-3 text-muted">
+          <FadeIn className="mt-24 flex flex-col items-center gap-3 text-muted">
             <Logo size={56} blink />
             <p>Crie ou escolha uma conversa para começar.</p>
-          </div>
+          </FadeIn>
         )}
         {hasSession && messages.length === 0 && !stream && (
-          <div className="mt-24 flex flex-col items-center gap-3 text-muted">
+          <FadeIn className="mt-24 flex flex-col items-center gap-3 text-muted">
             <Logo size={56} blink />
             <p>Escreva a primeira mensagem abaixo.</p>
-          </div>
+          </FadeIn>
         )}
         {messages.map((m) => {
           if (m.papel === 'agente') {
@@ -186,7 +187,7 @@ export function Chat({ hasSession, messages, stream, providers, busy, error, onS
               </div>
             ) : streaming ? (
               <span className="flex items-center gap-2 text-muted">
-                <Logo size={20} blink /> {streamStep === 'melhorar' ? 'Melhorando o prompt…' : 'Pensando…'}
+                <Logo size={20} blink /> {streamStep === 'melhorar' ? 'Melhorando o prompt…' : 'Pensando…'}<StreamCaret />
               </span>
             ) : null}
             {stream.phase === 'cancelled' && <p className="mt-2 text-sm text-muted">Execução cancelada.</p>}

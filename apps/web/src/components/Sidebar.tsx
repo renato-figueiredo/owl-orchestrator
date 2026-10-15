@@ -1,5 +1,6 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import type { Project, Session } from '../lib/types';
+import { ListAnimated } from '@owl/ui';
 import { Logo } from './Logo';
 import { StorageSettings } from './StorageSettings';
 import { TrashPanel } from './TrashPanel';
@@ -132,7 +133,7 @@ export function Sidebar({ projects, sessions, selectedId, onSelect, onNewSession
                   </span>
                 )}
               </div>
-              <ul className="mt-1 space-y-0.5">
+              <ListAnimated className="mt-1 space-y-0.5">
                 {g.items.length === 0 && <li className="px-2 py-1 text-sm text-muted">Nenhuma conversa</li>}
                 {g.items.map((s) => (
                   <li key={s.id} className="group relative">
@@ -156,7 +157,7 @@ export function Sidebar({ projects, sessions, selectedId, onSelect, onNewSession
                     </button>
                   </li>
                 ))}
-              </ul>
+              </ListAnimated>
             </div>
           ),
         )}
