@@ -23,7 +23,7 @@
 - Testes com **CLIs falsas** (scripts que imprimem JSONL de exemplo) cobrindo texto, ferramenta, fim, erro e cancelamento.
 - Nenhum uso de shell; argumentos sempre em array.
 - Nenhuma leitura de arquivos de credencial das CLIs.
-- Script manual `pnpm --filter core try "olá"` roda um prompt real com cada CLI disponível.
+- Script manual `pnpm --filter @owl/core try "olá"` roda um prompt real com cada CLI disponível.
 
 ## Não fazer
 - Chamar APIs HTTP dos provedores diretamente.

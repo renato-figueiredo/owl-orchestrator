@@ -25,15 +25,17 @@ export type RunEvent =
   | { type: 'start'; runId: string; provider: string; model?: string }
   | { type: 'text'; delta: string }
   | { type: 'tool'; name: string; input?: unknown }
-  | { type: 'usage'; inputTokens?: number; outputTokens?: number }
+  | { type: 'usage'; inputTokens?: number; outputTokens?: number; costUsd?: number }
   | { type: 'end'; result?: string; cliSessionId?: string }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | { type: 'cancelled' };
 
 export interface RunRequest {
   prompt: string;
   cwd: string;                 // pasta de trabalho
   systemAppend?: string;       // instruções do agente
   allowedTools?: string[];
+  runId?: string; model?: string;
   resumeSessionId?: string;    // continuidade nativa da CLI
   mcpConfigPath?: string;
   images?: string[];           // caminhos de arquivos
@@ -81,3 +83,26 @@ O prompt melhorado aparece na interface e pode ser editado antes de seguir (opci
 - Painel da execução: texto em stream, ferramentas usadas, tokens por etapa.
 - Colar (Ctrl+V) ou arrastar prints, com miniatura.
 - Tema claro/escuro.
+
+## Decisões (prompt 03, verificadas com o `claude` 2.1.300 real)
+- **Isolamento é obrigatório por padrão.** `claude -p` herda MCPs, skills e plugins globais do usuário. Num "diga ok"
+  medido: **~540.000 tokens de entrada em cache sem isolamento vs ~3.000 com** `--strict-mcp-config --disable-slash-commands
+  --setting-sources ""`. O adaptador isola sempre (`isolate: true`); só o MCP passado em `mcpConfigPath` é carregado.
+- **Prompt por stdin, nunca em argv.** Evita que texto do usuário vire flag (`--dangerously-skip-permissions`...), limites de
+  tamanho de argv e exposição em `ps`. Valores de opções são validados (não começam com `-`; session id deve ser UUID).
+- **Erro de API chega como `result` com `is_error: true` e `subtype: "success"`.** O parser usa `is_error`, não o subtype.
+- **Contrato de eventos:** um `start`, eventos de progresso, **exatamente um** terminal (`end` | `error` | `cancelled`).
+  O adaptador nunca lança por falha da CLI (binário ausente, crash, saída sem `result` viram `error`).
+- **Cancelamento:** `AbortSignal` → SIGTERM, e SIGKILL após `killGraceMs` (padrão 2 s). Parar a iteração cedo também mata o processo.
+  Medido no real: processo encerrado 0,7 s após o abort, sem órfãos.
+- **Texto:** vem dos `text_delta` (`--include-partial-messages`); o texto dos eventos `assistant` só entra se não houve deltas.
+- **Modo de autenticação (`authMode`)**: `subscription` (padrão) remove `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN`
+  (e `OPENAI_API_KEY`/`CODEX_API_KEY` no Codex) do ambiente do filho para usar o login da própria CLI; `inherit` repassa tudo.
+  O OWL nunca lê o valor dessas variáveis nem arquivos de credencial.
+- **`resumeSessionId`** → `--resume=<uuid>` (testado no real: mantém o mesmo session id e o contexto).
+- **Imagens** ainda não são suportadas pelo adaptador (prompt 08); pedir imagens gera `error`, não flag inventada.
+- **Codex: somente texto, flags NÃO verificadas** (a CLI não está instalada aqui). Usa `codex exec -` com o prompt em stdin.
+  JSON, imagens e resume ficam para quando a CLI estiver instalada e a saída real puder virar fixture.
+- Testes usam CLIs falsas (`packages/core/test/fake-cli.mjs`) e fixtures **reais sanitizadas** (`test/fixtures/`).
+- Teste manual: `pnpm --filter @owl/core try "olá" [--model haiku] [--only claude-cli] [--resume <id>]`
+  (use `-- "<prompt>"` se o prompt começar com `-`).

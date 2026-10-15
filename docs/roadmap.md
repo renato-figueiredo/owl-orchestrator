@@ -5,7 +5,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 ## Fase 1 — Núcleo
 - [x] 01 Setup do monorepo, licença, CONTRIBUTING, CI básico (`build/prompts/01`)
 - [x] 02 Banco: conexão, migrações, schema (`build/prompts/02`)
-- [ ] 03 Adaptadores `claude-cli` e `codex-cli` (`build/prompts/03`)
+- [x] 03 Adaptadores `claude-cli` e `codex-cli` (Codex só texto, não verificado — ver architecture.md) (`build/prompts/03`)
 - [ ] 04 Servidor Fastify + SSE + executor simples (`build/prompts/04`)
 - [ ] 05 Interface de chat com stream (`build/prompts/05`)
 - [ ] 06 Pipeline "melhorar prompt" (`build/prompts/06`)
