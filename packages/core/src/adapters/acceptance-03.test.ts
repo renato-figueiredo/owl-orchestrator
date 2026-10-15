@@ -305,7 +305,8 @@ describe('static guarantees on production sources', () => {
     for (const f of readdirSync(d)) {
       const p = join(d, f);
       if (statSync(p).isDirectory()) walk(p);
-      else if (p.endsWith('.ts') && !p.endsWith('.test.ts')) files.push(p);
+      // The Ollama adapter is the one place that uses HTTP, on purpose: its own test below pins what it may reach.
+      else if (p.endsWith('.ts') && !p.endsWith('.test.ts') && !p.endsWith('ollama.ts')) files.push(p);
     }
   };
   walk(SRC);
@@ -324,6 +325,12 @@ describe('static guarantees on production sources', () => {
     expect(code).not.toMatch(/readFile|readFileSync|createReadStream/);
     expect(code).not.toMatch(/\.credentials|auth\.json|\.codex|\.claude|keychain/i);
     expect(code).not.toMatch(/\bfetch\(|https?:\/\/|from 'node:https?'|axios/);
+  });
+
+  it('the Ollama adapter only reaches the configured local server and reads no credentials', () => {
+    const own = readFileSync(join(SRC, 'adapters', 'ollama.ts'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect([...own.matchAll(/https?:\/\/[^\s'"`)]+/g)].map((m) => m[0])).toEqual(['http://127.0.0.1:11434']);
+    expect(own).not.toMatch(/readFile|\.credentials|auth\.json|\.codex|\.claude|keychain|authorization/i);
   });
 
   it('does not use trademarked names in package identifiers', () => {

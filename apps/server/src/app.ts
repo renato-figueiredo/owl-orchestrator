@@ -9,6 +9,7 @@ import { z, ZodError } from 'zod';
 import { registerAuth, type SessionAuth } from './auth.js';
 import { BoardFlow } from './board-flow.js';
 import { registerBoardRoutes } from './board-routes.js';
+import type { LocalModels } from './local-models.js';
 import { RouterService } from './router.js';
 import { registerRouterRoutes } from './router-routes.js';
 import { BackupService, backupSettingsPatchSchema } from './backup.js';
@@ -51,6 +52,8 @@ export interface AppDeps {
   backup?: BackupService;
   /** How to start the memory MCP server. Without it the "memory tools" option has no effect. */
   mcpMemory?: McpMemoryLaunch;
+  /** Last known state of the local model server; lets the router send `pequeno` steps to it. Without it the router never does. */
+  localModels?: LocalModels;
   /** When set, every route but /health and /auth/* needs a paired browser session (see `SessionAuth`). */
   auth?: SessionAuth;
 }
@@ -146,7 +149,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   const runner = new PipelineRunner({ repos, executor, library });
   const board = new LocalBoard(repos);
   const worktrees = new WorktreeService({ repos, dir: deps.worktreesDir ?? mkdtempSync(join(tmpdir(), 'owl-worktrees-')) });
-  const router = new RouterService({ repos });
+  const router = new RouterService({ repos, ...(deps.localModels ? { local: deps.localModels } : {}) });
   const flow = new BoardFlow({
     repos,
     router,

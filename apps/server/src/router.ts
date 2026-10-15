@@ -1,6 +1,7 @@
-import { DEFAULT_ROUTER, routerConfigSchema, tierTargetSchema, type RouterConfig, type Tier } from '@owl/core';
+import { DEFAULT_ROUTER, localPequenoSchema, routerConfigSchema, tierTargetSchema, type RouterConfig, type Tier } from '@owl/core';
 import type { createRepos } from '@owl/db';
 import { z } from 'zod';
+import type { LocalModels } from './local-models.js';
 
 type Repos = ReturnType<typeof createRepos>;
 
@@ -14,6 +15,7 @@ const IN_FLIGHT_TOKENS = 4000;
 const target = tierTargetSchema;
 export const routerPatchSchema = z.strictObject({
   tiers: z.strictObject({ pequeno: target.optional(), medio: target.optional(), forte: target.optional() }).optional(),
+  localPequeno: localPequenoSchema.optional(),
   limiarConfianca: z.number().min(0).max(1).optional(),
   orcamentoDiaTokens: z.number().int().min(1).max(10_000_000_000).nullable().optional(),
 });
@@ -33,7 +35,7 @@ const localDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).pad
 
 /** Router settings (tiers, confidence threshold, daily budget) and the daily budget's bookkeeping. */
 export class RouterService {
-  constructor(private readonly deps: { repos: Repos }) {}
+  constructor(private readonly deps: { repos: Repos; local?: LocalModels }) {}
 
   settings(): RouterConfig {
     const stored = this.deps.repos.settings.get(KEY);
@@ -51,6 +53,7 @@ export class RouterService {
         medio: pick(tierTargetSchema, tiers.medio, DEFAULT_ROUTER.tiers.medio),
         forte: pick(tierTargetSchema, tiers.forte, DEFAULT_ROUTER.tiers.forte),
       },
+      localPequeno: pick(localPequenoSchema, s.localPequeno, DEFAULT_ROUTER.localPequeno),
       limiarConfianca: pick(routerConfigSchema.shape.limiarConfianca, s.limiarConfianca, DEFAULT_ROUTER.limiarConfianca),
       orcamentoDiaTokens: 'orcamentoDiaTokens' in s ? pick(routerConfigSchema.shape.orcamentoDiaTokens, s.orcamentoDiaTokens, DEFAULT_ROUTER.orcamentoDiaTokens) : DEFAULT_ROUTER.orcamentoDiaTokens,
     };
@@ -60,6 +63,7 @@ export class RouterService {
     const cur = this.settings();
     const next = routerConfigSchema.parse({
       ...cur,
+      ...(patch.localPequeno !== undefined ? { localPequeno: patch.localPequeno } : {}),
       ...(patch.limiarConfianca !== undefined ? { limiarConfianca: patch.limiarConfianca } : {}),
       ...(patch.orcamentoDiaTokens !== undefined ? { orcamentoDiaTokens: patch.orcamentoDiaTokens } : {}),
       tiers: { ...cur.tiers, ...(patch.tiers ?? {}) },
@@ -68,9 +72,27 @@ export class RouterService {
     return next;
   }
 
-  /** Provider and model of a tier. */
-  target(tier: Tier) {
-    return this.settings().tiers[tier];
+  /**
+   * Provider and model of a tier. `pequeno` goes to the local model (Ollama) when it is switched on, answered at the last
+   * check and has a model, but only for steps that need no tools (Ollama cannot use any): otherwise the configured target.
+   */
+  target(tier: Tier, step: { semFerramentas?: boolean } = {}): { provedor: string; modelo?: string | undefined } {
+    const s = this.settings();
+    if (tier === 'pequeno' && step.semFerramentas && s.localPequeno.ativo) {
+      const modelo = this.deps.local?.pick(s.localPequeno.modelo);
+      if (modelo) return { provedor: 'ollama', modelo };
+    }
+    return s.tiers[tier];
+  }
+
+  /** Asks the local model server again now (the settings screen does, so it never shows a stale state). */
+  async refreshLocal(): Promise<void> {
+    await this.deps.local?.refresh();
+  }
+
+  /** What the settings screen shows about the local model. */
+  localStatus() {
+    return this.deps.local?.snapshot() ?? { disponivel: false, modelos: [] as string[] };
   }
 
   /** How many times the work on this ticket came back: rejected deliveries and confirmed or contested reproofs. */

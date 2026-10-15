@@ -1,5 +1,6 @@
 import { createClaudeCliAdapter } from './adapters/claude-cli.js';
 import { createCodexCliAdapter } from './adapters/codex-cli.js';
+import { createOllamaAdapter } from './adapters/ollama.js';
 import { childEnv } from './process.js';
 import type { ProviderAdapter } from './types.js';
 
@@ -23,3 +24,14 @@ export function listAdapters(): ProviderAdapter[] {
 const passthrough = (process.env.OWL_ENV_PASSTHROUGH ?? '').split(',').map((x) => x.trim()).filter(Boolean);
 registerAdapter(createClaudeCliAdapter({ env: childEnv(process.env, passthrough) }));
 registerAdapter(createCodexCliAdapter({ env: childEnv(process.env, passthrough) }));
+// Ollama is optional and runs outside this repository: without it the adapter just reports "unavailable".
+try {
+  registerAdapter(
+    createOllamaAdapter({
+      ...(process.env.OLLAMA_MODEL ? { defaultModel: process.env.OLLAMA_MODEL } : {}),
+      allowRemote: process.env.OWL_OLLAMA_ALLOW_REMOTE === '1',
+    }),
+  );
+} catch (e) {
+  console.warn(`ollama adapter disabled: ${e instanceof Error ? e.message : String(e)}`);
+}

@@ -24,7 +24,10 @@ function localMidnight(date: string, plusDays = 0): string {
 export function registerRouterRoutes(app: FastifyInstance, deps: { repos: Repos; router: RouterService }): void {
   const { repos, router } = deps;
 
-  app.get('/router', async () => ({ router: router.settings(), dia: router.dayUsage() }));
+  app.get('/router', async () => {
+    await router.refreshLocal();
+    return { router: router.settings(), dia: router.dayUsage(), local: router.localStatus() };
+  });
 
   app.put('/router', async (req) => {
     const patch = routerPatchSchema.parse(req.body);
@@ -34,7 +37,9 @@ export function registerRouterRoutes(app: FastifyInstance, deps: { repos: Repos;
       // Same shape the CLI adapters accept, so a bad model fails here and not at the first run.
       if (t?.modelo && !/^[\w.:/[\]@-]+$/.test(t.modelo)) throw new BoardError(400, 'invalid_model', `Invalid model for tier ${tier}`);
     }
-    return { router: router.save(patch), dia: router.dayUsage() };
+    const saved = router.save(patch);
+    await router.refreshLocal();
+    return { router: saved, dia: router.dayUsage(), local: router.localStatus() };
   });
 
   /** Cost, success and rework from the stored runs, optionally of one project and of a range of local days (both ends included). */

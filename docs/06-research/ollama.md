@@ -19,6 +19,13 @@ NVIDIA users: use the default image with the NVIDIA container toolkit. Always pu
 - 16 GB VRAM: 7–8B models run fully on GPU at interactive speed; ~14B quantized also fits.
 - Start small, measure, then add. Keep models in a folder outside the repo.
 
-## Integration
+## Integration (prompt 18, implemented)
+- Adapter `ollama` (`packages/core/src/adapters/ollama.ts`): `POST /api/chat` with streamed JSON lines → `text`, `usage` (prompt/eval counts), `end`. Text only and one turn per run: no sessions (`resumeSessionId` ignored, OWL's memory layer carries context), no tools (`allowedTools` ignored), images refused. Cancelling aborts the HTTP request.
+- **Thinking is off by default** (`think: false`); a model that rejects the field is retried without it. Reasoning text is never shown as the answer.
+- Safety: the URL (`OLLAMA_URL`) must be loopback unless `OWL_OLLAMA_ALLOW_REMOTE=1` (prompts would leave the machine), http(s) only, no credentials in the URL. Model names are validated like the CLI adapters'. `OLLAMA_MODEL` is the default model.
+- Without Ollama the adapter reports `available: false` and everything else works unchanged.
+- Router: with `localPequeno.ativo` (default on) the tier `pequeno` goes to Ollama when the last check (startup, every 30 s, and when the settings screen opens) found it up with a model, **only for steps without tools** (the classifier, tool-less agents). Steps with tools keep the tier's configured provider. The model is the one chosen in the settings if installed, else `OLLAMA_MODEL`, else the first installed. If Ollama dies between checks the run fails; a failed classifier means confidence 0, so a person decides.
+
+## Original plan
 - Adapter `ollama` implementing `ProviderAdapter` over the local HTTP API (see `build/prompts/18-ollama.md`).
 - Router tier `pequeno` prefers Ollama when reachable; falls back to a small hosted model otherwise.

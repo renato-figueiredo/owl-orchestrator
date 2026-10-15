@@ -46,6 +46,8 @@ Nada disso decidiu → ambíguo.
 
 **Confiança baixa → portão `confianca`.** Abaixo do limiar (padrão 60%, configurável) o ticket espera. Aprovar roda o passo no tier proposto, sem perguntar ao modelo de novo; rejeitar não roda nada.
 
+**Modelo local (prompt 18).** O tier `pequeno` usa o Ollama quando ele está no ar (`localPequeno.ativo`, padrão ligado) e o passo não usa ferramentas; senão, o provedor configurado. Detalhes em `docs/06-research/ollama.md`.
+
 **Tiers.** `pequeno`, `medio`, `forte` apontam para `{provedor, modelo}`; padrão `claude-cli` com `haiku`, `sonnet`, `opus`. Edite na tela *Métricas e roteador* ou por `PUT /router`.
 
 **Escalonamento.** Cada entrega rejeitada ou reprovação do revisor no ticket sobe um tier no retrabalho (`pequeno` → `medio` → `forte`; o `forte` fica no `forte`, e cada reprovação já pede uma pessoa). A decisão fica em `runs.tier`, `runs.complexidade` e `runs.roteamento_json` (`origem`: regra, modelo, escalonamento ou manual; motivo; confiança; falhas) e num evento `roteamento` do ticket.

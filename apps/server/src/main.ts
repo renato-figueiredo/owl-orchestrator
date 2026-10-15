@@ -1,7 +1,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { LocalBoard } from '@owl/board';
-import { loadConfig } from '@owl/core';
+import { listAdapters, loadConfig, type OllamaAdapter } from '@owl/core';
 import { memoryServerLaunch } from '@owl/mcp-memory';
 import { createRepos, migrate, openDb } from '@owl/db';
 import { buildApp } from './app.js';
@@ -9,6 +9,7 @@ import { SessionAuth } from './auth.js';
 import { BackupService } from './backup.js';
 import { CleanupService } from './cleanup.js';
 import { Executor } from './executor.js';
+import { LocalModels } from './local-models.js';
 
 const config = loadConfig();
 mkdirSync(config.dataDir, { recursive: true });
@@ -32,8 +33,13 @@ const backup = new BackupService({
   remote: config.backupRcloneRemote,
 });
 const auth = new SessionAuth();
+// Optional local model server: when Ollama is not running this stays "unavailable" and nothing changes.
+const ollama = listAdapters().find((a): a is OllamaAdapter => a.id === 'ollama' && 'listModels' in a);
+const localModels = ollama ? new LocalModels(ollama, process.env.OLLAMA_MODEL) : undefined;
+localModels?.start();
 const app = buildApp({
   auth,
+  ...(localModels ? { localModels } : {}),
   mcpMemory: {
     // absolute: the CLI runs in the project folder, not in ours
     dbFile: resolve(config.dataDir, 'owl.sqlite'),
@@ -70,6 +76,7 @@ timer.unref();
 
 const stop = async () => {
   clearInterval(timer);
+  localModels?.stop();
   await executor.shutdown();
   await backup.whenIdle(); // closing the database under a running snapshot would cut it
   rmSync(pidFile, { force: true });

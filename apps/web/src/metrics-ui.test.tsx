@@ -24,7 +24,7 @@ const projects = [
   { id: 'p1', nome: 'Alfa', pasta: '/a' },
   { id: 'p2', nome: 'Beta', pasta: '/b' },
 ];
-const router = { tiers: { pequeno: { provedor: 'claude-cli', modelo: 'haiku' }, medio: { provedor: 'claude-cli', modelo: 'sonnet' }, forte: { provedor: 'claude-cli', modelo: 'opus' } }, limiarConfianca: 0.6, orcamentoDiaTokens: null };
+const router = { tiers: { pequeno: { provedor: 'claude-cli', modelo: 'haiku' }, medio: { provedor: 'claude-cli', modelo: 'sonnet' }, forte: { provedor: 'claude-cli', modelo: 'opus' } }, localPequeno: { ativo: true }, limiarConfianca: 0.6, orcamentoDiaTokens: null };
 
 beforeEach(() => {
   calls = [];
@@ -36,7 +36,7 @@ beforeEach(() => {
       const method = init?.method ?? 'GET';
       calls.push({ method, path, ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}) });
       if (path.startsWith('/metrics')) return json({ metrics, dia });
-      if (path === '/router' && method === 'GET') return json({ router, dia });
+      if (path === '/router' && method === 'GET') return json({ router, dia, local: { disponivel: true, modelos: ['gemma4:e2b'] } });
       if (path === '/router') return json({ router: { ...router, ...JSON.parse(String(init!.body)) }, dia });
       return json({ error: { code: 'not_found', message: path } }, 404);
     }),
@@ -102,5 +102,18 @@ describe('MetricsPanel', () => {
     const put = calls.find((c) => c.method === 'PUT')!;
     expect(put.path).toBe('/router');
     expect(put.body).toMatchObject({ limiarConfianca: 0.7, orcamentoDiaTokens: 50_000, tiers: { forte: { provedor: 'claude-cli', modelo: 'opus-novo' }, pequeno: { modelo: 'haiku' } } });
+  });
+
+  it('shows the local model status and saves its switch and model', async () => {
+    open();
+    const form = await screen.findByRole('form', { name: 'Roteador' });
+    expect(await within(form).findByText(/Ollama no ar com 1 modelo/)).toBeInTheDocument();
+    await userEvent.type(within(form).getByLabelText(/Modelo instalado/), 'gemma4:e2b');
+    await userEvent.click(within(form).getByRole('button', { name: 'Salvar roteador' }));
+    await screen.findByText('Roteador salvo.');
+    expect(calls.find((c) => c.method === 'PUT')!.body).toMatchObject({ localPequeno: { ativo: true, modelo: 'gemma4:e2b' } });
+    await userEvent.click(within(form).getByLabelText(/Usar no tier pequeno/));
+    await userEvent.click(within(form).getByRole('button', { name: 'Salvar roteador' }));
+    await vi.waitFor(() => expect(calls.filter((c) => c.method === 'PUT').at(-1)!.body).toMatchObject({ localPequeno: { ativo: false } }));
   });
 });

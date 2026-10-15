@@ -116,13 +116,14 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Orçamento em USD (hoje só tokens; o Codex não informa custo) e orçamento por projeto/agente.
 - [ ] O orçamento diário pausa por ticket, no portão de cada um; não há "pausa global" que impeça novos objetivos. Estimativa do próximo passo = prompt + 2000 tokens fixos.
 - [ ] Retrabalho é calculado dentro do período filtrado (a 1ª execução de um ticket fora do período não conta como "primeira"). `diffStat` usa `git` síncrono (mesma pendência do prompt 14).
-- [ ] Tier por etapa de pipeline e animação/ícone do tier na interface (finalmentes). Ollama como tier `pequeno` fica para o prompt 18.
+- [ ] Tier por etapa de pipeline e animação/ícone do tier na interface (finalmentes). Ollama como tier `pequeno`: feito no prompt 18.
 
 **Adaptadores**
 - [x] Codex: JSON, resume e erros capturados do `codex-cli` 0.162 real (fixtures `codex-*.jsonl`). Falta: imagens (prompt 08).
 - [ ] Detectar o erro real de limite do Codex quando acontecer (hoje só há a mensagem de modelo inválido) para oferecer troca para haiku/Ollama.
 - [ ] Imagens no `claude-cli` (hoje devolve `error`): fazer junto do prompt 08.
-- [ ] Adaptador Ollama opcional (prompt 18); Ollama já roda fora do repositório.
+- [x] Adaptador Ollama (prompt 18): HTTP em stream, `isAvailable`/`listModels`, thinking desligado por padrão, URL só local, tier `pequeno` usa Ollama quando no ar e sem ferramentas. Verificado com o `qwen2.5-coder:7b` real (classificação JSON em ~2,7 s, cancelamento ok).
+- [ ] Prompt 18 abertos: `qa-testes` + `revisor`; validar Gemma 4 e2b / Ministral 3B / Gemma 4 26B lado a lado (velocidade, qualidade no refinador e no monitor; só o qwen2.5-coder está instalado); ver se o thinking desses modelos vem ligado e se `think:false` é aceito; refinador de prompt e memória (`memoria` usa ferramentas) ainda não usam o Ollama; imagens e ferramentas não existem no adaptador; sem fallback automático se o Ollama cai entre as checagens (30 s); agente `monitor` local com `outroProvedorQue` ainda não desenhado.
 
 **Revisão do M0 (2026-10-15) — pendências**
 - [ ] **Decidir o local padrão dos dados**: hoje `OWL_DATA_DIR=./data` é relativo ao diretório do processo (via `pnpm dev` vira `apps/server/data/`, ignorado pelo git). Opções: `~/.owl/` (alinha com a biblioteca global de agentes) ou raiz do repositório.

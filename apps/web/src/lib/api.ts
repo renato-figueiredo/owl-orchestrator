@@ -1,4 +1,4 @@
-import type { RelationType, Label, DayUsage, Metrics, RouterSettings, AgentFact, AgentLibrary, AgentProject, ProjectView, Team, BoardData, TicketDetail, TicketStatus, BackupInfo, BackupSettings, BackupStatus, Fact, MemorySettings, PurgeResult, SweepReport, TrashSettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './types';
+import type { RelationType, Label, DayUsage, LocalStatus, Metrics, RouterSettings, AgentFact, AgentLibrary, AgentProject, ProjectView, Team, BoardData, TicketDetail, TicketStatus, BackupInfo, BackupSettings, BackupStatus, Fact, MemorySettings, PurgeResult, SweepReport, TrashSettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -160,9 +160,9 @@ export const api = {
   /** Opens a gate to merge the ticket branch into the base branch, or to discard it. Nothing happens until it is approved. */
   requestBranchAction: (ticketId: string, acao: 'merge' | 'descartar') =>
     call<unknown>('POST', `/tickets/${encodeURIComponent(ticketId)}/branch/${acao}`),
-  router: () => call<{ router: RouterSettings; dia: DayUsage }>('GET', '/router'),
-  saveRouter: (patch: { tiers?: Partial<RouterSettings['tiers']>; limiarConfianca?: number; orcamentoDiaTokens?: number | null }) =>
-    call<{ router: RouterSettings; dia: DayUsage }>('PUT', '/router', patch),
+  router: () => call<{ router: RouterSettings; dia: DayUsage; local?: LocalStatus }>('GET', '/router'),
+  saveRouter: (patch: { tiers?: Partial<RouterSettings['tiers']>; localPequeno?: RouterSettings['localPequeno']; limiarConfianca?: number; orcamentoDiaTokens?: number | null }) =>
+    call<{ router: RouterSettings; dia: DayUsage; local?: LocalStatus }>('PUT', '/router', patch),
   /** Cost, success rate and rework from the stored runs. Days are local, `YYYY-MM-DD`, both ends included. */
   metrics: (f: { projectId?: string; desde?: string; ate?: string } = {}) => {
     const q = new URLSearchParams(Object.entries(f).filter(([, v]) => v) as Array<[string, string]>).toString();

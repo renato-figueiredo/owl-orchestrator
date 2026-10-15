@@ -341,8 +341,14 @@ export interface TierTarget {
 }
 export interface RouterSettings {
   tiers: Record<Tier, TierTarget>;
+  /** Local model (Ollama) for the `pequeno` tier. */
+  localPequeno: { ativo: boolean; modelo?: string };
   limiarConfianca: number;
   orcamentoDiaTokens: number | null;
+}
+export interface LocalStatus {
+  disponivel: boolean;
+  modelos: string[];
 }
 export interface DayUsage {
   limite: number | null;

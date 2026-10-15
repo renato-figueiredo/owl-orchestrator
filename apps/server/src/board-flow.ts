@@ -239,7 +239,7 @@ export class BoardFlow {
       const routed = this.route({ ticket, project, role, agente, tarefa, opts, cwd: projectCwd, falhas: this.deps.router.failures(ticketId) });
       if ('done' in routed) return routed.done;
       const d = routed.decision;
-      const t = this.deps.router.target(d.tier);
+      const t = this.deps.router.target(d.tier, { semFerramentas: def.ferramentas.length === 0 });
       provider = t.provedor;
       model = t.modelo;
       routing = { complexidade: d.complexidade, tier: d.tier, detalhe: { origem: d.origem, motivo: d.motivo, confianca: d.confianca, falhas: routed.falhas } };
@@ -328,7 +328,7 @@ export class BoardFlow {
    */
   private classify(a: { ticket: Ticket; role: string; agente: string; tarefa: string; opts: RunOptions; cwd: string; request: string }): Run {
     const { router, library } = this.deps;
-    const target = router.target('pequeno');
+    const target = router.target('pequeno', { semFerramentas: true });
     let system = CLASSIFIER_PROMPT;
     try {
       system = library.systemPrompt(library.agent('roteador'));

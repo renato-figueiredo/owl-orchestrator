@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { fmtCost, fmtTokens } from '../lib/format';
-import type { DayUsage, Metrics, MetricsRow, Project, ProviderInfo, RouterSettings, Tier } from '../lib/types';
+import type { DayUsage, Metrics, MetricsRow, LocalStatus, Project, ProviderInfo, RouterSettings, Tier } from '../lib/types';
 
 const message = (e: unknown) => (e instanceof Error ? e.message : 'Algo deu errado');
 const TIERS: Array<{ id: Tier; label: string; hint: string }> = [
@@ -28,6 +28,7 @@ export function MetricsPanel({ projects, providers, initialProjectId, onClose }:
   const [ate, setAte] = useState('');
   const [data, setData] = useState<{ metrics: Metrics; dia: DayUsage } | null>(null);
   const [router, setRouter] = useState<RouterSettings | null>(null);
+  const [local, setLocal] = useState<LocalStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -41,7 +42,7 @@ export function MetricsPanel({ projects, providers, initialProjectId, onClose }:
   }, [projectId, desde, ate]);
   useEffect(() => void load(), [load]);
   useEffect(() => {
-    void api.router().then((r) => setRouter(r.router)).catch((e) => setError(message(e)));
+    void api.router().then((r) => { setRouter(r.router); setLocal(r.local ?? null); }).catch((e) => setError(message(e)));
   }, []);
 
   const saveRouter = async (e: FormEvent<HTMLFormElement>) => {
@@ -54,10 +55,12 @@ export function MetricsPanel({ projects, providers, initialProjectId, onClose }:
     try {
       const saved = await api.saveRouter({
         tiers: Object.fromEntries(TIERS.map((t) => [t.id, { provedor: text(`${t.id}-provedor`), ...(text(`${t.id}-modelo`) ? { modelo: text(`${t.id}-modelo`) } : {}) }])),
+        localPequeno: { ativo: f.get('localAtivo') === 'on', ...(text('localModelo') ? { modelo: text('localModelo') } : {}) },
         limiarConfianca: Number(text('limiar')) / 100,
         orcamentoDiaTokens: budget ? Number(budget) : null,
       });
       setRouter(saved.router);
+      setLocal(saved.local ?? null);
       setNotice('Roteador salvo.');
       await load();
     } catch (err) {
@@ -155,6 +158,22 @@ export function MetricsPanel({ projects, providers, initialProjectId, onClose }:
                 ))}
               </tbody>
             </table>
+            <fieldset className="rounded border border-line p-3">
+              <legend className="px-1 text-sm">Modelo local (Ollama)</legend>
+              <label className="flex items-center gap-2">
+                <input name="localAtivo" type="checkbox" defaultChecked={router.localPequeno.ativo} />
+                Usar no tier pequeno quando estiver no ar
+              </label>
+              <label className="mt-2 block">
+                Modelo instalado
+                <input name="localModelo" list="modelos-locais" defaultValue={router.localPequeno.modelo ?? ''} placeholder="o primeiro instalado" maxLength={100} className="mt-1 block w-full rounded border border-line bg-bg px-2 py-1" />
+                <datalist id="modelos-locais">{(local?.modelos ?? []).map((m) => <option key={m} value={m} />)}</datalist>
+              </label>
+              <p className="mt-1 text-xs text-muted">
+                {local?.disponivel ? `Ollama no ar com ${local.modelos.length} modelo(s).` : 'Ollama fora do ar: o tier pequeno usa o provedor configurado acima.'}{' '}
+                Só vale para passos sem ferramentas (classificador, resumos); quem precisa editar arquivos continua no provedor do tier.
+              </p>
+            </fieldset>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block">
                 Confiança mínima para decidir sozinho (%)

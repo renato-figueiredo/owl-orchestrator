@@ -25,9 +25,18 @@ export const tierTargetSchema = z.strictObject({
 });
 export type TierTarget = z.infer<typeof tierTargetSchema>;
 
+/** Local model (Ollama) for the `pequeno` tier: used when the server answers and the step needs no tools. */
+export const localPequenoSchema = z.strictObject({
+  ativo: z.boolean(),
+  /** Installed model to use; empty = `OLLAMA_MODEL`, else the first installed one. */
+  modelo: z.string().min(1).max(100).regex(/^[\w.:/@-]+$/).optional(),
+});
+export type LocalPequeno = z.infer<typeof localPequenoSchema>;
+
 export const routerConfigSchema = z.strictObject({
   tiers: z.strictObject({ pequeno: tierTargetSchema, medio: tierTargetSchema, forte: tierTargetSchema }),
   /** Below this confidence the router does not decide: a person approves the tier (gate `confianca`). */
+  localPequeno: localPequenoSchema,
   limiarConfianca: z.number().min(0).max(1),
   /** Tokens all runs may spend per day (local time); null = no daily limit. */
   orcamentoDiaTokens: z.number().int().min(1).max(10_000_000_000).nullable(),
@@ -40,6 +49,7 @@ export const DEFAULT_ROUTER: RouterConfig = {
     medio: { provedor: 'claude-cli', modelo: 'sonnet' },
     forte: { provedor: 'claude-cli', modelo: 'opus' },
   },
+  localPequeno: { ativo: true },
   limiarConfianca: 0.6,
   orcamentoDiaTokens: null,
 };
