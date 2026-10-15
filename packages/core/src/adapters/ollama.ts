@@ -18,6 +18,10 @@ export interface OllamaOptions {
   allowRemote?: boolean;
   /** Milliseconds to wait for the server to answer a probe (default 1500). */
   probeTimeoutMs?: number;
+  /** Milliseconds without a byte from the server before a run is given up (default 120000; a model may take a while to load). */
+  idleTimeoutMs?: number;
+  /** Characters of reply (and of one unterminated line) accepted before the run fails (default 4 MiB). */
+  maxReplyChars?: number;
   /** Replaceable for tests. */
   fetch?: typeof fetch;
 }
@@ -82,10 +86,13 @@ export function createOllamaAdapter(opts: OllamaOptions = {}): OllamaAdapter {
   const doFetch = opts.fetch ?? fetch;
   const probeTimeout = opts.probeTimeoutMs ?? 1500;
   const think = opts.think ?? false;
+  const idleTimeout = opts.idleTimeoutMs ?? 120_000;
+  const maxChars = opts.maxReplyChars ?? 4 * 1024 * 1024;
 
   const probe = (signal?: AbortSignal) => {
     const timeout = AbortSignal.timeout(probeTimeout);
-    return doFetch(`${baseUrl}/api/tags`, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+    // `redirect: 'error'`: the loopback check covers the configured URL only, so a redirect must never carry the prompt elsewhere.
+    return doFetch(`${baseUrl}/api/tags`, { redirect: 'error', signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
   };
 
   async function listModels(signal?: AbortSignal): Promise<OllamaModel[]> {
@@ -126,12 +133,18 @@ export function createOllamaAdapter(opts: OllamaOptions = {}): OllamaAdapter {
     }
 
     const messages = [...(req.systemAppend ? [{ role: 'system', content: req.systemAppend }] : []), { role: 'user', content: req.prompt }];
+    // Own controller: it follows the caller's signal and also lets us cut a server that went silent.
+    const ctl = new AbortController();
+    const onAbort = () => ctl.abort();
+    signal.addEventListener('abort', onAbort, { once: true });
+    let limitError: string | undefined;
     const post = (withThink: boolean) =>
       doFetch(`${baseUrl}/api/chat`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ model, messages, stream: true, ...(withThink ? { think } : {}) }),
-        signal,
+        redirect: 'error',
+        signal: ctl.signal,
       });
 
     let text = '';
@@ -189,21 +202,44 @@ export function createOllamaAdapter(opts: OllamaOptions = {}): OllamaAdapter {
         }
       };
 
-      for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
-        buffer += decoder.decode(chunk, { stream: true });
+      const reader = (res.body as unknown as AsyncIterable<Uint8Array>)[Symbol.asyncIterator]();
+      for (;;) {
+        let timer: NodeJS.Timeout | undefined;
+        const silent = new Promise<'idle'>((resolve) => {
+          timer = setTimeout(() => resolve('idle'), idleTimeout);
+        });
+        const next = await Promise.race([reader.next(), silent]).finally(() => clearTimeout(timer));
+        if (next === 'idle') {
+          limitError = `no data from ${baseUrl} for ${Math.round(idleTimeout / 1000)} s`;
+          ctl.abort();
+          break;
+        }
+        if (next.done) break;
+        buffer += decoder.decode(next.value, { stream: true });
         let nl: number;
         while ((nl = buffer.indexOf('\n')) >= 0) {
           const raw = buffer.slice(0, nl);
           buffer = buffer.slice(nl + 1);
+          if (text.length > maxChars) break;
           yield* handle(raw);
           if (finished) return;
         }
+        if (buffer.length > maxChars || text.length > maxChars) {
+          limitError = `the reply is larger than ${maxChars} characters`;
+          ctl.abort();
+          break;
+        }
+      }
+      if (limitError) {
+        yield { type: 'error', message: `ollama: ${limitError}` };
+        return;
       }
       buffer += decoder.decode();
       yield* handle(buffer);
       if (!finished) yield { type: 'error', message: 'ollama: the stream ended without a result' };
     } catch (e) {
-      if (signal.aborted) yield { type: 'cancelled' };
+      if (limitError) yield { type: 'error', message: `ollama: ${limitError}` };
+      else if (signal.aborted) yield { type: 'cancelled' };
       else yield { type: 'error', message: `ollama: could not reach ${baseUrl}: ${e instanceof Error ? e.message : String(e)}` };
     }
   }

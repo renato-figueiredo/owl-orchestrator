@@ -48,6 +48,11 @@ export interface SubmitInput {
   anexos?: Array<{ hash: string; nome?: string | undefined }>;
   /** Image files to hand to the CLI as they are (the describer). Attachments are turned into this automatically. */
   images?: string[];
+  /**
+   * Where to run again when `provider` is the local model (Ollama) and it fails before producing any text (down since the
+   * last check, no images support...). The user sees a system message; the run is recorded on the provider that answered.
+   */
+  fallback?: { provider: string; model?: string | undefined; onUsed?: () => void };
   /** Run with no tools at all (the summarizer reads untrusted text and needs none). */
   noTools?: boolean;
   /** Tools pre-approved for this run (agent `ferramentas`); empty or absent leaves the adapter's default. */
@@ -291,8 +296,7 @@ export class Executor {
       const images = [...(input.images ?? []), ...(att?.images ?? [])];
       mcp = this.mcp?.mcpFor({ sessionId: input.sessionId, runId: run.id, provider: input.provider, stateless: Boolean(input.stateless), noTools: Boolean(input.noTools) });
       const allowedTools = [...(input.allowedTools ?? []), ...(mcp?.allowedTools ?? [])];
-      const stream = adapter.run(
-        {
+      const request = {
           prompt: `${memory ?? ''}${att?.note ?? ''}${input.texto}`,
           cwd: input.cwd,
           runId: run.id,
@@ -303,9 +307,8 @@ export class Executor {
           ...(mcp ? { mcpConfigPath: mcp.configPath } : {}),
           ...(input.noTools ? { noTools: true } : {}),
           ...(images.length ? { images } : {}),
-        },
-        entry.controller.signal,
-      );
+      };
+      const consume = async (stream: AsyncIterable<RunEvent>) => {
       for await (const event of stream) {
         if (event.type === 'text') text += event.delta;
         if (event.type === 'tool') {
@@ -320,6 +323,27 @@ export class Executor {
         if (terminal) continue; // contract: nothing after the terminal event
         if (TERMINAL.has(event.type)) terminal = event; // emitted only after it is persisted (below)
         else this.emit(entry, event);
+      }
+      };
+      await consume(adapter.run(request, entry.controller.signal));
+      const fb = input.fallback;
+      const failed = terminal as RunEvent | undefined; // set inside `consume`, which the compiler does not follow
+      if (fb && input.provider === 'ollama' && failed?.type === 'error' && !text && !entry.controller.signal.aborted) {
+        const why = failed.message;
+        fb.onUsed?.();
+        repos.runs.setProvider(run.id, fb.provider, fb.model);
+        repos.messages.add({
+          sessionId: input.sessionId,
+          runId: run.id,
+          papel: 'sistema',
+          conteudo: `O modelo local falhou (${why.slice(0, 200)}); o passo foi refeito em ${fb.provider}${fb.model ? `/${fb.model}` : ''}.`,
+        });
+        terminal = undefined;
+        tokensIn = tokensOut = cost = undefined;
+        const again: typeof request & { model?: string } = { ...request }; // the local model's name means nothing to the other provider
+        delete again.model;
+        if (fb.model) again.model = fb.model;
+        await consume(this.resolveAdapter(fb.provider).run(again, entry.controller.signal));
       }
     } catch (err) {
       terminal ??= { type: 'error', message: err instanceof Error ? err.message : String(err) };

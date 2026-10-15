@@ -145,6 +145,10 @@ export function runsRepo(db: Db) {
       return rows.map(toRun);
     },
     /** Records the memory tools the model called in this run. */
+    /** The run went to another provider than the one it started on (a local model that failed): metrics must show where it really ran. */
+    setProvider(id: string, provedor: string, modelo?: string): void {
+      db.prepare('UPDATE runs SET provedor = ?, modelo = ? WHERE id = ?').run(provedor, modelo ?? null, id);
+    },
     setMemoryCalls(id: string, calls: Record<string, number>): void {
       db.prepare('UPDATE runs SET memoria_chamadas = ? WHERE id = ?').run(Object.keys(calls).length ? JSON.stringify(calls) : null, id);
     },

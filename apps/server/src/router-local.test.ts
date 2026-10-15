@@ -63,11 +63,13 @@ describe('RouterService.target with a local model', () => {
 
   it('sends `pequeno` steps without tools to Ollama when it is available', async () => {
     const { r } = await setup();
+    r.save({ localPequeno: { ativo: true } });
     expect(r.target('pequeno', { semFerramentas: true })).toEqual({ provedor: 'ollama', modelo: 'gemma4:e2b' });
   });
 
   it('keeps the configured target for steps with tools, other tiers, no local server and the switch off', async () => {
     const { r, st, local } = await setup();
+    r.save({ localPequeno: { ativo: true } });
     expect(r.target('pequeno')).toEqual({ provedor: 'claude-cli', modelo: 'haiku' });
     expect(r.target('pequeno', { semFerramentas: false })).toEqual({ provedor: 'claude-cli', modelo: 'haiku' });
     expect(r.target('medio', { semFerramentas: true })).toEqual({ provedor: 'claude-cli', modelo: 'sonnet' });
@@ -93,7 +95,7 @@ describe('RouterService.target with a local model', () => {
     const { r } = await setup();
     r.save({ orcamentoDiaTokens: 5000 });
     (r as any).deps.repos.settings.set('router', { ...r.settings(), localPequeno: 'lixo' });
-    expect(r.settings().localPequeno).toEqual({ ativo: true });
+    expect(r.settings().localPequeno).toEqual({ ativo: false });
     expect(r.settings().orcamentoDiaTokens).toBe(5000);
   });
 });
@@ -109,11 +111,110 @@ describe('GET/PUT /router with a local model', () => {
     const base = await app.listen({ host: '127.0.0.1', port: 0 });
     const body = (await (await fetch(`${base}/router`)).json()) as any;
     expect(body.local).toEqual({ disponivel: true, modelos: ['gemma4:e2b'] });
-    expect(body.router.localPequeno).toEqual({ ativo: true });
+    expect(body.router.localPequeno).toEqual({ ativo: false });
     const put = (b: unknown) => fetch(`${base}/router`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) });
     expect((await put({ localPequeno: { ativo: false } })).status).toBe(200);
     expect((await put({ localPequeno: { ativo: true, modelo: '--x y' } })).status).toBe(400);
     st.up = false;
     expect(((await (await fetch(`${base}/router`)).json()) as any).local.disponivel).toBe(false);
+  });
+});
+
+describe('QA: board-flow wiring of semFerramentas', () => {
+  it('refreshLocal updates what target() sees without a periodic tick', async () => {
+    const st = { up: false, models: ['gemma4:e2b'] };
+    const local = new LocalModels(probe(st));
+    const r = new RouterService({ repos: repos(), local });
+    r.save({ localPequeno: { ativo: true } });
+    expect(r.target('pequeno', { semFerramentas: true }).provedor).toBe('claude-cli');
+    st.up = true;
+    await r.refreshLocal();
+    expect(r.target('pequeno', { semFerramentas: true })).toEqual({ provedor: 'ollama', modelo: 'gemma4:e2b' });
+    expect(r.localStatus()).toEqual({ disponivel: true, modelos: ['gemma4:e2b'] });
+  });
+  it('localStatus without wiring is unavailable', () => {
+    expect(new RouterService({ repos: repos() }).localStatus()).toEqual({ disponivel: false, modelos: [] });
+  });
+  it('never routes medio/forte locally even when allowed', async () => {
+    const local = new LocalModels(probe({ up: true, models: ['a:1'] }));
+    await local.refresh();
+    const r = new RouterService({ repos: repos(), local });
+    expect(r.target('forte', { semFerramentas: true }).provedor).toBe('claude-cli');
+  });
+});
+
+describe('local model default and fallback', () => {
+  it('is off by default: a tier never changes provider without being asked', async () => {
+    const local = new LocalModels(probe({ up: true, models: ['a:1'] }));
+    await local.refresh();
+    const r = new RouterService({ repos: repos(), local });
+    expect(r.settings().localPequeno.ativo).toBe(false);
+    expect(r.target('pequeno', { semFerramentas: true }).provedor).toBe('claude-cli');
+  });
+
+  it('markLocalDown stops routing to it and fallbackFor names the configured target', async () => {
+    const local = new LocalModels(probe({ up: true, models: ['a:1'] }));
+    await local.refresh();
+    const r = new RouterService({ repos: repos(), local });
+    r.save({ localPequeno: { ativo: true } });
+    expect(r.target('pequeno', { semFerramentas: true }).provedor).toBe('ollama');
+    const fb = r.fallbackFor('pequeno');
+    expect(fb).toMatchObject({ provider: 'claude-cli', model: 'haiku' });
+    fb.onUsed();
+    expect(r.target('pequeno', { semFerramentas: true }).provedor).toBe('claude-cli');
+  });
+});
+
+describe('Executor fallback from the local model', () => {
+  const run = async (script: Array<(req: any) => any[]>, fallback = true) => {
+    const rp = repos();
+    const seen: string[] = [];
+    let used = 0;
+    const adapter = (id: string, events: (req: any) => any[]) => ({
+      id,
+      isAvailable: async () => true,
+      run: (req: any) => {
+        seen.push(`${id}:${req.model ?? ''}`);
+        return (async function* () {
+          yield { type: 'start', runId: req.runId, provider: id };
+          for (const e of events(req)) yield e;
+        })();
+      },
+    });
+    const ex = new Executor({
+      repos: rp,
+      resolveAdapter: (id) => adapter(id, script[id === 'ollama' ? 0 : 1]!) as any,
+    });
+    const s = rp.sessions.create({ titulo: 't', cwd: tmpdir() } as any);
+    const run1 = ex.submit({
+      sessionId: s.id,
+      texto: 'oi',
+      provider: 'ollama',
+      model: 'a:1',
+      cwd: tmpdir(),
+      stateless: true,
+      ...(fallback ? { fallback: { provider: 'claude-cli', model: 'haiku', onUsed: () => void used++ } } : {}),
+    });
+    await ex.idle();
+    return { rp, run: rp.runs.get(run1.id)!, seen, used, msgs: rp.messages.list(s.id) };
+  };
+
+  it('reruns on the configured provider when the local run fails before any text', async () => {
+    const r = await run([() => [{ type: 'error', message: 'ollama: could not reach http://127.0.0.1:11434: refused' }], () => [{ type: 'text', delta: 'ok' }, { type: 'end', result: 'ok' }]]);
+    expect(r.run.status).toBe('ok');
+    expect(r.run.provedor).toBe('claude-cli');
+    expect(r.run.modelo).toBe('haiku');
+    expect(r.seen).toEqual(['ollama:a:1', 'claude-cli:haiku']);
+    expect(r.used).toBe(1);
+    expect(r.msgs.some((m: any) => m.papel === 'sistema' && /modelo local falhou/.test(m.conteudo))).toBe(true);
+  });
+
+  it('does not rerun once text was produced, nor without a fallback', async () => {
+    const partial = await run([() => [{ type: 'text', delta: 'x' }, { type: 'error', message: 'ollama: stream broke' }], () => [{ type: 'end', result: 'no' }]]);
+    expect(partial.run.status).toBe('erro');
+    expect(partial.seen).toEqual(['ollama:a:1']);
+    const none = await run([() => [{ type: 'error', message: 'down' }], () => [{ type: 'end', result: 'no' }]], false);
+    expect(none.run.status).toBe('erro');
+    expect(none.seen).toEqual(['ollama:a:1']);
   });
 });

@@ -234,6 +234,7 @@ export class BoardFlow {
     // Tier routing: only for agents that ask for it (`roteamento: auto`); the others always run on their own provider.
     let provider = def.provedor;
     let model = def.modelo;
+    let fallback: ReturnType<RouterService['fallbackFor']> | undefined;
     let routing: { complexidade: string; tier: string; detalhe: Record<string, unknown> } | undefined;
     if (def.roteamento === 'auto') {
       const routed = this.route({ ticket, project, role, agente, tarefa, opts, cwd: projectCwd, falhas: this.deps.router.failures(ticketId) });
@@ -242,6 +243,7 @@ export class BoardFlow {
       const t = this.deps.router.target(d.tier, { semFerramentas: def.ferramentas.length === 0 });
       provider = t.provedor;
       model = t.modelo;
+      if (t.provedor === 'ollama') fallback = this.deps.router.fallbackFor(d.tier);
       routing = { complexidade: d.complexidade, tier: d.tier, detalhe: { origem: d.origem, motivo: d.motivo, confianca: d.confianca, falhas: routed.falhas } };
       repos.tickets.addEvent({ ticketId, ator: agentActor(agente), tipo: 'roteamento', para: d.tier, detalhe: `${agente} → ${t.provedor}${t.modelo ? `/${t.modelo}` : ''} (${d.complexidade}, ${d.origem}): ${d.motivo}`.slice(0, 500) });
     }
@@ -261,6 +263,7 @@ export class BoardFlow {
       provider,
       ...(model ? { model } : {}),
       ...(routing ? { routing } : {}),
+      ...(fallback ? { fallback } : {}),
       cwd,
       systemAppend,
       etapa: `quadro:${def.papel ?? agente}`,
@@ -346,6 +349,7 @@ export class BoardFlow {
       texto: `Papel de quem vai executar: ${a.role || 'desconhecido'}\n<pedido>\n${safe}\n</pedido>`,
       provider: target.provedor,
       ...(target.modelo ? { model: target.modelo } : {}),
+      ...(target.provedor === 'ollama' ? { fallback: router.fallbackFor('pequeno') } : {}),
       cwd: a.cwd,
       systemAppend: system,
       etapa: 'roteador',

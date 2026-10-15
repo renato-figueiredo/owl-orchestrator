@@ -49,7 +49,8 @@ export const DEFAULT_ROUTER: RouterConfig = {
     medio: { provedor: 'claude-cli', modelo: 'sonnet' },
     forte: { provedor: 'claude-cli', modelo: 'opus' },
   },
-  localPequeno: { ativo: true },
+  // Off until the user turns it on: a tier never changes provider without being asked.
+  localPequeno: { ativo: false },
   limiarConfianca: 0.6,
   orcamentoDiaTokens: null,
 };

@@ -37,6 +37,11 @@ export class LocalModels {
     return this.snapshot();
   }
 
+  /** A run just failed against the local server: treat it as down until the next check instead of sending it more work. */
+  markDown(): void {
+    this.state = { disponivel: false, modelos: [] };
+  }
+
   /** Refreshes now and then every `intervalMs` until `stop()`. */
   start(intervalMs = 30_000): void {
     void this.refresh();

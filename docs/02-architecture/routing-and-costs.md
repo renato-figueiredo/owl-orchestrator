@@ -46,7 +46,7 @@ Nada disso decidiu → ambíguo.
 
 **Confiança baixa → portão `confianca`.** Abaixo do limiar (padrão 60%, configurável) o ticket espera. Aprovar roda o passo no tier proposto, sem perguntar ao modelo de novo; rejeitar não roda nada.
 
-**Modelo local (prompt 18).** O tier `pequeno` usa o Ollama quando ele está no ar (`localPequeno.ativo`, padrão ligado) e o passo não usa ferramentas; senão, o provedor configurado. Detalhes em `docs/06-research/ollama.md`.
+**Modelo local (prompt 18).** O tier `pequeno` usa o Ollama quando ele está no ar (`localPequeno.ativo`, padrão desligado: o usuário liga) e o passo não usa ferramentas; senão, o provedor configurado. Se o local falhar antes de produzir texto (fora do ar, imagens), o executor refaz o passo no provedor configurado do tier. Detalhes em `docs/06-research/ollama.md`.
 
 **Tiers.** `pequeno`, `medio`, `forte` apontam para `{provedor, modelo}`; padrão `claude-cli` com `haiku`, `sonnet`, `opus`. Edite na tela *Métricas e roteador* ou por `PUT /router`.
 

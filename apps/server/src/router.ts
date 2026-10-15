@@ -85,9 +85,20 @@ export class RouterService {
     return s.tiers[tier];
   }
 
+  /** Where a step routed to the local model runs instead when the local run fails: the tier's configured target. */
+  fallbackFor(tier: Tier): { provider: string; model?: string | undefined; onUsed: () => void } {
+    const t = this.settings().tiers[tier];
+    return { provider: t.provedor, model: t.modelo, onUsed: () => this.markLocalDown() };
+  }
+
   /** Asks the local model server again now (the settings screen does, so it never shows a stale state). */
   async refreshLocal(): Promise<void> {
     await this.deps.local?.refresh();
+  }
+
+  /** A run on the local model failed: stop routing to it until the next check. */
+  markLocalDown(): void {
+    this.deps.local?.markDown();
   }
 
   /** What the settings screen shows about the local model. */
