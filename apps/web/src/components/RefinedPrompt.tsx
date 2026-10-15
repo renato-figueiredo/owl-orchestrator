@@ -54,6 +54,21 @@ interface FailureProps {
 
 /** The refiner failed. Nothing switches on its own: the user picks another model, skips refinement, or gives up. */
 export function FailureCard({ motivo, refiner, onSkip, onRetry, onDiscard, disabled }: FailureProps) {
+  // Another agent's step (a reviewer...) failed: the refiner's alternatives and "run without improving" do not apply.
+  const other = /^Falha na etapa "([^"]+)":\s*/.exec(motivo);
+  if (other) {
+    return (
+      <section role="alert" aria-label={`Falha na etapa ${other[1]}`} className="rounded-2xl border border-danger bg-panel p-3">
+        <h3 className="font-semibold text-danger">A etapa “{other[1]}” falhou</h3>
+        <p className="mt-1 break-words text-sm">{motivo.slice(other[0].length)}</p>
+        <div className="mt-2 flex">
+          <button type="button" disabled={disabled} onClick={onDiscard} className="ml-auto rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-raised">
+            Dispensar
+          </button>
+        </div>
+      </section>
+    );
+  }
   return (
     <section role="alert" aria-label="Falha ao melhorar o prompt" className="rounded-2xl border border-danger bg-panel p-3">
       <h3 className="font-semibold text-danger">Não consegui melhorar o prompt</h3>

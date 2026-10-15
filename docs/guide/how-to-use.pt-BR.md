@@ -79,6 +79,15 @@ Cole (**Ctrl+V**), arraste um arquivo para a caixa de mensagem ou clique em 📎
 - **A sua CLI guarda uma cópia própria.** `claude` e `codex` guardam o histórico em pastas delas (`~/.claude/`, `~/.codex/`). Excluir no OWL **não** mexe nisso; o OWL avisa quando se aplica. Ele nunca apaga arquivos em pastas que não são dele.
 - **Armazenamento e backup** (no fim da barra lateral): prazo da lixeira, backup automático opcional do banco (desligado por padrão) e *Limpar arquivos sem uso*, que remove imagens que ninguém mais usa. Veja [Configuração](configuration.pt-BR.md#backup) para criptografar e enviar a cópia para outro lugar.
 
+## Agentes, skills e pipelines
+Clique em **Agentes** (barra lateral) para abrir a biblioteca. Um agente é um arquivo Markdown com um cabeçalho curto (nome, provedor, modelo, ferramentas, skills) e as instruções dele.
+- **Onde ficam**: sua biblioteca em `~/.owl/agents/` (mude com `OWL_LIBRARY_DIR`) e os exemplos que vêm com o OWL (`po`, `tech-lead`, `dev-front`, `dev-back`, `qa`, `revisor`, `memoria`, `roteador`, `refinador-de-prompt`). Um arquivo seu com o mesmo nome de um exemplo vale mais.
+- **Editar** um exemplo salva *a sua cópia*; o exemplo continua intacto, e **Voltar ao exemplo** remove a sua cópia. **Duplicar** copia qualquer agente com outro nome. **Novo agente** parte de um modelo.
+- Um arquivo com erro não quebra nada: aparece na lista com o motivo (ex.: `ferramentas: Invalid input`) e é ignorado. Editar o arquivo à mão vale na próxima execução.
+- **Skills** são pastas com um `SKILL.md` (mesmo formato do Claude Code), em `skills/<nome>/`. O agente lista as skills que usa e as instruções delas vão junto do prompt dele.
+- **Pipelines** (`pipelines/<nome>.yaml`) encadeiam etapas. Cada etapa pode nomear um agente, rodar só `quando` uma condição valer, receber a saída da etapa anterior, repetir (`tentativas`) e rodar em um provedor diferente de uma etapa anterior (`outroProvedorQue`). O exemplo `refinar-executar-revisar` melhora o prompt, executa e pede ao revisor que confira o resultado no outro provedor. Para usar, envie `pipeline: "refinar-executar-revisar"` à API; escolher na caixa de mensagem está no [roadmap](../roadmap.md).
+- Os agentes de exemplo de desenvolvimento e QA são somente leitura de propósito: devolvem diffs. Escrever no seu projeto vem com os git worktrees.
+
 ## Teclado e temas
 - Na lista de conversas: **↑ / ↓** movem, **Enter** abre, **Tab** sai da lista.
 - O botão ☾ / ☀ alterna claro e escuro (começa pela configuração do sistema e lembra a sua escolha).

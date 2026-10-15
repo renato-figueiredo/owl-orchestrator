@@ -52,6 +52,8 @@ export interface SubmitInput {
   noTools?: boolean;
   /** Tools pre-approved for this run (agent `ferramentas`); empty or absent leaves the adapter's default. */
   allowedTools?: string[];
+  /** Library agent this run executes (`agents.id`), stored in `runs.agent_id`. */
+  agentId?: string;
   /** Pipeline step name, stored in `runs.etapa`. */
   etapa?: string;
   /** The run whose output feeds this one (`runs.parent_run_id`). */
@@ -154,6 +156,7 @@ export class Executor {
       sessionId: input.sessionId,
       ...(input.model ? { modelo: input.model } : {}),
       ...(input.etapa ? { etapa: input.etapa } : {}),
+      ...(input.agentId ? { agentId: input.agentId } : {}),
       ...(input.stateless ? { semEstado: true } : {}),
       ...(input.parentRunId ? { parentRunId: input.parentRunId } : {}),
     });

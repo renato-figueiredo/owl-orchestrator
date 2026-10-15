@@ -17,9 +17,10 @@ interface Props {
   onCreateProject: (input: { nome: string; pasta: string; instrucoes?: string }) => Promise<void>;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
+  onOpenAgents: () => void;
 }
 
-export function Sidebar({ projects, sessions, selectedId, onSelect, onNewSession, onDeleteSession, trashVersion, onRestored, onCreateProject, theme, onToggleTheme }: Props) {
+export function Sidebar({ projects, sessions, selectedId, onSelect, onNewSession, onDeleteSession, trashVersion, onRestored, onCreateProject, theme, onToggleTheme, onOpenAgents }: Props) {
   const listRef = useRef<HTMLElement>(null);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,6 +148,11 @@ export function Sidebar({ projects, sessions, selectedId, onSelect, onNewSession
           ),
         )}
       </section>
+      <div className="border-t border-line px-3 py-2">
+        <button type="button" onClick={onOpenAgents} className="w-full rounded border border-line px-3 py-1.5 text-left text-sm hover:bg-raised">
+          Agentes
+        </button>
+      </div>
       <TrashPanel version={trashVersion} onRestored={onRestored} />
       <StorageSettings />
     </nav>

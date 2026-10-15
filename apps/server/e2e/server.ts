@@ -34,7 +34,7 @@ const repos = createRepos(db);
 const executor = new Executor({ repos });
 const attachmentsDir = join(dir, 'attachments');
 const cleanup = new CleanupService({ db, repos, dir: attachmentsDir, isBusy: (id) => executor.hasActive(id) });
-const app = buildApp({ repos, executor, cleanup, attachmentsDir, workspaceRoots: [tmpdir()], defaultCwd: dir });
+const app = buildApp({ repos, executor, cleanup, attachmentsDir, workspaceRoots: [tmpdir()], defaultCwd: dir, userLibraryDir: join(dir, 'library') });
 const port = Number(process.env.OWL_PORT ?? 4318);
 await app.listen({ host: '127.0.0.1', port });
 console.log(`e2e server on ${port}, data in ${dir}`);

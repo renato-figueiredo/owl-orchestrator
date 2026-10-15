@@ -82,7 +82,7 @@ describe('prompt 02: connection on a file database', () => {
   it('is idempotent across reopen, keeps data, and every connection has FK ON, WAL, busy_timeout', () => {
     const file = join(tmpDir(), 'owl.db');
     const a = fresh(file);
-    expect(migrate(a)).toEqual(['0001_initial.sql', '0002_settings.sql', '0003_runs_sem_estado.sql', '0004_blobs_visto_em.sql', '0005_runs_memoria_chamadas.sql', '0006_facts_sessao.sql']);
+    expect(migrate(a)).toEqual(['0001_initial.sql', '0002_settings.sql', '0003_runs_sem_estado.sql', '0004_blobs_visto_em.sql', '0005_runs_memoria_chamadas.sql', '0006_facts_sessao.sql', '0007_agents_origem.sql']);
     const s = createRepos(a).sessions.create({ titulo: 'persist' });
     a.close();
 
@@ -91,7 +91,7 @@ describe('prompt 02: connection on a file database', () => {
     expect(b.pragma('journal_mode', { simple: true })).toBe('wal');
     expect(b.pragma('busy_timeout', { simple: true })).toBe(5000);
     expect(migrate(b)).toEqual([]);
-    expect(count(b, 'schema_migrations')).toBe(6);
+    expect(count(b, 'schema_migrations')).toBe(7);
     expect(createRepos(b).sessions.get(s.id)?.titulo).toBe('persist');
     expect(b.pragma('auto_vacuum', { simple: true })).toBe(2);
   });

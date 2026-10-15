@@ -1,0 +1,21 @@
+nome: refinar-executar-revisar
+etapas:
+  # Só roda se "melhorar prompt" estiver marcado; duas tentativas automáticas no mesmo provedor.
+  - id: melhorar
+    agente: refinador-de-prompt
+    quando: "{{ opcoes.melhorarPrompt }}"
+    revisao: true
+    tentativas: 2
+  # Sem `agente`: usa o provedor e o modelo escolhidos na conversa.
+  - id: executar
+    entrada: "{{ etapas.melhorar.saida ?? pedido }}"
+  # O revisor roda em provedor diferente do que executou (cross-provider).
+  - id: revisar
+    agente: revisor
+    outroProvedorQue: executar
+    entrada: |
+      Pedido original:
+      {{ pedido }}
+
+      Resultado a revisar (produzido por {{ etapas.executar.provedor }}):
+      {{ etapas.executar.saida }}

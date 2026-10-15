@@ -13,6 +13,8 @@ OWL reads environment variables (see [`.env.example`](../../.env.example); copy 
 | `OWL_BACKUP_AGE_RECIPIENT` | none | Public key (`age1…`) that encrypts backups. See [Backup](#backup). |
 | `OWL_BACKUP_RCLONE_REMOTE` | none | `rclone` destination (e.g. `myremote:owl`) that receives the encrypted backups. |
 | `OWL_WORKSPACE_ROOTS` | your home folder | Folders where projects and runs may work, separated by `:`. See below. |
+| `OWL_LIBRARY_DIR` | `~/.owl` | Your library of agents, skills and pipelines (`agents/`, `skills/`, `pipelines/` inside). |
+| `OWL_ENV_PASSTHROUGH` | none | Extra environment variables to hand to the CLIs, comma-separated (e.g. `SSH_AUTH_SOCK`). By default the CLIs get only what they need (PATH, HOME, locale, certificates, proxy, `CLAUDE_*`, `CODEX_*`), not the server's whole environment. |
 | `OWL_ALLOWED_ORIGINS` | none | Extra browser origins allowed to call the API, comma-separated. |
 | `OWL_WEB_PORT` | `5173` | Port of the web dev server (development only). |
 

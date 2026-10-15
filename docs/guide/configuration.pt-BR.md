@@ -13,6 +13,8 @@ O OWL lê variáveis de ambiente (veja [`.env.example`](../../.env.example); cop
 | `OWL_BACKUP_AGE_RECIPIENT` | nenhuma | Chave pública (`age1…`) que criptografa os backups. Veja [Backup](#backup). |
 | `OWL_BACKUP_RCLONE_REMOTE` | nenhuma | Destino do `rclone` (ex.: `meuremoto:owl`) que recebe os backups criptografados. |
 | `OWL_WORKSPACE_ROOTS` | sua pasta pessoal | Pastas onde projetos e runs podem trabalhar, separadas por `:`. Veja abaixo. |
+| `OWL_LIBRARY_DIR` | `~/.owl` | Sua biblioteca de agentes, skills e pipelines (`agents/`, `skills/`, `pipelines/` dentro). |
+| `OWL_ENV_PASSTHROUGH` | nenhuma | Variáveis de ambiente extras a repassar às CLIs, separadas por vírgula (ex.: `SSH_AUTH_SOCK`). Por padrão as CLIs recebem só o necessário (PATH, HOME, idioma, certificados, proxy, `CLAUDE_*`, `CODEX_*`), não o ambiente inteiro do servidor. |
 | `OWL_ALLOWED_ORIGINS` | nenhuma | Origens de navegador extras autorizadas a chamar a API, separadas por vírgula. |
 | `OWL_WEB_PORT` | `5173` | Porta do servidor web de desenvolvimento (só em desenvolvimento). |
 

@@ -39,6 +39,7 @@ const app = buildApp({
   backup,
   repos,
   executor,
+  userLibraryDir: config.libraryDir,
   workspaceRoots: config.workspaceRoots,
   allowedOrigins: config.allowedOrigins,
   attachmentsDir,

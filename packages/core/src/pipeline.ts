@@ -1,5 +1,6 @@
 import { parse } from 'yaml';
 import { z } from 'zod';
+import { describeZodError } from './agents.js';
 
 const stepSchema = z.object({
   id: z.string().regex(/^[a-z][a-z0-9_]*$/i),
@@ -11,6 +12,10 @@ const stepSchema = z.object({
   entrada: z.string().optional(),
   /** The user may review and edit this step's output before the next step runs (when they asked for it). */
   revisao: z.boolean().optional(),
+  /** How many times the step may run when it fails or answers with nothing (default 1: no automatic retry). */
+  tentativas: z.number().int().min(1).max(5).optional(),
+  /** Id of an earlier step: this one must run on a different provider than that step did (a cross-provider review). */
+  outroProvedorQue: z.string().regex(/^[a-z][a-z0-9_]*$/i).optional(),
 });
 
 const pipelineSchema = z.object({
@@ -22,10 +27,24 @@ export type PipelineStep = z.infer<typeof stepSchema>;
 export type Pipeline = z.infer<typeof pipelineSchema>;
 
 export function parsePipeline(text: string): Pipeline {
-  const p = pipelineSchema.parse(parse(text));
+  let raw: unknown;
+  try {
+    raw = parse(text);
+  } catch (e) {
+    throw new Error(`Invalid YAML: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
+  }
+  const parsed = pipelineSchema.safeParse(raw);
+  if (!parsed.success) throw new Error(describeZodError(parsed.error));
+  const p = parsed.data;
   const ids = new Set<string>();
   for (const s of p.etapas) {
     if (ids.has(s.id)) throw new Error(`Duplicate step id: ${s.id}`);
+    if (s.outroProvedorQue !== undefined && !ids.has(s.outroProvedorQue)) {
+      throw new Error(`Step ${s.id}: outroProvedorQue must name an earlier step, got ${JSON.stringify(s.outroProvedorQue)}`);
+    }
+    if (s.outroProvedorQue !== undefined && !s.agente) {
+      throw new Error(`Step ${s.id}: outroProvedorQue needs an agent (its provider and fallbacks are the candidates)`);
+    }
     ids.add(s.id);
   }
   return p;
@@ -35,7 +54,7 @@ export interface PipelineState {
   /** The user's original request. */
   pedido: string;
   opcoes: Record<string, unknown>;
-  etapas: Record<string, { saida?: string; ignorada?: boolean }>;
+  etapas: Record<string, { saida?: string; ignorada?: boolean; /** Provider that ran the step. */ provedor?: string }>;
 }
 
 const FORBIDDEN = new Set(['__proto__', 'prototype', 'constructor']);
@@ -137,4 +156,14 @@ export function nextStep(pipeline: Pipeline, state: PipelineState): PlannedStep 
     return { step, entrada: rendered.trim() === '' ? state.pedido : rendered };
   }
   return null;
+}
+
+export interface ProviderChoice {
+  provedor: string;
+  modelo?: string | undefined;
+}
+
+/** First candidate whose provider is not `avoid`, or undefined when every candidate would repeat it. */
+export function pickOtherProvider<T extends ProviderChoice>(candidates: readonly T[], avoid: string | undefined): T | undefined {
+  return candidates.find((c) => c.provedor !== avoid);
 }

@@ -139,3 +139,29 @@ export interface SweepReport {
   missingFiles: number;
   freedPages: number;
 }
+
+export interface AgentSummary {
+  nome: string;
+  descricao: string | null;
+  papel: string | null;
+  provedor: string;
+  modelo: string | null;
+  ferramentas: string[];
+  skills: string[];
+  podeAprovar: boolean;
+  /** `usuario`: the user's own file (editable); `exemplo`: bundled with OWL (edit or delete creates/removes an override). */
+  origem: 'usuario' | 'exemplo';
+  /** A bundled agent with the same name is hidden behind this one. */
+  sobrescreve: boolean;
+}
+
+export interface LibraryProblem {
+  arquivo: string;
+  origem: 'usuario' | 'exemplo';
+  erro: string;
+}
+
+export interface AgentLibrary {
+  agents: AgentSummary[];
+  problemas: LibraryProblem[];
+}

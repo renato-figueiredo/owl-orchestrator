@@ -1,4 +1,4 @@
-import type { BackupInfo, BackupSettings, BackupStatus, Fact, MemorySettings, PurgeResult, SweepReport, TrashSettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './types';
+import type { AgentLibrary, BackupInfo, BackupSettings, BackupStatus, Fact, MemorySettings, PurgeResult, SweepReport, TrashSettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -65,6 +65,11 @@ export const api = {
   settings: () => call<{ memory: MemorySettings }>('GET', '/settings').then((r) => r.memory),
   saveSettings: (patch: Partial<MemorySettings>) =>
     call<{ memory: MemorySettings }>('PUT', '/settings', { memory: patch }).then((r) => r.memory),
+  agents: () => call<AgentLibrary>('GET', '/agents'),
+  agentSource: (nome: string) => call<{ texto: string; origem: 'usuario' | 'exemplo' }>('GET', `/agents/${encodeURIComponent(nome)}`),
+  saveAgent: (nome: string, texto: string) => call<{ status: string }>('PUT', `/agents/${encodeURIComponent(nome)}`, { texto }),
+  duplicateAgent: (nome: string, novoNome: string) => call<{ nome: string }>('POST', `/agents/${encodeURIComponent(nome)}/duplicate`, { novoNome }),
+  deleteAgent: (nome: string) => call<{ status: string }>('DELETE', `/agents/${encodeURIComponent(nome)}`),
   trash: () => call<{ sessions: Session[] }>('GET', '/sessions?trash=1').then((r) => r.sessions),
   trashSession: (id: string) => call<{ session: Session }>('DELETE', `/sessions/${encodeURIComponent(id)}`),
   restoreSession: (id: string) => call<{ session: Session }>('POST', `/sessions/${encodeURIComponent(id)}/restore`),

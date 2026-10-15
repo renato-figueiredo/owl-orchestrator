@@ -16,7 +16,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [x] 11 Revisão e testes da fase 1 (`build/prompts/11`) — revisão, E2E (7 cenários) e README feitos em 2026-10-15; sem bloqueantes
 
 ## Fase 2 — Equipes
-- [ ] 12 Agentes como arquivos + pipelines YAML (`build/prompts/12`)
+- [x] 12 Agentes como arquivos + pipelines YAML (`build/prompts/12`) — implementado em 2026-10-15; `qa-testes` e `revisor` rodam junto do 13
 - [ ] 13 Quadro local + portões de aprovação (`build/prompts/13`)
 - [ ] 14 Projetos, equipes, gerente multi-projeto, worktrees (`build/prompts/14`)
 - [ ] 15 Roteador e métricas (`build/prompts/15`)
@@ -34,7 +34,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Pacote de vídeo (ffmpeg, Remotion)
 
 ## Pendências (atualizado em 2026-10-14)
-**Próximo passo:** fase 2, prompt 12 (agentes e pipelines; 12+13 juntos na revisão). Fase 1 concluída (prompt 11). O 08/09 foi revisado de novo em 2026-10-15 (a lista antiga do revisor se perdeu): 9 itens corrigidos, 1 aberto abaixo.
+**Próximo passo:** fase 2, prompt 13 (quadro e aprovação); depois `qa-testes` + `revisor` do 12 e do 13 juntos. Fase 1 concluída (prompt 11). O 08/09 foi revisado de novo em 2026-10-15 (a lista antiga do revisor se perdeu): 9 itens corrigidos, 1 aberto abaixo.
 
 **Revisão**
 - [x] `qa-testes` e `revisor` nos prompts 02, 03 e 04 rodados em 2026-10-15; 3 bloqueantes corrigidos (NUL no adaptador, Host/Origin, raízes de pastas).
@@ -62,11 +62,21 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 **Revisão da fase 1 (prompt 11)** — corrigidos: runs presas em `rodando` após reinício (`runs.failInterrupted` no startup) e `approvals` (prompt editado, erro do refinador) que sobravam na exclusão definitiva. Abertos:
 - [ ] `--allowedTools Read` sem escopo quando há imagem (`claude-cli.ts`): trocar por `Read(//<pasta-da-imagem>/**)` e confirmar com o `claude` real que fora da pasta é negado.
 - [ ] Nome do anexo no rótulo do prompt: filtrar `"`, `[` e `]` (ou citar com JSON).
-- [ ] Filho recebe o `process.env` inteiro: passar lista permitida antes de haver agentes com Bash (fase 2).
+- [x] Filho recebia o `process.env` inteiro: agora `childEnv` (lista permitida + `OWL_ENV_PASSTHROUGH`), testado com `claude` e `codex` reais no prompt 12.
 - [ ] Fatos fixados novos no caminho com resume entram fora de `orcamentoTokens`; histórico lido inteiro a cada run (usar `lastN` + resumo).
 - [ ] Limpar `data/mcp/*.json` que sobram após crash, no startup.
 - [ ] Avaliar `purgaAutomatica` desligada por padrão ou aviso na primeira vez.
 - [ ] CLAUDE.md lista `packages/memory` como montador de contexto, mas o código está em `packages/core/src/memory`.
+
+**Agentes e pipelines (prompt 12)**
+- [ ] `qa-testes` e `revisor` no prompt 12 (junto do 13): biblioteca, `outroProvedorQue`, `tentativas`, interface.
+- [ ] Falha de etapa que não é o refinador (ex.: revisor): hoje só dá para dispensar; falta tentar de novo com outro provedor e pular etapa do meio (`runner.retry/continue` assumem o refinador). O `continue` na última etapa responde 409.
+- [ ] Escolher o pipeline na caixa de envio (hoje só pela API: `pipeline` em `POST /sessions/:id/messages`; `GET /pipelines` lista).
+- [ ] Editor de pipelines e de skills na interface (hoje só a biblioteca de agentes; pipelines e skills são arquivos).
+- [ ] Skills só carregam o `SKILL.md`; arquivos auxiliares da pasta (scripts, referências) não são entregues ao agente.
+- [ ] Agentes com `Edit/Write/Bash` só depois dos worktrees (prompt 14); `ferramentas` de um agente do usuário vão direto para `--allowedTools` sem aviso.
+- [ ] Atualizar o índice de agentes ao mudar um arquivo sem ninguém listar/rodar (hoje reconstrói na listagem e ao iniciar pipeline; um `fs.watch` fica para depois).
+- [ ] Codex ignora `ferramentas` do agente (o sandbox é fixo): documentar/validar quando um agente de Codex declarar ferramentas de escrita.
 
 **Adaptadores**
 - [x] Codex: JSON, resume e erros capturados do `codex-cli` 0.162 real (fixtures `codex-*.jsonl`). Falta: imagens (prompt 08).

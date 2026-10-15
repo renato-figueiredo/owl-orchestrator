@@ -1,5 +1,5 @@
 import { homedir } from 'node:os';
-import { delimiter } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { z } from 'zod';
 
 const schema = z.object({
@@ -10,6 +10,7 @@ const schema = z.object({
   OWL_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(1),
   OWL_BACKUP_AGE_RECIPIENT: z.string().regex(/^age1[a-z0-9]{20,}$/, 'expected an age public key (age1...)').optional(),
   OWL_BACKUP_RCLONE_REMOTE: z.string().regex(/^[A-Za-z0-9_][\w.-]*:[^\0]*$/, 'expected an rclone destination like remote:folder').optional(),
+  OWL_LIBRARY_DIR: z.string().min(1).optional(),
   OWL_MAX_ATTACHMENT_MB: z.coerce.number().min(0.1).max(100).default(10),
 });
 
@@ -31,6 +32,8 @@ export interface OwlConfig {
    * folder. Hidden folders below a root (`~/.ssh`, `~/.config`...) are always refused.
    */
   workspaceRoots: string[];
+  /** The user's library of agents, skills and pipelines (OWL_LIBRARY_DIR, default `~/.owl`). */
+  libraryDir: string;
   /** Extra browser origins allowed to call the API, e.g. the Vite dev server (OWL_ALLOWED_ORIGINS, comma-separated). */
   allowedOrigins: string[];
 }
@@ -47,6 +50,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     maxAttachmentBytes: Math.round(parsed.OWL_MAX_ATTACHMENT_MB * 1024 * 1024),
     ...(parsed.OWL_BACKUP_AGE_RECIPIENT ? { backupAgeRecipient: parsed.OWL_BACKUP_AGE_RECIPIENT } : {}),
     ...(parsed.OWL_BACKUP_RCLONE_REMOTE ? { backupRcloneRemote: parsed.OWL_BACKUP_RCLONE_REMOTE } : {}),
+    libraryDir: parsed.OWL_LIBRARY_DIR ?? join(homedir(), '.owl'),
     workspaceRoots: roots.length ? roots : [homedir()],
     allowedOrigins: list(parsed.OWL_ALLOWED_ORIGINS, ','),
   };

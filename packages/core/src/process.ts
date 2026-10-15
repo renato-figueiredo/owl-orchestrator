@@ -20,6 +20,29 @@ export function buildEnv(
   return env;
 }
 
+/** Names (or `PREFIX_*` patterns) of the variables a CLI needs to find its login, its certificates and its locale. */
+const ENV_ALLOW: readonly RegExp[] = [
+  /^(PATH|HOME|USER|LOGNAME|SHELL|LANG|LANGUAGE|TERM|TZ|TMPDIR|TMP|TEMP|DBUS_SESSION_BUS_ADDRESS)$/,
+  /^(LC|XDG|CLAUDE|ANTHROPIC|CODEX|OPENAI)_/,
+  /^(SSL_CERT_FILE|SSL_CERT_DIR|NODE_EXTRA_CA_CERTS|REQUESTS_CA_BUNDLE|CURL_CA_BUNDLE)$/,
+  /^(http|https|all|no)_proxy$/i,
+];
+
+/**
+ * The environment an agent's subprocess gets: only what a CLI needs to run (home, PATH, locale, certificates, proxy
+ * and its own `CLAUDE_*`/`CODEX_*` settings). The server's other variables (tokens of other tools, `SSH_AUTH_SOCK`,
+ * `NODE_OPTIONS`...) never reach an agent that can run Bash. `extra` adds names the user chose to pass on
+ * (`OWL_ENV_PASSTHROUGH`). Values are never read or logged here.
+ */
+export function childEnv(base: NodeJS.ProcessEnv, extra: readonly string[] = []): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  const more = new Set(extra);
+  for (const [k, v] of Object.entries(base)) {
+    if (v !== undefined && (more.has(k) || ENV_ALLOW.some((re) => re.test(k)))) out[k] = v;
+  }
+  return out;
+}
+
 /** Guards values that end up as CLI option values or session ids (never start with '-'). */
 export function assertSafeArg(name: string, value: string, pattern = /^[\w.:/[\]@-]+$/): string {
   if (value.startsWith('-') || !pattern.test(value)) throw new Error(`Invalid ${name}: ${JSON.stringify(value)}`);

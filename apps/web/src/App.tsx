@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { AgentLibrary } from './components/AgentLibrary';
 import { Chat } from './components/Chat';
 import { MemoryPanel } from './components/MemoryPanel';
 import { RunPanel } from './components/RunPanel';
@@ -25,6 +26,7 @@ export function App() {
   const [memBusy, setMemBusy] = useState(false);
   const [memMessage, setMemMessage] = useState<string | null>(null);
   const [trashVersion, setTrashVersion] = useState(0);
+  const [view, setView] = useState<'chat' | 'agents'>('chat');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -193,7 +195,10 @@ export function App() {
         projects={projects}
         sessions={sessions}
         selectedId={selectedId}
-        onSelect={setSelectedId}
+        onSelect={(id) => {
+          setSelectedId(id);
+          setView('chat');
+        }}
         onNewSession={(pid) => void newSession(pid)}
         onDeleteSession={(id) => void trashSession(id)}
         trashVersion={trashVersion}
@@ -204,7 +209,11 @@ export function App() {
         }}
         theme={theme}
         onToggleTheme={toggleTheme}
+        onOpenAgents={() => setView('agents')}
       />
+      {view === 'agents' && <AgentLibrary onClose={() => setView('chat')} />}
+      {/* Kept mounted while the library is open, so a stream or a draft in progress is not lost. */}
+      <div className={view === 'agents' ? 'hidden' : 'contents'}>
       <Chat
         hasSession={selectedId !== null}
         messages={detail?.messages ?? []}
@@ -254,6 +263,7 @@ export function App() {
           />
         }
       />
+      </div>
     </div>
   );
 }

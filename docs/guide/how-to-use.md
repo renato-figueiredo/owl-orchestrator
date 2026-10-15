@@ -79,6 +79,15 @@ Paste (**Ctrl+V**), drag a file onto the message box, or click 📎. PNG, JPEG a
 - **Your CLI keeps its own copy.** `claude` and `codex` store their conversation history in their own folders (`~/.claude/`, `~/.codex/`). Deleting in OWL does **not** touch those; OWL tells you when that applies. It never deletes files in folders it does not own.
 - **Storage and backup** (bottom of the sidebar): trash retention, an optional automatic database backup (off by default) and *Clean unused files*, which removes images nobody uses anymore. See [Configuration](configuration.md#backup) for encryption and sending the copy somewhere.
 
+## Agents, skills and pipelines
+Click **Agents** (sidebar) to open the library. An agent is a Markdown file with a short header (name, provider, model, tools, skills) and its instructions.
+- **Where they live**: your own library in `~/.owl/agents/` (change it with `OWL_LIBRARY_DIR`) and the examples that ship with OWL (`po`, `tech-lead`, `dev-front`, `dev-back`, `qa`, `revisor`, `memoria`, `roteador`, `refinador-de-prompt`). A file of yours with the same name as an example wins.
+- **Edit** an example and OWL saves *your copy*; the example is untouched, and **Back to the example** removes your copy. **Duplicate** copies any agent under a new name. **New agent** starts from a template.
+- A file with a mistake does not break anything: it is listed with the reason (e.g. `ferramentas: Invalid input`) and skipped. Editing a file by hand takes effect on the next run.
+- **Skills** are folders with a `SKILL.md` (same format as Claude Code's), in `skills/<name>/`. An agent lists the skills it uses and their instructions travel with its prompt.
+- **Pipelines** (`pipelines/<name>.yaml`) chain steps. Each step can name an agent, run only `quando` a condition holds, take the previous step's output as input, retry (`tentativas`) and run on a provider different from an earlier step (`outroProvedorQue`). The example `refinar-executar-revisar` refines the prompt, runs it, and has the reviewer check the result on the other provider. Use it by sending `pipeline: "refinar-executar-revisar"` to the API; picking one in the message box is on the [roadmap](../roadmap.md).
+- The example developer and QA agents are read-only on purpose: they hand back diffs. Writing to your project comes with git worktrees.
+
 ## Keyboard and themes
 - In the session list: **↑ / ↓** move, **Enter** opens, **Tab** leaves the list.
 - The ☾ / ☀ button switches light and dark (it starts from your system setting and remembers your choice).

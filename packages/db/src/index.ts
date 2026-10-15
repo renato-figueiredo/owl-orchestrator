@@ -1,4 +1,5 @@
 import type { Db } from './connection.js';
+import { agentsRepo } from './repos/agents.js';
 import { approvalsRepo } from './repos/approvals.js';
 import { attachmentsRepo, blobsRepo } from './repos/blobs.js';
 import { factsRepo } from './repos/facts.js';
@@ -10,6 +11,7 @@ import { settingsRepo } from './repos/settings.js';
 
 export { checkSnapshot, foreignKeysEnabled, openDb, openReadonly, snapshotTo, type Db, type SnapshotCheck } from './connection.js';
 export { MIGRATIONS_DIR, migrate } from './migrate.js';
+export * from './repos/agents.js';
 export * from './repos/approvals.js';
 export * from './repos/blobs.js';
 export * from './repos/facts.js';
@@ -30,6 +32,7 @@ export function createRepos(db: Db) {
     blobs: blobsRepo(db),
     attachments: attachmentsRepo(db),
     approvals: approvalsRepo(db),
+    agents: agentsRepo(db),
     settings: settingsRepo(db),
     /** Full-text search over messages (see `buscarMensagens`). */
     searchMessages: (

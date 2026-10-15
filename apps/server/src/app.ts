@@ -7,7 +7,7 @@ import { BackupService, backupSettingsPatchSchema } from './backup.js';
 import { CleanupService, NotInTrashError, SessionBusyError, trashSettingsPatchSchema } from './cleanup.js';
 import { AttachmentError, AttachmentService, cleanName, HASH, MAX_NAME_CHARS } from './attachments.js';
 import type { Executor } from './executor.js';
-import { Library } from './library.js';
+import { Library, LibraryError } from './library.js';
 import { MemoryService, memorySettingsPatchSchema, type McpMemoryLaunch } from './memory.js';
 import { PipelineError, PipelineRunner } from './pipeline-runner.js';
 import { FolderError, registerGuards, resolveWorkspace } from './security.js';
@@ -23,8 +23,10 @@ export interface AppDeps {
   workspaceRoots: string[];
   /** Extra browser origins allowed to call the API (e.g. the Vite dev server). */
   allowedOrigins?: string[];
-  /** Folder with `agents/` and `pipelines/` (default: the repo's `examples/`). */
+  /** Folder with `agents/`, `skills/` and `pipelines/` shipped with OWL (default: the repo's `examples/`). */
   libraryDir?: string;
+  /** The user's own library (default none), same layout; it wins over `libraryDir` and is where the interface saves. */
+  userLibraryDir?: string;
   /** Where processed images are stored (default: a folder in the system temp dir). */
   attachmentsDir?: string;
   /** Largest image accepted, in bytes (default 10 MB). */
@@ -89,7 +91,12 @@ const sendMessage = z.object({
   editarAntes: z.boolean().default(false),
   /** Use this provider/model for the refiner instead of the agent's own (e.g. haiku after the limit ran out). */
   refinador: z.object({ provider: z.string().min(1).max(64), model: modelId.optional() }).optional(),
+  /** Run this library pipeline instead of a plain message (see GET /pipelines). */
+  pipeline: z.string().regex(/^[a-z0-9][a-z0-9-]*$/).max(64).optional(),
 });
+const agentName = z.object({ nome: z.string().regex(/^[a-z0-9][a-z0-9-]*$/).max(64) });
+const agentText = z.object({ texto: z.string().min(1).max(200_000) });
+const agentDuplicate = z.object({ novoNome: z.string().regex(/^[a-z0-9][a-z0-9-]*$/).max(64) });
 const factBody = z.object({
   projectId: z.string().min(1).optional(),
   sessionId: z.string().min(1).optional(),
@@ -114,7 +121,12 @@ function projectInstructions(configJson: string | null): string | undefined {
 export function buildApp(deps: AppDeps): FastifyInstance {
   const { repos, executor } = deps;
   const app = Fastify({ logger: false });
-  const library = new Library(deps.libraryDir);
+  const library = new Library({
+    ...(deps.libraryDir ? { bundledDir: deps.libraryDir } : {}),
+    ...(deps.userLibraryDir ? { userDir: deps.userLibraryDir } : {}),
+    repos,
+  });
+  library.sync(); // index the agent files now; a broken one is listed by GET /agents, it does not stop the server
   const runner = new PipelineRunner({ repos, executor, library });
   const memory = new MemoryService({ repos, executor, ...(deps.mcpMemory ? { mcp: deps.mcpMemory } : {}) });
   const attachments = new AttachmentService({
@@ -145,6 +157,9 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     if (err instanceof ZodError) {
       const message = err.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; ');
       return reply.status(400).send({ error: { code: 'invalid_request', message } });
+    }
+    if (err instanceof LibraryError) {
+      return reply.status(err.status).send({ error: { code: err.code, message: err.message } });
     }
     if (err instanceof PipelineError) {
       return reply.status(err.status).send({ error: { code: err.code, message: err.message } });
@@ -341,11 +356,19 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     for (const p of [body.refinador?.provider].filter((x): x is string => !!x)) {
       if (!listAdapters().some((a) => a.id === p)) throw new HttpError(400, 'unknown_provider', `Unknown provider: ${p}`);
     }
-    if (body.melhorarPrompt) {
+    if (body.pipeline) {
+      try {
+        library.pipeline(body.pipeline);
+      } catch (e) {
+        throw new HttpError(400, 'unknown_pipeline', e instanceof Error ? e.message : String(e));
+      }
+    }
+    if (body.melhorarPrompt || body.pipeline) {
       const first = runner.start(
         {
           sessionId: id,
           pedido: texto,
+          ...(body.pipeline ? { pipeline: body.pipeline } : {}),
           ...(anexos.length ? { anexos } : {}),
           cwd,
           editarAntes: body.editarAntes,
@@ -356,7 +379,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
           },
           ...(body.refinador ? { refinador: { provider: body.refinador.provider, ...(body.refinador.model ? { model: body.refinador.model } : {}) } } : {}),
         },
-        { melhorarPrompt: true },
+        { melhorarPrompt: body.melhorarPrompt },
       );
       return reply.status(202).send({ runId: first.id, etapa: first.etapa });
     }
@@ -499,6 +522,36 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const result = await memory.summarize(id);
     return { ...result, session: repos.sessions.get(id) };
   });
+
+  app.get('/agents', async () => library.sync());
+
+  app.get('/agents/:nome', async (req) => {
+    const { nome } = agentName.parse(req.params);
+    return library.source(nome);
+  });
+
+  app.put('/agents/:nome', async (req) => {
+    const { nome } = agentName.parse(req.params);
+    const { texto } = agentText.parse(req.body);
+    library.save(nome, texto);
+    return { status: 'saved' };
+  });
+
+  app.post('/agents/:nome/duplicate', async (req, reply) => {
+    const { nome } = agentName.parse(req.params);
+    const { novoNome } = agentDuplicate.parse(req.body);
+    library.duplicate(nome, novoNome);
+    return reply.status(201).send({ nome: novoNome });
+  });
+
+  app.delete('/agents/:nome', async (req) => {
+    const { nome } = agentName.parse(req.params);
+    library.remove(nome);
+    return { status: 'deleted' };
+  });
+
+  app.get('/skills', async () => library.skills());
+  app.get('/pipelines', async () => library.pipelines());
 
   app.get('/refiner', async () => {
     const a = library.agent('refinador-de-prompt');

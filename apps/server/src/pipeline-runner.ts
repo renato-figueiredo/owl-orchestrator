@@ -1,4 +1,4 @@
-import { nextStep, type Pipeline, type PipelineState, type PipelineStep } from '@owl/core';
+import { nextStep, pickOtherProvider, type AgentDefinition, type Pipeline, type PipelineState, type PipelineStep } from '@owl/core';
 import type { createRepos, Run } from '@owl/db';
 import type { Executor, StepOutcome } from './executor.js';
 import type { Library } from './library.js';
@@ -10,6 +10,8 @@ export interface PipelineRequest {
   /** The user's original request. */
   pedido: string;
   cwd: string;
+  /** Pipeline to run (default: the runner's own, `melhorar-e-executar`). */
+  pipeline?: string;
   /** Pause after a `revisao` step so the user can edit its output before the next step. */
   editarAntes: boolean;
   /** Provider, model and instructions for steps that name no agent. */
@@ -39,6 +41,8 @@ interface Context {
   userMessageId?: number;
   /** The step this context is waiting on (a review or a failure). */
   waitingOn?: PipelineStep;
+  /** Runs started per step, to enforce `tentativas`. */
+  attempts: Record<string, number>;
 }
 
 /**
@@ -55,19 +59,21 @@ export class PipelineRunner {
   ) {}
 
   /** Stores the request and starts the first step that applies. */
-  start(req: PipelineRequest, opcoes: { melhorarPrompt: boolean }): Run {
+  start(req: PipelineRequest, opcoes: Record<string, unknown> = {}): Run {
     // Load everything first: a missing or broken file must fail BEFORE the user's message is stored.
     let pipeline: Pipeline;
     try {
-      pipeline = this.deps.library.pipeline(this.deps.pipelineName ?? 'melhorar-e-executar');
+      pipeline = this.deps.library.pipeline(req.pipeline ?? this.deps.pipelineName ?? 'melhorar-e-executar');
       for (const step of pipeline.etapas) if (step.agente) this.deps.library.agent(step.agente);
     } catch (e) {
       throw new PipelineError(500, 'pipeline_unavailable', `Could not load the pipeline: ${e instanceof Error ? e.message : String(e)}`);
     }
+    this.deps.library.sync(); // files may have changed since the last listing: runs must point at the current index
     const ctx: Context = {
       req,
       pipeline,
       state: { pedido: req.pedido, opcoes: { ...opcoes, editarAntes: req.editarAntes }, etapas: {} },
+      attempts: {},
     };
     ctx.userMessageId = this.deps.repos.messages.add({ sessionId: req.sessionId, papel: 'usuario', conteudo: req.pedido }).id;
     for (const a of req.anexos ?? []) {
@@ -99,6 +105,7 @@ export class PipelineRunner {
     const ctx = this.take(runId);
     const step = ctx.waitingOn!;
     delete ctx.state.etapas[step.id];
+    delete ctx.attempts[step.id]; // the user chose to try again: the automatic budget starts over
     ctx.req = { ...ctx.req, refinador: via };
     this.decide(runId, 'rejeitado', 'nova tentativa');
     this.waiting.delete(runId);
@@ -141,10 +148,10 @@ export class PipelineRunner {
     if (!planned) return undefined;
     const { step, entrada } = planned;
     const agent = step.agente ? this.deps.library.agent(step.agente) : undefined;
-    const via = agent
-      ? (ctx.req.refinador ?? { provider: agent.provedor, ...(agent.modelo ? { model: agent.modelo } : {}) })
-      : ctx.req.executar;
-    const systemAppend = agent ? agent.prompt : ctx.req.executar.systemAppend;
+    const via = agent ? this.providerFor(ctx, step, agent) : ctx.req.executar;
+    const systemAppend = agent ? this.deps.library.systemPrompt(agent) : ctx.req.executar.systemAppend;
+    ctx.attempts[step.id] = (ctx.attempts[step.id] ?? 0) + 1;
+    const agentId = step.agente ? this.deps.repos.agents.byName(step.agente)?.id : undefined;
     return this.deps.executor.submit({
       sessionId: ctx.req.sessionId,
       texto: entrada,
@@ -153,6 +160,7 @@ export class PipelineRunner {
       cwd: ctx.req.cwd,
       ...(systemAppend ? { systemAppend } : {}),
       etapa: step.id,
+      ...(agentId ? { agentId } : {}),
       ...(parentRunId ? { parentRunId } : {}),
       recordUserMessage: false,
       ...(ctx.userMessageId !== undefined ? { contextBeforeMessageId: ctx.userMessageId } : {}),
@@ -163,17 +171,48 @@ export class PipelineRunner {
     });
   }
 
+  /**
+   * Provider and model of an agent step. The user's override (`refinador`) only applies to a refiner: a reviewer must
+   * not be moved to another provider because the refiner hit a limit. `outroProvedorQue` picks, among the agent's
+   * own provider and its fallbacks, the first one that differs from the referenced step's provider.
+   */
+  private providerFor(ctx: Context, step: PipelineStep, agent: AgentDefinition): { provider: string; model?: string } {
+    if (agent.papel === 'refinador' && ctx.req.refinador) return ctx.req.refinador;
+    if (step.outroProvedorQue) {
+      const used = ctx.state.etapas[step.outroProvedorQue]?.provedor;
+      const options = [{ provedor: agent.provedor, modelo: agent.modelo }, ...agent.fallback];
+      const pick = pickOtherProvider(options, used);
+      if (!pick) {
+        throw new Error(
+          `Step "${step.id}" must run on a provider other than "${used}", but agent "${step.agente}" only offers ${options.map((o) => o.provedor).join(', ')}`,
+        );
+      }
+      return { provider: pick.provedor, ...(pick.modelo ? { model: pick.modelo } : {}) };
+    }
+    return { provider: agent.provedor, ...(agent.modelo ? { model: agent.modelo } : {}) };
+  }
+
   private afterStep(ctx: Context, step: PipelineStep, outcome: StepOutcome): void {
     const { repos } = this.deps;
-    if (outcome.status === 'ok' && step.agente && !outcome.result.trim()) {
-      // The refiner answered with nothing: never run the next step on an empty prompt. Ask, like any other failure.
+    const empty = outcome.status === 'ok' && Boolean(step.agente) && !outcome.result.trim();
+    const failed = outcome.status === 'erro' || empty;
+    if (failed && (ctx.attempts[step.id] ?? 1) < (step.tentativas ?? 1)) {
+      // Same provider and same input: a transient failure gets its automatic attempts before anyone is bothered.
+      // Switching provider is never automatic.
+      this.advance(ctx, outcome.run.parentRunId ?? undefined);
+      return;
+    }
+    const refiner = this.isRefiner(step);
+    const label = refiner ? 'Falha ao melhorar o prompt' : `Falha na etapa "${step.id}"`;
+    if (empty) {
+      // The agent answered with nothing: never run the next step on an empty prompt. Ask, like any other failure.
       repos.approvals.create({
         runId: outcome.run.id,
-        motivo: 'Falha ao melhorar o prompt: o refinador não devolveu nenhum texto',
+        motivo: `${label}: ${refiner ? 'o refinador' : 'o agente'} não devolveu nenhum texto`,
       });
       this.waiting.set(outcome.run.id, { ...ctx, waitingOn: step });
     } else if (outcome.status === 'ok') {
-      ctx.state.etapas[step.id] = { saida: outcome.result };
+      ctx.state.etapas[step.id] = { saida: outcome.result, provedor: outcome.run.provedor };
       const hasMore = nextStep(ctx.pipeline, ctx.state) !== null;
       if (step.revisao && ctx.req.editarAntes && hasMore) {
         repos.approvals.create({ runId: outcome.run.id, motivo: 'Revisar o prompt melhorado antes de executar' });
@@ -182,14 +221,19 @@ export class PipelineRunner {
       }
       this.advance(ctx, outcome.run.id);
     } else if (outcome.status === 'erro' && step.agente) {
-      // The refiner failed (limit reached, CLI missing...). Never switch provider silently: ask.
-      repos.approvals.create({
-        runId: outcome.run.id,
-        motivo: `Falha ao melhorar o prompt: ${outcome.error ?? 'erro desconhecido'}`,
-      });
+      // An agent failed (limit reached, CLI missing...). Never switch provider silently: ask.
+      repos.approvals.create({ runId: outcome.run.id, motivo: `${label}: ${outcome.error ?? 'erro desconhecido'}` });
       this.waiting.set(outcome.run.id, { ...ctx, waitingOn: step });
     }
-    // 'executar' failing or any cancellation just ends the pipeline; the run shows it.
+    // A step without an agent failing, or any cancellation, just ends the pipeline; the run shows it.
+  }
+
+  private isRefiner(step: PipelineStep): boolean {
+    if (!step.agente) return false;
+    try {
+      return this.deps.library.agent(step.agente).papel === 'refinador';
+    } catch {
+      return false;
+    }
   }
 }
-
