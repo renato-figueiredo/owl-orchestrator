@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { act, cleanup, render, renderHook, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -62,16 +62,16 @@ describe('primitives under reduced motion', () => {
 
 describe('boundaries', () => {
   const root = join(__dirname, '../../..');
-  const LIBS = ['"motion"', '"@formkit/auto-animate"', '"@dnd-kit/'];
-  it('animation libraries are only dependencies of apps/web and packages/ui', () => {
+  const ANIMATION = ['"motion"', '"@formkit/auto-animate"'];
+  const DND = '"@dnd-kit/';
+  it('animation libraries live only in packages/ui; dnd-kit only in apps/web and packages/ui', () => {
     const dirs = [...readdirSync(join(root, 'apps')).map((d) => `apps/${d}`), ...readdirSync(join(root, 'packages')).map((d) => `packages/${d}`)];
     for (const d of dirs) {
-      if (d === 'apps/web' || d === 'packages/ui') continue;
       const file = join(root, d, 'package.json');
-      if (!statSync(root).isDirectory()) continue;
-      let txt = '';
-      try { txt = readFileSync(file, 'utf8'); } catch { continue; }
-      for (const lib of LIBS) expect(txt, `${d} must not depend on ${lib}`).not.toContain(lib);
+      if (!existsSync(file)) continue;
+      const txt = readFileSync(file, 'utf8');
+      if (d !== 'packages/ui') for (const lib of ANIMATION) expect(txt, `${d} must not depend on ${lib}`).not.toContain(lib);
+      if (d !== 'apps/web' && d !== 'packages/ui') expect(txt, `${d} must not depend on dnd-kit`).not.toContain(DND);
     }
   });
 });
