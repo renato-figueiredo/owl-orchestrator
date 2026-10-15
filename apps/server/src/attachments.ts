@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { existsSync, lstatSync, mkdirSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import type { AttachmentInfo, Blob, createRepos } from '@owl/db';
@@ -118,7 +118,7 @@ export class AttachmentService {
     const file = join(this.dir, caminho);
     if (!existsSync(file)) {
       mkdirSync(dirname(file), { recursive: true });
-      const tmp = `${file}.${process.pid}.tmp`;
+      const tmp = `${file}.${process.pid}-${randomUUID().slice(0, 8)}.tmp`; // two uploads of one picture at once must not share it
       writeFileSync(tmp, processed.data, { mode: 0o600 });
       renameSync(tmp, file);
     }
@@ -138,7 +138,14 @@ export class AttachmentService {
     const blob = this.deps.repos.blobs.get(hash);
     if (!blob) return undefined;
     const file = resolve(this.dir, blob.caminho);
-    if (!file.startsWith(this.dir + sep) || !existsSync(file)) return undefined;
+    if (!file.startsWith(this.dir + sep)) return undefined;
+    try {
+      // Only a regular file of ours: a symlink at (or above) the stored path could point anywhere on disk.
+      if (!lstatSync(file).isFile()) return undefined;
+      if (!realpathSync(file).startsWith(realpathSync(this.dir) + sep)) return undefined;
+    } catch {
+      return undefined; // missing
+    }
     return file;
   }
 

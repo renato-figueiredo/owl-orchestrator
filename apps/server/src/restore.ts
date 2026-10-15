@@ -48,7 +48,9 @@ export async function restoreBackup(o: {
     }
     // Leftovers of the old database must not be replayed onto the restored one.
     for (const ext of ['-wal', '-shm']) {
-      if (existsSync(target + ext)) renameSync(target + ext, `${previous ?? target}${ext}`);
+      if (!existsSync(target + ext)) continue;
+      if (previous) renameSync(target + ext, `${previous}${ext}`);
+      else rmSync(target + ext, { force: true }); // no database to pair it with: it would be replayed onto the restored one
     }
     renameSync(work, target);
     return { database: target, ...(previous ? { previous: basename(previous) } : {}), sessions: check.sessions ?? 0, messages: check.messages ?? 0 };

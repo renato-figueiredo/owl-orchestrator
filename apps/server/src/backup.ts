@@ -148,6 +148,8 @@ export class BackupService {
   private async take(): Promise<BackupStatus> {
     const { dir, recipient, remote } = this.deps;
     const now = this.deps.now?.() ?? new Date();
+    // Before anything is written: asking for an off-site copy without a key must not leave a plaintext snapshot behind.
+    if (remote && !recipient) throw new Error('A remote is set but no age key: refusing to take an unencrypted snapshot for upload');
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const base = `owl-${now.toISOString().slice(0, 10)}.db`;
     const plain = join(dir, base);
@@ -183,7 +185,6 @@ export class BackupService {
 
     let enviado = false;
     if (remote) {
-      if (!recipient) throw new Error('A remote is set but no age key: refusing to upload an unencrypted snapshot');
       const r = await runTool(this.deps.rclone ?? { bin: 'rclone' }, ['copyto', final, `${remote.replace(/\/+$/, '')}/${arquivo}`]);
       if (r.code !== 0) {
         throw new Error(`rclone failed${r.code === null ? ' to start (is it installed?)' : ''}: ${r.stderr || `exit ${r.code}`}`);

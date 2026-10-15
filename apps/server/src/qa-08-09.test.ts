@@ -247,21 +247,35 @@ describe('QA 08: GET /attachments/:hash path safety', () => {
     }
   });
 
-  it('KNOWN GAP (reported): a symlink at the stored path is followed because only the lexical path is checked', async () => {
+  it('the same picture uploaded several times at once is stored once and every upload succeeds', async () => {
+    const data = await png('#abcdef', 40, 40);
+    const rs = await Promise.all(Array.from({ length: 6 }, () => post(data)));
+    expect(rs.map((r) => r.status)).toEqual([201, 201, 201, 201, 201, 201]);
+    const hashes = new Set(await Promise.all(rs.map(async (r) => ((await r.json()) as Json).attachment.hash as string)));
+    expect(hashes.size).toBe(1);
+    expect(files(store).filter((f) => f.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('a symlink at the stored path is not followed', async () => {
     const outside = join(dir, 'secret2.txt');
     writeFileSync(outside, 'top secret');
     const h = await upload('#808');
     rmSync(fileOf(h));
     symlinkSync(outside, fileOf(h));
     const r = await fetch(`${base}/attachments/${h}`);
-    // Desired: not 200. Today the symlink is read. Flip the expectation when production code uses realpath/lstat.
-    expect(r.status).toBe(200); // documents the gap (flip to 404 once fixed)
-    if (r.status === 200) {
-      expect(await r.text()).toBe('top secret');
-      console.warn('QA: GET /attachments/:hash follows a symlink at the stored path (pathOf has no realpath/lstat check)');
-    } else {
-      expect(r.status).toBe(404);
-    }
+    expect(r.status).toBe(404);
+    expect(await r.text()).not.toContain('top secret');
+  });
+
+  it('a symlinked shard folder is not followed either', async () => {
+    const outsideDir = join(dir, 'elsewhere');
+    mkdirSync(outsideDir);
+    const h = await upload('#909');
+    writeFileSync(join(outsideDir, `${h}.webp`), 'top secret');
+    rmSync(join(store, h.slice(0, 2)), { recursive: true });
+    symlinkSync(outsideDir, join(store, h.slice(0, 2)));
+    const r = await fetch(`${base}/attachments/${h}`);
+    expect(r.status).toBe(404);
   });
 });
 
@@ -399,12 +413,12 @@ copyFileSync(src, ${JSON.stringify(remote + '/')} + dst.split('/').pop());
     expect(b.lastStatus()?.ok).toBe(false);
   });
 
-  it('REPORT: with a remote and no key the plaintext snapshot is still written locally before the refusal', async () => {
+  it('with a remote and no key nothing is written at all, not even a local plaintext snapshot', async () => {
     const t = tools();
     const b = new BackupService({ db, repos, dir: join(dir, 'bk'), remote: 'r:b', rclone: t.rclone, now: day });
-    await b.run();
-    // Not a leak (stays on this machine), but the user asked for an off-site copy and gets an unencrypted local file.
-    expect(readdirSync(join(dir, 'bk')).sort()).toEqual(['owl-2026-10-15.db']);
+    const st = await b.run();
+    expect(st.ok).toBe(false);
+    expect(existsSync(join(dir, 'bk')) ? readdirSync(join(dir, 'bk')) : []).toEqual([]);
   });
 
   it('the API never echoes the recipient or the remote', async () => {
@@ -449,6 +463,22 @@ copyFileSync(src, ${JSON.stringify(remote + '/')} + dst.split('/').pop());
     migrate(copy);
     expect((copy.prepare("SELECT COUNT(*) AS n FROM messages_fts WHERE messages_fts MATCH 'palavraunica'").get() as { n: number }).n).toBe(1);
     expect((copy.prepare('SELECT COUNT(*) AS n FROM messages').get() as { n: number }).n).toBe(1);
+    expect(copy.pragma('integrity_check', { simple: true })).toBe('ok');
+    copy.close();
+  });
+
+  it('restore into a folder with a stray -wal and no database does not replay the wal onto the restored one', async () => {
+    chat('so no snapshot');
+    const bk = join(dir, 'bk');
+    await new BackupService({ db, repos, dir: bk, now: day }).run();
+    const target = join(dir, 'restored2');
+    mkdirSync(target);
+    writeFileSync(join(target, 'owl.sqlite-wal'), 'stale wal');
+    writeFileSync(join(target, 'owl.sqlite-shm'), 'stale shm');
+    await restoreBackup({ file: join(bk, 'owl-2026-10-15.db'), dataDir: target });
+    expect(existsSync(join(target, 'owl.sqlite-wal'))).toBe(false);
+    expect(existsSync(join(target, 'owl.sqlite-shm'))).toBe(false);
+    const copy = openDb(join(target, 'owl.sqlite'));
     expect(copy.pragma('integrity_check', { simple: true })).toBe('ok');
     copy.close();
   });
