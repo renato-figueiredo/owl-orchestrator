@@ -310,7 +310,7 @@ export class BoardFlow {
     // What the agent changed becomes a commit on the ticket branch, so QA, the reviewer and the merge all see the same thing.
     if (wrote) {
       try {
-        const done = this.deps.worktrees.commitAll(ticket, `${ticket.identificador}: ${ticket.titulo} (${agente})`);
+        const done = this.deps.worktrees.commitAll(ticket, `${ticket.identificador}: ${ticket.titulo} (${agente})`, repos.projects.get(ticket.projectId)!);
         if (done || !STAYS.has(role)) board.comment(ticketId, SYSTEM, done ? `Alterações commitadas na branch ${repos.tickets.get(ticketId)?.branch}.` : 'O agente não alterou nenhum arquivo.');
       } catch (e) {
         this.fail(ticket, agente, e instanceof Error ? e.message : String(e), outcome.run.id);

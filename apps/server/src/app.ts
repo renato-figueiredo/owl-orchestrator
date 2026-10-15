@@ -1,7 +1,7 @@
 import { BoardError, LocalBoard } from '@owl/board';
 import { listAdapters, type RunEvent } from '@owl/core';
 import type { createRepos } from '@owl/db';
-import { createReadStream } from 'node:fs';
+import { createReadStream, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -35,7 +35,7 @@ export interface AppDeps {
   libraryDir?: string;
   /** The user's own library (default none), same layout; it wins over `libraryDir` and is where the interface saves. */
   userLibraryDir?: string;
-  /** Folder that holds the git worktrees of tickets (default: a folder in the system temp dir). */
+  /** Folder that holds the git worktrees of tickets (default: a new private folder in the system temp dir). */
   worktreesDir?: string;
   /** Runs of one project at once unless the project sets its own limit, and runs at once overall (shown in the project view). */
   limits?: { project: number; global: number };
@@ -143,7 +143,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   library.sync(); // index the agent files now; a broken one is listed by GET /agents, it does not stop the server
   const runner = new PipelineRunner({ repos, executor, library });
   const board = new LocalBoard(repos);
-  const worktrees = new WorktreeService({ repos, dir: deps.worktreesDir ?? join(tmpdir(), 'owl-worktrees') });
+  const worktrees = new WorktreeService({ repos, dir: deps.worktreesDir ?? mkdtempSync(join(tmpdir(), 'owl-worktrees-')) });
   const flow = new BoardFlow({
     repos,
     executor,

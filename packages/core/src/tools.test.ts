@@ -31,12 +31,23 @@ describe('analyzeTools', () => {
     ['Bash(git branch -D main)', /destrutivo/],
     ['Bash(git branch -m x)', /só para listar/],
     ['Bash(node -e "1")', /./],
+    ['Bash(node script.js)', /node só roda/],
+    ['Bash(git diff --output=/tmp/x)', /flags que gravam/],
+    ['Bash(git log --output /tmp/x)', /flags que gravam/],
+    ['Bash(rg --pre=sh foo)', /flags que gravam/],
+    ['Bash(git -c core.pager=sh log)', /flags que gravam/],
+    ['Bash(cat ~/.claude/.credentials.json)', /credenciais/],
+    ['Bash(grep token ../.codex/auth.json)', /credenciais/],
     ['WebFetch', /não permitida/],
     ['Task', /não permitida/],
   ])('rejects %s', (tool, why) => {
     const r = analyzeTools([tool]);
     expect(r.problems.length).toBe(1);
     expect(r.problems[0]).toMatch(why);
+  });
+
+  it('accepts node --test', () => {
+    expect(analyzeTools(['Bash(node --test:*)']).problems).toEqual([]);
   });
 
   it('reports every problem of a list, not only the first', () => {

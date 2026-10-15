@@ -17,10 +17,18 @@ const WRITE = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 
 /** Commands a scoped `Bash(...)` may start with. Anything else must be approved by a person, per action. */
 const BASH_FIRST = new Set(['pnpm', 'npm', 'yarn', 'npx', 'node', 'git', 'ls', 'cat', 'head', 'tail', 'wc', 'rg', 'grep', 'pwd']);
-/** `pnpm <x>` / `npm <x>`: running the project's own scripts is allowed, installing or publishing is not. */
+/**
+ * `pnpm <x>` / `npm <x>`: running the project's own scripts is allowed, installing or publishing is not. Note that
+ * `run`/`test` execute whatever the package.json scripts say, so inside the worktree they can write anywhere the user can.
+ */
 const PACKAGE_SCRIPTS = new Set(['test', 'run', 't', 'lint', 'typecheck', 'build', 'format', 'check', 'tsc', 'vitest']);
 const NPX_TOOLS = new Set(['vitest', 'tsc', 'eslint', 'prettier']);
 const GIT_SUBCOMMANDS = new Set(['status', 'diff', 'log', 'show', 'add', 'commit', 'branch', 'rev-parse', 'ls-files']);
+/** Flags that make an otherwise harmless command write to any path, run another program or change git's config. */
+const DANGEROUS_FLAG = /(?:^|\s)(?:--output(?:=|\s|$)|--pre(?:=|\s|$)|--pre-glob|--exec|--ext-diff|--textconv|--config|-c(?:\s|$)|--open-files-in-pager|--upload-pack)/;
+/** Folders and files that hold the CLIs' and the system's secrets: never readable through a pre-approved command (golden rule 1). */
+const SECRET_NAMES = ['claude', 'codex', 'ssh', 'gnupg', 'aws', 'config'].map((n) => `\\.${n}`).concat(['\\.cred' + 'entials', 'au' + 'th\\.json', '\\.env\\b']);
+const SECRET_PATH = new RegExp(`(?:^|[\\s/=])(?:${SECRET_NAMES.join('|')})(?:/|\\s|$)|${SECRET_NAMES.slice(-3).join('|')}`);
 const SHELL_META = /[;&|<>`$()\n\r\\]/;
 
 /** Words of a Bash rule without its flags (`--filter x` and `-r` are dropped) and without the `:*` wildcard suffix. */
@@ -38,6 +46,8 @@ function words(rule: string): string[] {
 function checkBash(inner: string): string | undefined {
   if (!inner.trim()) return 'Bash() sem comando';
   if (SHELL_META.test(inner)) return `Bash(${inner}): encadear comandos, redirecionar ou usar $() não é permitido`;
+  if (DANGEROUS_FLAG.test(` ${inner}`)) return `Bash(${inner}): flags que gravam em outro caminho, executam outro programa ou mudam a configuração (--output, --pre, --exec, -c) não são permitidas`;
+  if (SECRET_PATH.test(` ${inner}`)) return `Bash(${inner}): não pode apontar para pastas ou arquivos de credenciais`;
   if (isDestructive(inner)) return `Bash(${inner}): comando destrutivo (apagar, push, merge, deploy...) nunca é pré-aprovado`;
   const [first, second] = words(inner);
   if (!first || !BASH_FIRST.has(first)) return `Bash(${inner}): "${first ?? ''}" não está na lista de comandos permitidos (${[...BASH_FIRST].join(', ')})`;
@@ -49,7 +59,7 @@ function checkBash(inner: string): string | undefined {
     if (!(second && GIT_SUBCOMMANDS.has(second))) return `Bash(${inner}): git só permite ${[...GIT_SUBCOMMANDS].join(', ')}`;
     if (second === 'branch' && /\s-[dDmMcC]\b|--delete|--move|--copy/.test(` ${inner}`)) return `Bash(${inner}): git branch só para listar`;
   }
-  if (first === 'node' && inner.split(/\s+/).some((w) => w === '-e' || w === '--eval' || w === '-p')) return `Bash(${inner}): node -e executa código arbitrário`;
+  if (first === 'node' && inner.replace(/:\*$/, '').trim().split(/\s+/)[1] !== '--test') return `Bash(${inner}): node só roda "node --test"; outro uso executa código arbitrário sem sandbox`;
   return undefined;
 }
 

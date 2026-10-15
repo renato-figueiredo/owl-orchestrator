@@ -90,7 +90,12 @@ export function registerProjectRoutes(
     }
     let config: unknown;
     if (body.instrucoes !== undefined) {
-      const current = p.configJson ? (JSON.parse(p.configJson) as Record<string, unknown>) : {};
+      let current: Record<string, unknown> = {};
+      try {
+        if (p.configJson) current = JSON.parse(p.configJson) as Record<string, unknown>;
+      } catch {
+        /* a corrupted config is replaced by the new instructions instead of failing the request */
+      }
       if (body.instrucoes === null || !body.instrucoes.trim()) delete current.instrucoes;
       else current.instrucoes = body.instrucoes;
       config = Object.keys(current).length ? current : null;
@@ -116,6 +121,10 @@ export function registerProjectRoutes(
     if (body.confirmar !== p.nome) throw new BoardError(400, 'confirmation_mismatch', 'Digite o nome do projeto para confirmar');
     if (repos.projects.runningRuns(pid) > 0) throw new BoardError(409, 'project_busy', 'O projeto tem execuções em andamento: cancele antes');
     if (repos.tickets.withWorktree(pid).length > 0) throw new BoardError(409, 'worktrees_open', 'O projeto tem worktrees abertos: conclua ou descarte os tickets antes');
+    const pending = repos.tickets.list(pid).filter((t) => t.worktreeEstado === 'removido' && t.branch);
+    if (pending.length > 0) {
+      throw new BoardError(409, 'branches_pending', `Há ${pending.length} branch(es) owl/* com trabalho ainda não mesclado nem descartado (${pending.map((t) => t.identificador).join(', ')}): mescle ou descarte antes`);
+    }
     repos.projects.delete(pid);
     return { status: 'deleted' };
   });

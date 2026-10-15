@@ -18,7 +18,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 ## Fase 2 — Equipes
 - [x] 12 Agentes como arquivos + pipelines YAML (`build/prompts/12`) — implementado em 2026-10-15; `qa-testes` e `revisor` rodam junto do 13
 - [x] 13 Quadro local + portões de aprovação (`build/prompts/13`) — implementado em 2026-10-15; `qa-testes` e `revisor` rodam junto do 12
-- [x] 14 Projetos, equipes, gerente multi-projeto, worktrees (`build/prompts/14`) — implementado em 2026-10-15; `qa-testes` e `revisor` ainda não rodaram (rodar **sozinho**, é de segurança)
+- [x] 14 Projetos, equipes, gerente multi-projeto, worktrees (`build/prompts/14`) — implementado em 2026-10-15; `qa-testes` e `revisor` rodados em 2026-10-15; achados 1–9 corrigidos
 - [ ] 15 Roteador e métricas (`build/prompts/15`)
 - [ ] 16 Integração com Linear (`build/prompts/16`)
 
@@ -34,7 +34,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Pacote de vídeo (ffmpeg, Remotion)
 
 ## Pendências (atualizado em 2026-10-14)
-**Próximo passo:** `qa-testes` + `revisor` do 14, sozinho (toca segurança: worktrees, escrita dos agentes, mesclagem); depois prompt 15 (roteador e métricas). Fase 1 concluída (prompt 11); 12 e 13 revisados. O 08/09 foi revisado de novo em 2026-10-15 (a lista antiga do revisor se perdeu): 9 itens corrigidos, 1 aberto abaixo.
+**Próximo passo:** prompt 15 (roteador e métricas). Fase 1 concluída (prompt 11); 12 e 13 revisados. O 08/09 foi revisado de novo em 2026-10-15 (a lista antiga do revisor se perdeu): 9 itens corrigidos, 1 aberto abaixo.
 
 **Revisão**
 - [x] `qa-testes` e `revisor` nos prompts 02, 03 e 04 rodados em 2026-10-15; 3 bloqueantes corrigidos (NUL no adaptador, Host/Origin, raízes de pastas).
@@ -97,7 +97,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [x] Equipes (`teams`/`team_members`) usadas pelo quadro: com ao menos um membro no projeto, só membros trabalham; o papel da equipe vale no projeto (prompt 14).
 
 **Projetos, equipes e worktrees (prompt 14)** — feito: CRUD de projeto e equipe, papel por equipe, memória do agente por projeto, worktree/branch por ticket que escreve, commit automático, mesclagem e descarte com portão, concorrência por projeto e global, tela do projeto e seletor. Abertos:
-- [ ] `qa-testes` + `revisor` do 14, sozinho. Pontos para olhar: `worktrees.ts` (git síncrono, `merge` na pasta do usuário), `scopeWriteTools` (confinamento da escrita), `analyzeTools` (lista de comandos), gate `acao` em `LocalBoard.decide`.
+- [x] `qa-testes` + `revisor` do 14 (2026-10-15), feitos; corrigidos: teste de rejeição, `Bash` escopado (flags, segredos, `node --test`), `.git` do worktree conferido antes do commit, pasta de worktrees privada, branches órfãs ao apagar projeto, `ensure` validado, `cwdIn` com symlink, prefixo `owl/`. Aberto: `Read` sem escopo, git síncrono, `worktree prune` no startup. Era: Pontos para olhar: `worktrees.ts` (git síncrono, `merge` na pasta do usuário), `scopeWriteTools` (confinamento da escrita), `analyzeTools` (lista de comandos), gate `acao` em `LocalBoard.decide`.
 - [ ] Git síncrono (`spawnSync`) bloqueia o loop do servidor durante `worktree add`/`commit`/`merge`: em repositório grande pode passar de segundos. Mover para `spawn` assíncrono (o fluxo do quadro é síncrono; exige tornar `BoardFlow.run` assíncrono).
 - [ ] Worktrees `ativo` que sobraram após queda do servidor: o ticket vira `bloqueado` e rodar de novo reaproveita a pasta, mas nada limpa pastas órfãs nem roda `git worktree prune` no startup.
 - [ ] Mesclar na pasta do usuário só com a branch base ativa e árvore limpa; não há mesclagem em worktree dedicado (evitaria exigir isso do usuário) nem `git push`/PR (fora do escopo: push exige portão próprio).

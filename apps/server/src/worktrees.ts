@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, realpathSync } from 'node:fs';
-import { join, relative, resolve, sep } from 'node:path';
+import { existsSync, lstatSync, mkdirSync, realpathSync } from 'node:fs';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { childEnv } from '@owl/core';
 import type { createRepos, Project, Ticket } from '@owl/db';
 
@@ -111,8 +111,15 @@ export class WorktreeService {
 
   /** The folder a run of `ticket` should use inside its worktree: the project's own sub-folder, when the project is one. */
   private cwdIn(path: string, root: string, project: Project): string {
-    const sub = relative(root, project.pasta);
-    return sub && !sub.startsWith('..') ? join(path, sub) : path;
+    let pasta = project.pasta;
+    try {
+      pasta = realpathSync(pasta); // `root` comes from git with symlinks resolved
+    } catch {
+      /* folder gone: fall back to the stored path */
+    }
+    const sub = relative(root, pasta);
+    const outside = sub === '..' || sub.startsWith(`..${sep}`) || isAbsolute(sub);
+    return sub && !outside ? join(path, sub) : path;
   }
 
   /**
@@ -126,7 +133,8 @@ export class WorktreeService {
     }
     const path = this.folderOf(ticket);
     const current = this.repos.tickets.get(ticket.id) ?? ticket;
-    if (current.worktree && existsSync(current.worktree) && current.worktreeEstado === 'ativo') return this.cwdIn(current.worktree, root, project);
+    const active = this.activePath(current);
+    if (active) return this.cwdIn(active, root, project);
 
     const base = this.baseOf(project);
     if (!base) throw new WorktreeError(409, 'no_base_branch', 'O repositório está em HEAD solto: escolha a branch base do projeto.');
@@ -136,7 +144,7 @@ export class WorktreeService {
     if (existsSync(path)) {
       throw new WorktreeError(409, 'worktree_path_taken', `O caminho do worktree já existe e não é deste ticket: ${path}`);
     }
-    mkdirSync(join(this.deps.dir, ticket.projectId), { recursive: true, mode: 0o700 });
+    this.prepareDir(ticket.projectId);
 
     let branch = current.branch;
     let added: GitResult;
@@ -150,6 +158,29 @@ export class WorktreeService {
     this.repos.tickets.setWorktree(ticket.id, { branch, worktree: path, estado: 'ativo' });
     this.repos.tickets.addEvent({ ticketId: ticket.id, ator: { nome: 'sistema', tipo: 'sistema' }, tipo: 'execucao', detalhe: `Worktree criado na branch ${branch} (base: ${base})` });
     return this.cwdIn(path, root, project);
+  }
+
+  /** Creates `dir/<project>` privately; refuses a base folder that is a symlink or belongs to someone else. */
+  private prepareDir(projectId: string): void {
+    mkdirSync(this.deps.dir, { recursive: true, mode: 0o700 });
+    const st = lstatSync(this.deps.dir);
+    if (st.isSymbolicLink() || !st.isDirectory() || (typeof process.getuid === 'function' && st.uid !== process.getuid())) {
+      throw new WorktreeError(409, 'worktrees_dir_unsafe', `A pasta de worktrees não é segura (symlink ou de outro usuário): ${this.deps.dir}`);
+    }
+    mkdirSync(join(this.deps.dir, projectId), { recursive: true, mode: 0o700 });
+  }
+
+  /**
+   * True when `path` is still the worktree of `branch` of this repository: its `.git` file sits inside the area the
+   * agent can edit, so before OWL commits there it checks the repository and the branch are the ones it created.
+   */
+  private isOurWorktree(path: string, root: string, branch: string | null): boolean {
+    if (!branch?.startsWith('owl/')) return false;
+    const head = this.git(path, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
+    if (!head.ok || head.out !== branch) return false;
+    const common = this.git(path, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+    const own = this.git(root, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+    return common.ok && own.ok && realpathSync(common.out) === realpathSync(own.out);
   }
 
   private get repos(): Repos {
@@ -181,10 +212,14 @@ export class WorktreeService {
   }
 
   /** Commits whatever the agent left in the worktree onto the ticket branch. Returns true when a commit was made. */
-  commitAll(ticket: Ticket, message: string): boolean {
+  commitAll(ticket: Ticket, message: string, project: Project): boolean {
     const path = this.activePath(ticket);
     if (!path) return false;
-    const add = this.git(path, ['add', '-A']);
+    const root = this.repoRoot(project.pasta);
+    if (!root || !this.isOurWorktree(path, root, ticket.branch)) {
+      throw new WorktreeError(409, 'worktree_tampered', `O worktree de ${ticket.identificador} não aponta mais para a branch ${ticket.branch ?? ''} deste repositório: nada foi commitado.`);
+    }
+    const add = this.git(path, ['add', '-A'], { commit: true });
     if (!add.ok) throw new WorktreeError(409, 'git_add_failed', `git add falhou: ${add.err.split('\n')[0] ?? ''}`);
     if (this.git(path, ['diff', '--cached', '--quiet']).ok) return false; // nothing staged
     const c = this.git(path, ['commit', '--no-verify', '-m', message.slice(0, 200)], { commit: true });
@@ -200,7 +235,7 @@ export class WorktreeService {
     const t = this.repos.tickets.get(ticket.id) ?? ticket;
     const path = this.activePath(t);
     if (!path) return;
-    this.commitAll(t, `${t.identificador}: ${t.titulo}`);
+    this.commitAll(t, `${t.identificador}: ${t.titulo}`, project);
     const root = this.repoRoot(project.pasta);
     if (!root) return;
     const rm = this.git(root, ['worktree', 'remove', '--force', path]);
@@ -233,7 +268,7 @@ export class WorktreeService {
     const t = this.repos.tickets.get(ticket.id) ?? ticket;
     const root = this.repoRoot(project.pasta);
     if (!root) return { ok: false, erro: 'A pasta do projeto não é um repositório git.' };
-    if (!t.branch || !this.branchExists(root, t.branch)) return { ok: false, erro: 'O ticket não tem branch para mesclar.' };
+    if (!t.branch?.startsWith('owl/') || !this.branchExists(root, t.branch)) return { ok: false, erro: 'O ticket não tem branch para mesclar.' };
     const base = this.baseOf(project);
     if (!base) return { ok: false, erro: 'HEAD solto: defina a branch base do projeto.' };
     if (this.currentBranch(project.pasta) !== base) return { ok: false, erro: `A pasta do projeto não está na branch base "${base}"; troque de branch e aprove de novo.` };
@@ -263,6 +298,7 @@ export class WorktreeService {
       if (!rm.ok) return { ok: false, erro: `Não foi possível remover o worktree: ${rm.err.split('\n')[0] ?? ''}` };
     }
     this.git(root, ['worktree', 'prune']);
+    if (t.branch && !t.branch.startsWith('owl/')) return { ok: false, erro: `Recusado: "${t.branch}" não é uma branch criada pelo OWL.` };
     if (t.branch && this.branchExists(root, t.branch)) {
       const del = this.git(root, ['branch', '-D', t.branch]);
       if (!del.ok) return { ok: false, erro: `Não foi possível apagar a branch: ${del.err.split('\n')[0] ?? ''}` };

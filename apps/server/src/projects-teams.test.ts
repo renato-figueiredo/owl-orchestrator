@@ -275,6 +275,49 @@ describe('worktrees', () => {
     expect((await post(`/tickets/${t}/branch/merge`)).status).toBe(409); // nothing left to merge
   });
 
+  it('rejeitar o descarte mantém worktree/branch e nenhuma rota mescla sem passar pelo portão', async () => {
+    await start();
+    const p = await mkProject('Alfa');
+    onDev = (req) => writeFileSync(join(req.cwd, 'keep.txt'), 'x\n');
+    const t = await mkTicket(p.id, 'Manter');
+    await post(`/tickets/${t}/run`, {});
+    await settle();
+    const branch = repos.tickets.get(t)!.branch!;
+    const gate = (await json(await post(`/tickets/${t}/branch/descartar`))).aprovacoes[0];
+    const statusBefore = repos.tickets.get(t)!.status;
+    expect((await post(`/approvals/${gate.id}/decide`, { decisao: 'rejeitado' })).status).toBe(400); // a rejection needs a comment
+    expect(repos.approvals.get(gate.id)!.status).toBe('pendente');
+    const rejected = await post(`/approvals/${gate.id}/decide`, { decisao: 'rejeitado', comentario: 'ainda não' });
+    expect(rejected.status).toBe(200);
+    expect(repos.approvals.get(gate.id)!.status).toBe('rejeitado');
+    expect(git(p.dir, 'branch', '--list', branch)).toContain(branch);
+    // 'removido' because the worktree was released when the ticket settled, not because of the rejection
+    expect(repos.tickets.get(t)!.worktreeEstado).toBe('removido');
+    expect(repos.tickets.get(t)!.status).toBe(statusBefore); // rejecting a branch action does not reopen the ticket
+    expect((await call('POST', `/tickets/${t}/merge`)).status).toBe(404); // there is no direct merge route
+    expect(git(p.dir, 'branch', '--merged')).not.toContain(branch);
+    expect(git(p.dir, 'ls-files')).not.toContain('keep.txt');
+    expect(existsSync(join(p.dir, 'keep.txt'))).toBe(false);
+  });
+
+  it('não commita quando o .git do worktree foi reescrito para outro repositório', async () => {
+    await start();
+    const p = await mkProject('Alfa');
+    const other = makeRepo('owl-p14-other-');
+    tmp.push(other);
+    const before = git(other, 'rev-list', '--count', 'HEAD');
+    onDev = (req) => {
+      writeFileSync(join(req.cwd, 'x.txt'), 'x\n');
+      writeFileSync(join(req.cwd, '.git'), `gitdir: ${join(other, '.git')}\n`);
+    };
+    const t = await mkTicket(p.id, 'Adulterado');
+    await post(`/tickets/${t}/run`, {});
+    await settle();
+    expect(git(other, 'rev-list', '--count', 'HEAD')).toBe(before);
+    expect(git(p.dir, 'log', '--oneline')).not.toMatch(/Adulterado/);
+    expect(repos.tickets.comments(t).map((c) => c.texto).join('\n')).toMatch(/nada foi commitado/);
+  });
+
   it('conflito na mesclagem: aborta, nada fica pela metade e o motivo vai para o ticket', async () => {
     await start();
     const p = await mkProject('Alfa');
@@ -442,7 +485,13 @@ describe('projetos', () => {
     expect((await call('DELETE', `/projects/${p.id}`, { confirmar: 'Alfa' })).status).toBe(409);
     release();
     await settle();
-    // Branch left over but no worktree folder: deleting is allowed, files stay.
+    // The worktree is gone but the branch still holds unmerged work: deleting would orphan it.
+    const blocked = await call('DELETE', `/projects/${p.id}`, { confirmar: 'Alfa' });
+    expect(blocked.status).toBe(409);
+    expect(JSON.stringify(await json(blocked))).toMatch(/branches_pending/);
+    const discard = (await json(await post(`/tickets/${t}/branch/descartar`))).aprovacoes[0];
+    await post(`/approvals/${discard.id}/decide`, { decisao: 'aprovado' });
+    // Nothing pending any more: deleting is allowed, files stay.
     expect((await call('DELETE', `/projects/${p.id}`, { confirmar: 'Alfa' })).status).toBe(200);
     expect(existsSync(join(p.dir, 'app.txt'))).toBe(true);
     expect((await get('/projects')).projects).toEqual([]);
