@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 330 96" role="img" aria-label="Owl">
+  <title>Owl</title>
+  <g>
+  <rect width="96" height="96" rx="22" fill="#1B1B3A"/>
+  <!-- brow / ear tufts: a W for "OWL" -->
+  <path d="M14 20 L30 42 L48 26 L66 42 L82 20" fill="none" stroke="#F5B942" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- eyes -->
+  <circle cx="32" cy="58" r="14" fill="#F4F1EA"/>
+  <circle cx="64" cy="58" r="14" fill="#F4F1EA"/>
+  <circle cx="35" cy="58" r="6.5" fill="#1B1B3A"/>
+  <circle cx="67" cy="58" r="6.5" fill="#1B1B3A"/>
+  <circle cx="37" cy="55.5" r="2" fill="#F4F1EA"/>
+  <circle cx="69" cy="55.5" r="2" fill="#F4F1EA"/>
+  <!-- beak -->
+  <path d="M42 66 L54 66 L48 80 Z" fill="#F5B942" stroke="#F5B942" stroke-width="2" stroke-linejoin="round"/>
+  </g>
+  <text x="116" y="66" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-size="56" font-weight="700" letter-spacing="2" fill="#1B1B3A">OWL</text>
+</svg>
