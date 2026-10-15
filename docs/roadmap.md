@@ -42,7 +42,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Permitir o host Tailscale no guard quando o acesso remoto for implementado.
 
 **Repositório / GitHub**
-- [ ] Mesclar os 3 PRs do Dependabot (`checkout` 4→7, `setup-node` 4→7, `pnpm/action-setup` 4→6; todos com CI verde). Mesclar em sequência (mexem no `ci.yml`).
+- [x] Os 3 PRs do Dependabot foram mesclados em 2026-10-15 (`checkout` 7, `setup-node` 7, `pnpm/action-setup` 6).
 - [ ] Conferir em Settings → Security se o relato privado de vulnerabilidades (`SECURITY.md`) está ativo.
 - [ ] Decidir sobre o nome do bot de dependências: manter Dependabot (personalizando prefixo/labels) ou migrar para Renovate com um GitHub App próprio.
 
