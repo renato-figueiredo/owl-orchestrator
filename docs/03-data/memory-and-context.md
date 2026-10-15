@@ -45,3 +45,18 @@ A CLI cuida de cache e compactação. Guardar `cli_session_id` na sessão.
 ## Escopo de memória
 - Por projeto (padrão).
 - Por agente dentro do projeto (ex.: o gerente que atende dois projetos tem memória separada em cada um).
+
+## Como está implementado (prompt 07)
+- **Montador** (`packages/core/src/memory/context.ts`): camadas na ordem acima, orçamento de tokens respeitado
+  (inclusive com fatos ou mensagens gigantes). `ultimasN = 0` significa "nenhuma mensagem recente".
+- **Quando entra no prompt**: sem sessão nativa para retomar (conversa nova ou troca de provedor) vai o bloco completo.
+  Com `--resume` vão só os fatos fixados criados desde a última run que **falou com a conversa da CLI**: runs de resumo,
+  do refinador e runs que não terminaram `ok` não contam (`runs.sem_estado`, `RunsRepo.previousStart`).
+- **Resumidor** (`apps/server/src/memory.ts`): modelo barato, sem estado, em uma pasta temporária própria
+  (`mkdtemp`) e **sem nenhuma ferramenta** (`--tools ""`), porque lê texto não confiável da conversa. JSON inválido ou
+  falha da CLI nunca sobrescrevem o resumo anterior.
+- **Backoff**: depois de uma tentativa automática que falhou, só tenta de novo com mais `resumirACada` mensagens novas.
+  A falha automática é silenciosa; o resumo manual que falha avisa na conversa com uma mensagem de sistema.
+- **Fatos** são do projeto (ou, sem projeto, de um escopo "sem projeto"). Decisões do resumo viram fatos não fixados.
+- **Pendências**: escopo por agente (a tabela `facts` já tem `agent_id`, ainda não usado); fatos de conversas sem projeto
+  compartilham um único escopo global.

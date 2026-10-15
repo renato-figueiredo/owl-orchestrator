@@ -5,6 +5,18 @@ import { buildSummaryPrompt, parseSummaryOutput, renderSummary } from './summary
 const msg = (papel: 'usuario' | 'assistente', conteudo: string) => ({ papel, conteudo });
 const input = (over: Partial<ContextInput> = {}): ContextInput => ({ fatos: [], mensagens: [], ...over });
 
+describe('ultimasN = 0', () => {
+  it('sends no messages at all (slice(-0) would send them all)', () => {
+    const c = montarContexto(
+      input({ fatos: ['usar pnpm'], mensagens: [msg('usuario', 'oi'), msg('assistente', 'olá')] }),
+      { orcamentoTokens: 2000, ultimasN: 0 },
+    );
+    expect(c.camadas.mensagens).toBe(0);
+    expect(c.texto).not.toContain('olá');
+    expect(c.texto).toContain('usar pnpm');
+  });
+});
+
 describe('estimateTokens', () => {
   it('is characters / 4, rounded up', () => {
     expect(estimateTokens('')).toBe(0);

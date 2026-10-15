@@ -39,11 +39,13 @@ export function runsRepo(db: Db) {
       agentId?: string;
       modelo?: string;
       etapa?: string;
+      /** The run neither resumes nor updates the session's CLI conversation (summarizer, refiner). */
+      semEstado?: boolean;
     }): Run {
       const id = randomUUID();
       db.prepare(
-        `INSERT INTO runs (id, session_id, ticket_id, parent_run_id, agent_id, provedor, modelo, etapa, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'rodando')`,
+        `INSERT INTO runs (id, session_id, ticket_id, parent_run_id, agent_id, provedor, modelo, etapa, sem_estado, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'rodando')`,
       ).run(
         id,
         input.sessionId ?? null,
@@ -53,6 +55,7 @@ export function runsRepo(db: Db) {
         input.provedor,
         input.modelo ?? null,
         input.etapa ?? null,
+        input.semEstado ? 1 : 0,
       );
       return get(id)!;
     },
@@ -80,11 +83,14 @@ export function runsRepo(db: Db) {
         id,
       );
     },
-    /** When the most recent other finished run of this session started (undefined when there is none). */
+    /**
+     * When the most recent other finished run of this session that talked to the CLI conversation started. Stateless
+     * runs (summaries, refiner) and failed starts do not count: the CLI did not see what happened around them.
+     */
     previousStart(sessionId: string, exceptRunId: string): string | undefined {
       const row = db
         .prepare(
-          `SELECT inicio FROM runs WHERE session_id = ? AND id <> ? AND status <> 'rodando'
+          `SELECT inicio FROM runs WHERE session_id = ? AND id <> ? AND status = 'ok' AND sem_estado = 0
            ORDER BY rowid DESC LIMIT 1`,
         )
         .get(sessionId, exceptRunId) as { inicio: string } | undefined;

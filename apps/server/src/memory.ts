@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -60,6 +60,8 @@ export type SummarizeResult =
 
 export class MemoryService implements MemoryProvider {
   private readonly summarizing = new Set<string>();
+  /** Sessions whose last summary attempt failed: how many chat messages were pending then. See `maybeSummarize`. */
+  private readonly failedAt = new Map<string, number>();
   private scratch: string | undefined;
 
   constructor(
@@ -114,7 +116,7 @@ export class MemoryService implements MemoryProvider {
     const history = repos.messages
       .list(i.sessionId)
       .filter((m) => chat(m) && (i.beforeMessageId === undefined || m.id < i.beforeMessageId));
-    const recent = history.slice(-cfg.ultimasN);
+    const recent = cfg.ultimasN > 0 ? history.slice(-cfg.ultimasN) : [];
     const facts = repos.facts.listScope({ ...this.scope(session), apenasFixados: true }).map((f) => f.texto);
     const trechos = cfg.trechosFts ? this.snippets(session, i.texto, new Set(recent.map((m) => m.id)), i.beforeMessageId) : [];
 
@@ -158,12 +160,17 @@ export class MemoryService implements MemoryProvider {
     if (!cfg.resumoAutomatico) return;
     const session = this.deps.repos.sessions.get(o.input.sessionId);
     if (!session || session.deletedAt || this.summarizing.has(session.id)) return;
-    if (this.pending(session).length < cfg.resumirACada) return;
-    void this.summarize(session.id).catch(() => undefined);
+    const pending = this.pending(session).length;
+    if (pending < cfg.resumirACada) return;
+    // Backoff: after a failed attempt (invalid JSON, CLI error) wait for another full batch of new messages. Each try
+    // is a paid call, and retrying on every run would repeat the same failure.
+    const failedWith = this.failedAt.get(session.id);
+    if (failedWith !== undefined && pending < failedWith + cfg.resumirACada) return;
+    void this.summarize(session.id, { auto: true }).catch(() => undefined);
   }
 
   /** Runs the summarizer now. Resolves when it finished; on any failure the existing summary stays as it was. */
-  summarize(sessionId: string): Promise<SummarizeResult> {
+  summarize(sessionId: string, opts: { auto?: boolean } = {}): Promise<SummarizeResult> {
     const { repos, executor } = this.deps;
     const session = repos.sessions.get(sessionId);
     if (!session) return Promise.resolve({ ok: false, error: 'Session not found', code: 'run_failed' });
@@ -179,12 +186,15 @@ export class MemoryService implements MemoryProvider {
     }
     if (batch.length === 0) return Promise.resolve({ ok: false, error: 'Nothing new to summarize', code: 'nothing_to_summarize' });
     const upTo = batch[batch.length - 1]!.id;
+    const pendingNow = this.pending(session).length;
     const cfg = this.settings();
 
     this.summarizing.add(sessionId);
     return new Promise<SummarizeResult>((resolve) => {
       const finish = (r: SummarizeResult) => {
         this.summarizing.delete(sessionId);
+        if (r.ok) this.failedAt.delete(sessionId);
+        else this.failedAt.set(sessionId, pendingNow);
         resolve(r);
       };
       try {
@@ -199,7 +209,8 @@ export class MemoryService implements MemoryProvider {
           recordUserMessage: false,
           storeAs: false,
           stateless: true,
-          after: (outcome) => finish(this.apply(session, upTo, outcome)),
+          noTools: true,
+          after: (outcome) => finish(this.apply(sessionId, upTo, outcome, opts.auto === true)),
         });
       } catch (e) {
         finish({ ok: false, error: e instanceof Error ? e.message : String(e), code: 'run_failed' });
@@ -207,19 +218,25 @@ export class MemoryService implements MemoryProvider {
     });
   }
 
-  private apply(session: Session, upTo: number, o: StepOutcome): SummarizeResult {
+  private apply(sessionId: string, upTo: number, o: StepOutcome, auto: boolean): SummarizeResult {
     const { repos } = this.deps;
+    // The session may have changed (project, deletion) while the summarizer ran: use its current state.
+    const session = repos.sessions.get(sessionId);
+    if (!session) return { ok: false, runId: o.run.id, error: 'Session not found', code: 'run_failed' };
     if (o.status !== 'ok') {
       return { ok: false, runId: o.run.id, error: o.error ?? 'The summarizer did not finish', code: 'run_failed' };
     }
     const out = parseSummaryOutput(o.result);
     if (!out) {
-      repos.messages.add({
-        sessionId: session.id,
-        runId: o.run.id,
-        papel: 'sistema',
-        conteudo: 'Não consegui atualizar o resumo: a resposta do resumidor não era válida. O resumo anterior foi mantido.',
-      });
+      // An automatic attempt fails silently (it would otherwise litter the conversation); the user who asked sees it.
+      if (!auto) {
+        repos.messages.add({
+          sessionId: session.id,
+          runId: o.run.id,
+          papel: 'sistema',
+          conteudo: 'Não consegui atualizar o resumo: a resposta do resumidor não era válida. O resumo anterior foi mantido.',
+        });
+      }
       return { ok: false, runId: o.run.id, error: 'The summarizer answered with invalid JSON; the previous summary was kept', code: 'invalid_output' };
     }
     const resumo = renderSummary(out);
@@ -239,9 +256,8 @@ export class MemoryService implements MemoryProvider {
   }
 
   private scratchDir(): string {
-    // The summarizer needs no files. An empty private folder keeps it away from any project.
-    this.scratch ??= join(tmpdir(), 'owl-summarizer');
-    mkdirSync(this.scratch, { recursive: true });
+    // The summarizer needs no files. An empty folder, private and unpredictable, keeps it away from any project.
+    this.scratch ??= mkdtempSync(join(tmpdir(), 'owl-summarizer-'));
     return this.scratch;
   }
 }

@@ -56,9 +56,9 @@ describe('connection', () => {
 describe('migrate', () => {
   it('applies from scratch and is idempotent', () => {
     const db = fresh();
-    expect(migrate(db)).toEqual(['0001_initial.sql', '0002_settings.sql']);
+    expect(migrate(db)).toEqual(['0001_initial.sql', '0002_settings.sql', '0003_runs_sem_estado.sql']);
     expect(migrate(db)).toEqual([]);
-    expect(count(db, 'schema_migrations')).toBe(2);
+    expect(count(db, 'schema_migrations')).toBe(3);
     for (const t of ['projects', 'agents', 'teams', 'sessions', 'tickets', 'runs', 'messages', 'blobs', 'approvals']) {
       expect(count(db, t)).toBe(0);
     }
@@ -159,6 +159,45 @@ describe('cascade delete', () => {
     expect(r.blobs.orphans().map((b) => b.hash)).toEqual(['abc']);
     r.blobs.delete('abc');
     expect(count(db, 'blobs')).toBe(0);
+  });
+});
+
+describe('purge and facts', () => {
+  it('purging a session deletes the unpinned facts it generated, keeps pinned and unrelated ones', () => {
+    const { r } = setup();
+    const s = r.sessions.create();
+    const other = r.sessions.create();
+    const run = r.runs.start({ sessionId: s.id, provedor: 'fake', etapa: 'resumo' });
+    const otherRun = r.runs.start({ sessionId: other.id, provedor: 'fake' });
+    r.facts.add({ texto: 'gerado', origemRunId: run.id });
+    r.facts.add({ texto: 'fixado pelo usuário', origemRunId: run.id, fixado: true });
+    r.facts.add({ texto: 'de outra sessão', origemRunId: otherRun.id });
+    r.facts.add({ texto: 'manual' });
+
+    r.sessions.purge(s.id);
+
+    expect(r.facts.list().map((f) => f.texto).sort()).toEqual(['de outra sessão', 'fixado pelo usuário', 'manual']);
+  });
+});
+
+describe('runs.previousStart', () => {
+  it('ignores stateless runs and runs that did not finish ok', () => {
+    const { db, r } = setup();
+    const s = r.sessions.create();
+    const at = (id: string, inicio: string) => db.prepare('UPDATE runs SET inicio = ? WHERE id = ?').run(inicio, id);
+    const real = r.runs.start({ sessionId: s.id, provedor: 'fake' });
+    r.runs.finish(real.id, { status: 'ok' });
+    at(real.id, '2026-01-01 10:00:00');
+    const summary = r.runs.start({ sessionId: s.id, provedor: 'fake', etapa: 'resumo', semEstado: true });
+    r.runs.finish(summary.id, { status: 'ok' });
+    at(summary.id, '2026-01-01 10:05:00');
+    const failed = r.runs.start({ sessionId: s.id, provedor: 'fake' });
+    r.runs.finish(failed.id, { status: 'erro', erro: 'x' });
+    at(failed.id, '2026-01-01 10:06:00');
+    const current = r.runs.start({ sessionId: s.id, provedor: 'fake' });
+
+    expect(r.runs.previousStart(s.id, current.id)).toBe('2026-01-01 10:00:00');
+    expect(r.runs.previousStart(s.id, real.id)).toBeUndefined();
   });
 });
 

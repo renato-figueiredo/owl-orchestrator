@@ -37,7 +37,8 @@ export function buildClaudeArgs(req: RunRequest, opts: Pick<ClaudeCliOptions, 'i
     args.push(`--append-system-prompt=${req.systemAppend}`);
   }
   if (req.mcpConfigPath) args.push(`--mcp-config=${assertSafeArg('mcpConfigPath', req.mcpConfigPath, /^[^\0]+$/)}`);
-  if (req.allowedTools?.length) {
+  if (req.noTools) args.push('--tools', '');
+  else if (req.allowedTools?.length) {
     for (const t of req.allowedTools) assertSafeArg('allowed tool', t, SAFE_TOOL);
     args.push('--allowedTools', ...req.allowedTools);
   }

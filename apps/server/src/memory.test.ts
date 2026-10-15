@@ -335,6 +335,61 @@ describe('automatic summary', () => {
   });
 });
 
+describe('summarizer safety and failure handling', () => {
+  it('runs with no tools at all', async () => {
+    await setup();
+    const sid = await session();
+    repos.messages.add({ sessionId: sid, papel: 'usuario', conteudo: 'texto não confiável' });
+    await post(`/sessions/${sid}/summarize`);
+    const argv = rec(0).argv;
+    const i = argv.indexOf('--tools');
+    expect(i).toBeGreaterThan(-1);
+    expect(argv[i + 1]).toBe('');
+  });
+
+  it('after a failed automatic summary it waits for another full batch, and stays silent in the conversation', async () => {
+    scenario = { 'codex-cli': 'summary-bad' };
+    await setup();
+    await put('/settings', { memory: { resumoAutomatico: true, resumirACada: 3 } });
+    const sid = await session();
+    repos.messages.add({ sessionId: sid, papel: 'usuario', conteudo: 'antes' });
+    const summaries = () => spawned.filter((s) => s.provider === 'codex-cli').length;
+
+    await say(sid, 'a'); // 3 pending → tries, invalid JSON
+    await executor.idle();
+    expect(summaries()).toBe(1);
+    await say(sid, 'b'); // 5 pending < 3 + 3 → no new attempt
+    await executor.idle();
+    expect(summaries()).toBe(1);
+    await say(sid, 'c'); // 7 pending ≥ 6 → tries again
+    await executor.idle();
+    expect(summaries()).toBe(2);
+    expect(repos.messages.list(sid).filter((m) => m.papel === 'sistema')).toEqual([]);
+  });
+
+  it('a manual failure still tells the user', async () => {
+    scenario = { 'codex-cli': 'summary-bad' };
+    await setup();
+    const sid = await session();
+    repos.messages.add({ sessionId: sid, papel: 'usuario', conteudo: 'algo' });
+    await post(`/sessions/${sid}/summarize`);
+    expect(repos.messages.list(sid).some((m) => m.papel === 'sistema')).toBe(true);
+  });
+});
+
+describe('ultimasN = 0 end to end', () => {
+  it('the handover carries no recent messages', async () => {
+    await setup();
+    await put('/settings', { memory: { ultimasN: 0 } });
+    const sid = await session();
+    repos.messages.add({ sessionId: sid, papel: 'usuario', conteudo: 'conversa antiga' });
+    repos.messages.add({ sessionId: sid, papel: 'assistente', conteudo: 'resposta antiga' });
+    await say(sid, 'nova');
+    expect(rec(0).stdin).not.toContain('conversa antiga');
+    expect(rec(0).stdin).not.toContain('resposta antiga');
+  });
+});
+
 describe('summary editing', () => {
   it('edit keeps the previous version; undo swaps, a second undo redoes; none to undo → 409', async () => {
     await setup();

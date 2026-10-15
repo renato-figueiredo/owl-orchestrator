@@ -49,9 +49,18 @@ export function sessionsRepo(db: Db) {
     restore(id: string): void {
       db.prepare('UPDATE sessions SET deleted_at = NULL WHERE id = ?').run(id);
     },
-    /** Permanent delete; CASCADE removes runs, messages and attachments. Orphan blobs are collected elsewhere. */
+    /**
+     * Permanent delete; CASCADE removes runs, messages and attachments. Orphan blobs are collected elsewhere. Facts the
+     * summarizer extracted from this session go too, unless the user pinned them (a pinned fact is the user's own
+     * curation; see docs/03-data/deletion-and-backup.md).
+     */
     purge(id: string): void {
-      db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+      db.transaction(() => {
+        db.prepare(
+          `DELETE FROM facts WHERE fixado = 0 AND origem_run_id IN (SELECT id FROM runs WHERE session_id = ?)`,
+        ).run(id);
+        db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+      })();
     },
     /** Sets the title only while it is still empty (auto-title from the first message). */
     setTitleIfEmpty(id: string, titulo: string): void {

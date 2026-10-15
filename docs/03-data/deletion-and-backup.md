@@ -5,6 +5,8 @@
 2. **Purga** (manual ou após 30 dias), em uma transação:
    `DELETE FROM sessions WHERE id = ?` → CASCADE apaga runs, mensagens e anexos;
    triggers limpam o FTS5.
+   Na mesma transação, apaga os **fatos não fixados** que o resumidor extraiu das runs da sessão
+   (`facts.origem_run_id`). Fatos **fixados** ficam: são curadoria do usuário e valem para o projeto, não só para o chat.
 3. **Depois do commit**, coleta de órfãos:
    ```sql
    SELECT hash, caminho FROM blobs

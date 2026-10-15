@@ -30,6 +30,8 @@ export interface SubmitInput {
    * belongs to the conversation, and a refiner run must neither resume it nor overwrite it.
    */
   stateless?: boolean;
+  /** Run with no tools at all (the summarizer reads untrusted text and needs none). */
+  noTools?: boolean;
   /** Tools pre-approved for this run (agent `ferramentas`); empty or absent leaves the adapter's default. */
   allowedTools?: string[];
   /** Pipeline step name, stored in `runs.etapa`. */
@@ -125,6 +127,7 @@ export class Executor {
       sessionId: input.sessionId,
       ...(input.model ? { modelo: input.model } : {}),
       ...(input.etapa ? { etapa: input.etapa } : {}),
+      ...(input.stateless ? { semEstado: true } : {}),
       ...(input.parentRunId ? { parentRunId: input.parentRunId } : {}),
     });
     const entry: Entry = {
@@ -231,6 +234,7 @@ export class Executor {
           ...(input.systemAppend ? { systemAppend: input.systemAppend } : {}),
           ...(resume ? { resumeSessionId: resume } : {}),
           ...(input.allowedTools?.length ? { allowedTools: input.allowedTools } : {}),
+          ...(input.noTools ? { noTools: true } : {}),
         },
         entry.controller.signal,
       );

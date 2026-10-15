@@ -17,6 +17,8 @@ export interface RunRequest {
   systemAppend?: string;
   /** Tools pre-approved for this run; everything else is denied in non-interactive mode. */
   allowedTools?: string[];
+  /** Start the CLI with no tools at all. Wins over `allowedTools`. Ignored by adapters that cannot disable tools. */
+  noTools?: boolean;
   /** Native CLI session continuity. */
   resumeSessionId?: string;
   mcpConfigPath?: string;

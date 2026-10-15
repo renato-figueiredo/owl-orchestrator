@@ -101,7 +101,7 @@ export function montarContexto(input: ContextInput, opts: ContextOptions): Assem
     camadas.resumo = kept.length > 0;
   }
 
-  const recent = input.mensagens.slice(-Math.max(0, opts.ultimasN));
+  const recent = opts.ultimasN > 0 ? input.mensagens.slice(-opts.ultimasN) : [];
   if (input.mensagens.length > recent.length) truncado = true;
   camadas.mensagens = addList(
     'Mensagens recentes',
