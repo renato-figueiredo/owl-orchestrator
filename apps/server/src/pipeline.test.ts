@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,7 +22,7 @@ let spawned: Array<{ provider: string; record: string }>;
 
 const rec = (i: number) => JSON.parse(readFileSync(spawned[i]!.record, 'utf8')) as { argv: string[]; stdin: string };
 
-async function setup() {
+async function setup(opts: { libraryDir?: string } = {}) {
   const db = openDb();
   migrate(db);
   repos = createRepos(db);
@@ -39,7 +39,7 @@ async function setup() {
       });
     },
   });
-  app = buildApp({ repos, executor, defaultCwd: dir, workspaceRoots: [tmpdir()] });
+  app = buildApp({ repos, executor, defaultCwd: dir, workspaceRoots: [tmpdir()], ...(opts.libraryDir ? { libraryDir: opts.libraryDir } : {}) });
   base = await app.listen({ host: '127.0.0.1', port: 0 });
 }
 
@@ -295,5 +295,125 @@ describe('project instructions and validation', () => {
   it('GET /refiner exposes the agent default and its alternatives', async () => {
     await setup();
     expect(await get('/refiner')).toEqual({ provedor: 'codex-cli', modelo: null, fallback: [{ provedor: 'claude-cli', modelo: 'haiku' }] });
+  });
+});
+
+describe('review of prompt 06: refiner output, session slot, pauses, loading', () => {
+  it('an empty refiner output asks the user instead of running the executor on nothing', async () => {
+    scenario = { 'codex-cli': 'empty' };
+    await setup();
+    const sid = await newSession();
+    const first = await send(sid, { melhorarPrompt: true });
+    await stream(first.body.runId);
+    await executor.idle();
+    const d = await detail(sid);
+    expect(spawned.map((s) => s.provider)).toEqual(['codex-cli']); // no executor spawn, no tokens spent
+    expect(d.runs).toHaveLength(1);
+    expect(d.messages.map((m) => m.papel)).toEqual(['usuario']); // no empty "agente" message
+    expect(d.approvals[0]!.motivo).toContain('não devolveu nenhum texto');
+
+    const res = await post(`/runs/${first.body.runId}/continue`, {});
+    expect(res.status).toBe(202);
+    await executor.idle();
+    expect(rec(1).stdin).toBe('faça X');
+    // after "run without improving" the executor does not descend from the failed refiner
+    expect((await detail(sid)).runs[1]).toMatchObject({ etapa: 'executar', parentRunId: null });
+  });
+
+  it('the refiner never touches the conversation CLI session: executor keeps resuming it', async () => {
+    await setup();
+    const sid = await newSession();
+    await send(sid, {}); // turn 1: plain, stores the claude session
+    await executor.idle();
+    const slot = repos.sessions.get(sid)!;
+    expect(slot).toMatchObject({ cliProvider: 'claude-cli' });
+
+    await send(sid, { melhorarPrompt: true }); // turn 2: Codex refines, then claude executes
+    await executor.idle();
+    expect(repos.sessions.get(sid)).toMatchObject({ cliProvider: 'claude-cli', cliSessionId: slot.cliSessionId });
+    const [refinerIdx, executorIdx] = [1, 2];
+    expect(spawned[refinerIdx]!.provider).toBe('codex-cli');
+    expect(rec(refinerIdx).argv.join(' ')).not.toContain('--resume');
+    expect(rec(executorIdx).argv.join(' ')).toContain(`--resume=${slot.cliSessionId}`);
+  });
+
+  it('a haiku refiner (same CLI as the conversation) is stateless too: it does not resume the thread', async () => {
+    await setup();
+    const sid = await newSession();
+    await send(sid, {});
+    await executor.idle();
+    await send(sid, { melhorarPrompt: true, refinador: { provider: 'claude-cli', model: 'haiku' } });
+    await executor.idle();
+    expect(rec(1).argv.join(' ')).not.toContain('--resume'); // refiner
+    expect(rec(2).argv.join(' ')).toContain('--resume='); // executor
+  });
+
+  it('pauses lost in a restart are not offered: the session detail hides them and boot closes them', async () => {
+    await setup();
+    const sid = await newSession();
+    const first = await send(sid, { melhorarPrompt: true, editarAntes: true });
+    await stream(first.body.runId);
+    await executor.idle();
+    expect((await detail(sid)).approvals).toHaveLength(1);
+
+    const restarted = buildApp({ repos, executor, defaultCwd: dir, workspaceRoots: [tmpdir()] });
+    const headers = { host: '127.0.0.1:4317' };
+    const seen = (await restarted.inject({ method: 'GET', url: `/sessions/${sid}`, headers })).json();
+    expect(seen.approvals).toEqual([]);
+    await restarted.close();
+
+    expect(repos.approvals.expirePendingRunGates()).toBe(1);
+    expect(repos.approvals.expirePendingRunGates()).toBe(0);
+    expect(repos.approvals.pendingBySession(sid)).toEqual([]);
+  });
+
+  it('boot expiry closes run pauses but leaves ticket gates alone', () => {
+    const db = openDb();
+    migrate(db);
+    const r = createRepos(db);
+    const project = r.projects.create({ nome: 'p', pasta: dir });
+    db.prepare("INSERT INTO tickets (id, project_id, titulo) VALUES ('t1', ?, 'x')").run(project.id);
+    const session = r.sessions.create();
+    const run = r.runs.start({ provedor: 'claude-cli', sessionId: session.id });
+    const pause = r.approvals.create({ runId: run.id, motivo: 'pausa do pipeline' });
+    const gate = r.approvals.create({ ticketId: 't1', runId: run.id, motivo: 'portão do ticket' });
+
+    expect(r.approvals.expirePendingRunGates()).toBe(1);
+    expect(r.approvals.get(pause.id)).toMatchObject({ status: 'rejeitado', comentario: 'expirado' });
+    expect(r.approvals.get(gate.id)).toMatchObject({ status: 'pendente' });
+  });
+
+  it('a broken pipeline library fails with a clear error BEFORE storing the user message', async () => {
+    const lib = mkdtempSync(join(tmpdir(), 'owl-lib-'));
+    try {
+      await setup({ libraryDir: lib }); // empty folder: no agents, no pipelines
+      const sid = await newSession();
+      const r = await send(sid, { melhorarPrompt: true });
+      expect(r.status).toBe(500);
+      expect(r.body.error?.code).toBe('pipeline_unavailable');
+      expect((await detail(sid)).messages).toEqual([]);
+      expect(spawned).toHaveLength(0);
+    } finally {
+      rmSync(lib, { recursive: true, force: true });
+    }
+  });
+
+  it('agent `ferramentas` reach the CLI as allowed tools', async () => {
+    const lib = mkdtempSync(join(tmpdir(), 'owl-lib-'));
+    try {
+      const examples = fileURLToPath(new URL('../../../examples', import.meta.url));
+      cpSync(examples, lib, { recursive: true });
+      const agentFile = join(lib, 'agents', 'refinador-de-prompt.md');
+      writeFileSync(agentFile, readFileSync(agentFile, 'utf8').replace('ferramentas: []', 'ferramentas: [Read, Grep]'));
+      mkdirSync(join(lib, 'x'), { recursive: true });
+      await setup({ libraryDir: lib });
+      const sid = await newSession();
+      await send(sid, { melhorarPrompt: true });
+      await executor.idle();
+      const argv = rec(0).argv;
+      expect(argv.slice(argv.indexOf('--allowedTools'), argv.indexOf('--allowedTools') + 3)).toEqual(['--allowedTools', 'Read', 'Grep']);
+    } finally {
+      rmSync(lib, { recursive: true, force: true });
+    }
   });
 });

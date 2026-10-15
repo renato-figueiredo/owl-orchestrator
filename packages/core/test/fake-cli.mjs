@@ -58,6 +58,9 @@ switch (scenario) {
     setInterval(() => {}, 1000);
     await new Promise(() => {});
     break;
+  case 'empty':
+    emit(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: '', session_id: '0ebc5870-da74-48ab-88a4-2e4c4aaeb936', usage: {} }) + '\n');
+    break;
   case 'codex-text':
     emit(fixture('codex-text.jsonl'));
     break;

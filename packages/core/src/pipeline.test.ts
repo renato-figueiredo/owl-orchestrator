@@ -64,6 +64,12 @@ describe('templates (no eval)', () => {
     expect(renderTemplate('{{ opcoes.constructor }}', state())).toBe('');
   });
 
+  it('`??` inside a string literal is part of the literal, not an operator', () => {
+    expect(evaluateExpression("'a ?? b'", state())).toBe('a ?? b');
+    expect(evaluateExpression("etapas.x.saida ?? 'não ?? sei'", state())).toBe('não ?? sei');
+    expect(evaluateExpression('opcoes.x ?? "\'??\'"', state())).toBe("'??'");
+  });
+
   it('user text is data: braces in the request are never evaluated', () => {
     const s = state({ pedido: '{{ process.exit() }} e {{ opcoes.x }}' });
     expect(renderTemplate('{{ pedido }}', s)).toBe('{{ process.exit() }} e {{ opcoes.x }}');
@@ -90,6 +96,11 @@ describe('nextStep (resumable stepper)', () => {
     expect(s.etapas.melhorar).toEqual({ ignorada: true });
     s.etapas.executar = { saida: 'feito' };
     expect(nextStep(pipeline, s)).toBeNull();
+  });
+
+  it('an input that renders empty falls back to the request (never an empty prompt)', () => {
+    const s = state({ opcoes: { melhorarPrompt: true }, etapas: { melhorar: { saida: '   ' } } });
+    expect(nextStep(pipeline, s)).toMatchObject({ step: { id: 'executar' }, entrada: 'faça X' });
   });
 
   it('checkbox on: refine first, then run with the refined (or edited) prompt', () => {

@@ -64,7 +64,7 @@ export function App() {
     if (selectedId) {
       void loadDetail(selectedId)
         .then((d) => {
-          const next = d.runs.find((r) => r.status === 'rodando' && r.id !== activeRunId);
+          const next = d.runs.find((r) => r.status === 'rodando' && r.parentRunId === activeRunId); // ours, not another tab's
           if (next) setActiveRunId(next.id);
         })
         .catch((e) => setError(message(e)));

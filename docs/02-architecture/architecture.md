@@ -176,3 +176,16 @@ O prompt melhorado aparece na interface e pode ser editado antes de seguir (opci
 - Servidor: `GET /refiner` (padrão e alternativas), `GET /sessions/:id` inclui `approvals` pendentes.
 - Teste real (2026-10-15): Codex refinou ("o botão de login não funciona, arruma" → Objetivo/Contexto/Restrições/Formato, 13k tokens) e o
   haiku executou, com `parent_run_id` ligado.
+
+### Correções da revisão do prompt 06
+- **Saída vazia do refinador = falha** (portão de aprovação, motivo "não devolveu nenhum texto"); resposta vazia não vira mensagem.
+  Defesa extra: `nextStep` nunca devolve entrada vazia (cai no pedido original).
+- **Slot de sessão da CLI:** cada conversa guarda UM `cli_provider`/`cli_session_id` (provedor ativo da conversa). Etapas de agentes
+  (refinador) são `stateless`: não retomam nem sobrescrevem esse slot, nem com o mesmo CLI (haiku). **Limitação conhecida:** alternar o
+  provedor *principal* da conversa (Claude ↔ Codex) numa mesma sessão perde o `--resume` do anterior; slot por (sessão, provedor) fica para depois.
+- **Pausas órfãs:** na subida do servidor as pausas de pipeline pendentes são fechadas (`expirado`), e `GET /sessions/:id` só lista as
+  que este processo ainda guarda. Portões de ticket (prompt 13) não são afetados.
+- `runner.start` carrega pipeline e agentes **antes** de gravar a mensagem do usuário (erro claro `pipeline_unavailable`, sem mensagem órfã).
+- Após "executar sem melhorar", o run `executar` não tem `parent_run_id` (a etapa que falhou não o alimentou).
+- Agente `ferramentas:` chega ao CLI como `allowedTools`; lista vazia = padrão do adaptador (no `claude -p` o não aprovado é negado).
+- `??` dentro de literal de string não separa operandos. A UI segue só o run **filho** do que terminou (duas abas não se atrapalham).

@@ -21,7 +21,7 @@ export interface PipelineRequest {
 /** Raised when a pipeline cannot be resumed (unknown or already handled run, or the server restarted). */
 export class PipelineError extends Error {
   constructor(
-    readonly status: 404 | 409 | 410,
+    readonly status: 404 | 409 | 410 | 500,
     readonly code: string,
     message: string,
   ) {
@@ -52,7 +52,14 @@ export class PipelineRunner {
 
   /** Stores the request and starts the first step that applies. */
   start(req: PipelineRequest, opcoes: { melhorarPrompt: boolean }): Run {
-    const pipeline = this.deps.library.pipeline(this.deps.pipelineName ?? 'melhorar-e-executar');
+    // Load everything first: a missing or broken file must fail BEFORE the user's message is stored.
+    let pipeline: Pipeline;
+    try {
+      pipeline = this.deps.library.pipeline(this.deps.pipelineName ?? 'melhorar-e-executar');
+      for (const step of pipeline.etapas) if (step.agente) this.deps.library.agent(step.agente);
+    } catch (e) {
+      throw new PipelineError(500, 'pipeline_unavailable', `Could not load the pipeline: ${e instanceof Error ? e.message : String(e)}`);
+    }
     const ctx: Context = {
       req,
       pipeline,
@@ -70,10 +77,12 @@ export class PipelineRunner {
     const step = ctx.waitingOn!;
     const edited = texto?.trim();
     if (edited) ctx.state.etapas[step.id] = { saida: edited };
-    else if (!ctx.state.etapas[step.id]) ctx.state.etapas[step.id] = { ignorada: true };
+    else if (!ctx.state.etapas[step.id]?.saida) ctx.state.etapas[step.id] = { ignorada: true };
+    // The next run descends from this one only if its output feeds it; after "run without improving" it does not.
+    const feeds = Boolean(ctx.state.etapas[step.id]?.saida);
     this.decide(runId, 'aprovado', edited);
     this.waiting.delete(runId);
-    const run = this.advance(ctx, runId);
+    const run = this.advance(ctx, feeds ? runId : undefined);
     if (!run) throw new PipelineError(409, 'nothing_to_run', 'The pipeline has no further step');
     return run;
   }
@@ -96,6 +105,11 @@ export class PipelineRunner {
     this.take(runId);
     this.decide(runId, 'rejeitado', 'descartado');
     this.waiting.delete(runId);
+  }
+
+  /** True while this process still holds the pause for `runId` (false after a restart). */
+  isWaiting(runId: string): boolean {
+    return this.waiting.has(runId);
   }
 
   private take(runId: string): Context {
@@ -135,13 +149,22 @@ export class PipelineRunner {
       ...(parentRunId ? { parentRunId } : {}),
       recordUserMessage: false,
       storeAs: agent ? 'agente' : 'assistente',
+      ...(agent ? { stateless: true } : {}),
+      ...(agent?.ferramentas.length ? { allowedTools: agent.ferramentas } : {}),
       after: (outcome) => this.afterStep(ctx, step, outcome),
     });
   }
 
   private afterStep(ctx: Context, step: PipelineStep, outcome: StepOutcome): void {
     const { repos } = this.deps;
-    if (outcome.status === 'ok') {
+    if (outcome.status === 'ok' && step.agente && !outcome.result.trim()) {
+      // The refiner answered with nothing: never run the next step on an empty prompt. Ask, like any other failure.
+      repos.approvals.create({
+        runId: outcome.run.id,
+        motivo: 'Falha ao melhorar o prompt: o refinador não devolveu nenhum texto',
+      });
+      this.waiting.set(outcome.run.id, { ...ctx, waitingOn: step });
+    } else if (outcome.status === 'ok') {
       ctx.state.etapas[step.id] = { saida: outcome.result };
       const hasMore = nextStep(ctx.pipeline, ctx.state) !== null;
       if (step.revisao && ctx.req.editarAntes && hasMore) {

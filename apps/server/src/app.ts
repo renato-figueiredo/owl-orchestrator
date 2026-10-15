@@ -157,7 +157,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       session,
       messages: repos.messages.list(id),
       runs: repos.runs.listBySession(id),
-      approvals: repos.approvals.pendingBySession(id),
+      approvals: repos.approvals.pendingBySession(id).filter((a) => !a.runId || runner.isWaiting(a.runId)),
     };
   });
 

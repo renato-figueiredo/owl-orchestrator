@@ -19,6 +19,13 @@ export interface SubmitInput {
   model?: string;
   cwd: string;
   systemAppend?: string;
+  /**
+   * Do not read or write the session's CLI session id. For steps of other agents (the prompt refiner): the session slot
+   * belongs to the conversation, and a refiner run must neither resume it nor overwrite it.
+   */
+  stateless?: boolean;
+  /** Tools pre-approved for this run (agent `ferramentas`); empty or absent leaves the adapter's default. */
+  allowedTools?: string[];
   /** Pipeline step name, stored in `runs.etapa`. */
   etapa?: string;
   /** The run whose output feeds this one (`runs.parent_run_id`). */
@@ -177,7 +184,7 @@ export class Executor {
       const adapter = this.resolveAdapter(input.provider);
       // Read now, not at submit time: a queued run must see the session id the previous run just stored.
       const session = repos.sessions.get(input.sessionId);
-      const resume = session?.cliProvider === input.provider ? session.cliSessionId : null;
+      const resume = !input.stateless && session?.cliProvider === input.provider ? session.cliSessionId : null;
       const stream = adapter.run(
         {
           prompt: input.texto,
@@ -186,6 +193,7 @@ export class Executor {
           ...(input.model ? { model: input.model } : {}),
           ...(input.systemAppend ? { systemAppend: input.systemAppend } : {}),
           ...(resume ? { resumeSessionId: resume } : {}),
+          ...(input.allowedTools?.length ? { allowedTools: input.allowedTools } : {}),
         },
         entry.controller.signal,
       );
@@ -211,13 +219,16 @@ export class Executor {
     if (terminal.type === 'end') {
       status = 'ok';
       result = terminal.result ?? text;
-      repos.messages.add({
-        sessionId: input.sessionId,
-        runId: run.id,
-        papel: input.storeAs ?? 'assistente',
-        conteudo: result,
-      });
-      if (terminal.cliSessionId) repos.sessions.setCliSession(input.sessionId, input.provider, terminal.cliSessionId);
+      // An empty reply is not a message: nothing to show, and a pipeline treats it as a failed step.
+      if (result.trim()) {
+        repos.messages.add({
+          sessionId: input.sessionId,
+          runId: run.id,
+          papel: input.storeAs ?? 'assistente',
+          conteudo: result,
+        });
+      }
+      if (terminal.cliSessionId && !input.stateless) repos.sessions.setCliSession(input.sessionId, input.provider, terminal.cliSessionId);
     } else if (terminal.type === 'cancelled') {
       status = 'cancelado';
     } else {

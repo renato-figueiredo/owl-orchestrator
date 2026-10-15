@@ -65,9 +65,30 @@ function operand(raw: string, state: PipelineState): unknown {
   return lookup(t, state);
 }
 
+/** Splits on `??` outside string literals, so `'a ?? b'` stays one operand. */
+function splitCoalesce(expr: string): string[] {
+  const parts: string[] = [];
+  let quote: string | null = null;
+  let start = 0;
+  for (let i = 0; i < expr.length; i++) {
+    const c = expr[i]!;
+    if (quote) {
+      if (c === quote) quote = null;
+    } else if (c === '"' || c === "'") {
+      quote = c;
+    } else if (c === '?' && expr[i + 1] === '?') {
+      parts.push(expr.slice(start, i));
+      start = i + 2;
+      i++;
+    }
+  }
+  parts.push(expr.slice(start));
+  return parts;
+}
+
 /** `a ?? b ?? 'x'`: first operand that is neither undefined nor null. NOT code: no calls, no operators beyond `??`. */
 export function evaluateExpression(expr: string, state: PipelineState): unknown {
-  for (const part of expr.split('??')) {
+  for (const part of splitCoalesce(expr)) {
     const v = operand(part, state);
     if (v !== undefined && v !== null) return v;
   }
@@ -111,7 +132,9 @@ export function nextStep(pipeline: Pipeline, state: PipelineState): PlannedStep 
       state.etapas[step.id] = { ignorada: true };
       continue;
     }
-    return { step, entrada: step.entrada === undefined ? state.pedido : renderTemplate(step.entrada, state) };
+    const rendered = step.entrada === undefined ? state.pedido : renderTemplate(step.entrada, state);
+    // A step must never run with an empty prompt (it would spend tokens on nothing): fall back to the request.
+    return { step, entrada: rendered.trim() === '' ? state.pedido : rendered };
   }
   return null;
 }

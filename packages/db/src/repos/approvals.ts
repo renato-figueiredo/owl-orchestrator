@@ -52,6 +52,18 @@ export function approvalsRepo(db: Db) {
         )
         .all(sessionId) as Approval[];
     },
+    /**
+     * Closes every pending approval that is not tied to a ticket. Call at startup: those are pipeline pauses held in
+     * memory, which no longer exist after a restart (ticket gates, prompt 13, are persistent and are left alone).
+     */
+    expirePendingRunGates(): number {
+      return db
+        .prepare(
+          `UPDATE approvals SET status = 'rejeitado', comentario = 'expirado', decidido_em = datetime('now')
+           WHERE status = 'pendente' AND ticket_id IS NULL`,
+        )
+        .run().changes;
+    },
     byRun(runId: string): Approval | undefined {
       return db
         .prepare(`SELECT ${COLS} FROM approvals WHERE run_id = ? ORDER BY rowid DESC LIMIT 1`)
