@@ -56,9 +56,9 @@ describe('connection', () => {
 describe('migrate', () => {
   it('applies from scratch and is idempotent', () => {
     const db = fresh();
-    expect(migrate(db)).toEqual(['0001_initial.sql', '0002_settings.sql', '0003_runs_sem_estado.sql']);
+    expect(migrate(db)).toEqual(['0001_initial.sql', '0002_settings.sql', '0003_runs_sem_estado.sql', '0004_blobs_visto_em.sql']);
     expect(migrate(db)).toEqual([]);
-    expect(count(db, 'schema_migrations')).toBe(3);
+    expect(count(db, 'schema_migrations')).toBe(4);
     for (const t of ['projects', 'agents', 'teams', 'sessions', 'tickets', 'runs', 'messages', 'blobs', 'approvals']) {
       expect(count(db, t)).toBe(0);
     }

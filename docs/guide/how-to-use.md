@@ -69,6 +69,13 @@ Paste (**Ctrl+V**), drag a file onto the message box, or click 📎. PNG, JPEG a
 - Click a thumbnail in the conversation to see it full size (**Esc** closes).
 - An image alone is a valid message.
 
+## Trash, deletion and backup
+- Hover a conversation and click **✕**: it goes to the **Trash** (bottom of the sidebar), hidden but recoverable. A conversation with a run in progress cannot be moved: cancel the run first.
+- In the Trash: **Restore**, **Delete for good** (asks a second time) or **Empty trash**. Deleting for good removes messages, runs, the facts the summarizer extracted from that conversation (pinned facts stay) and any image no other conversation uses.
+- After the retention period (30 days by default, see **Storage and backup**) OWL purges the trash by itself. You can turn that off.
+- **Your CLI keeps its own copy.** `claude` and `codex` store their conversation history in their own folders (`~/.claude/`, `~/.codex/`). Deleting in OWL does **not** touch those; OWL tells you when that applies. It never deletes files in folders it does not own.
+- **Storage and backup** (bottom of the sidebar): trash retention, an optional automatic database backup (off by default) and *Clean unused files*, which removes images nobody uses anymore. See [Configuration](configuration.md#backup) for encryption and sending the copy somewhere.
+
 ## Keyboard and themes
 - In the session list: **↑ / ↓** move, **Enter** opens, **Tab** leaves the list.
 - The ☾ / ☀ button switches light and dark (it starts from your system setting and remembers your choice).

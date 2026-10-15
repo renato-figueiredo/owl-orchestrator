@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { loadConfig } from '@owl/core';
 import { createRepos, migrate, openDb } from '@owl/db';
 import { buildApp } from './app.js';
+import { BackupService } from './backup.js';
+import { CleanupService } from './cleanup.js';
 import { Executor } from './executor.js';
 
 const config = loadConfig();
@@ -12,16 +14,43 @@ migrate(db);
 const repos = createRepos(db);
 repos.approvals.expirePendingRunGates(); // pipeline pauses live in memory and do not survive a restart
 const executor = new Executor({ repos, concurrency: config.concurrency });
+const attachmentsDir = join(config.dataDir, 'attachments');
+const cleanup = new CleanupService({ db, repos, dir: attachmentsDir, isBusy: (id) => executor.hasActive(id) });
+const backup = new BackupService({
+  db,
+  repos,
+  dir: join(config.dataDir, 'backups'),
+  recipient: config.backupAgeRecipient,
+  remote: config.backupRcloneRemote,
+});
 const app = buildApp({
+  cleanup,
+  backup,
   repos,
   executor,
   workspaceRoots: config.workspaceRoots,
   allowedOrigins: config.allowedOrigins,
-  attachmentsDir: join(config.dataDir, 'attachments'),
+  attachmentsDir,
   maxAttachmentBytes: config.maxAttachmentBytes,
 });
 
+// Housekeeping at startup and every few hours; a failure here must never take the server down.
+const housekeeping = () => {
+  try {
+    const purged = cleanup.purgeExpired();
+    const swept = cleanup.sweep();
+    if (purged.purged || swept.orphanBlobs || swept.strayFiles) console.log('owl cleanup', { purged, swept });
+  } catch (e) {
+    console.error('owl cleanup failed', e instanceof Error ? e.message : e);
+  }
+  void backup.tick().catch((e: unknown) => console.error('owl backup failed', e instanceof Error ? e.message : e));
+};
+housekeeping();
+const timer = setInterval(housekeeping, 3 * 3_600_000);
+timer.unref();
+
 const stop = async () => {
+  clearInterval(timer);
   await executor.shutdown();
   await app.close();
   db.close();

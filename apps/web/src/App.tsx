@@ -24,6 +24,7 @@ export function App() {
   const [memSettings, setMemSettings] = useState<MemorySettings | null>(null);
   const [memBusy, setMemBusy] = useState(false);
   const [memMessage, setMemMessage] = useState<string | null>(null);
+  const [trashVersion, setTrashVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -138,6 +139,18 @@ export function App() {
     }
   };
 
+  const trashSession = async (id: string) => {
+    try {
+      await api.trashSession(id);
+      if (id === selectedId) setSelectedId(null);
+      await refreshSessions();
+      setTrashVersion((v) => v + 1);
+      setError(null);
+    } catch (e) {
+      setError(message(e));
+    }
+  };
+
   const send = async (input: SendInput) => {
     if (!selectedId) return;
     setBusy(true);
@@ -182,6 +195,9 @@ export function App() {
         selectedId={selectedId}
         onSelect={setSelectedId}
         onNewSession={(pid) => void newSession(pid)}
+        onDeleteSession={(id) => void trashSession(id)}
+        trashVersion={trashVersion}
+        onRestored={() => void refreshSessions().catch((e) => setError(message(e)))}
         onCreateProject={async (input) => {
           const p = await api.createProject(input);
           setProjects((list) => [p, ...list]);

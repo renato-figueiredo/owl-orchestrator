@@ -8,7 +8,7 @@ import { runsRepo } from './repos/runs.js';
 import { sessionsRepo } from './repos/sessions.js';
 import { settingsRepo } from './repos/settings.js';
 
-export { foreignKeysEnabled, openDb, type Db } from './connection.js';
+export { checkSnapshot, foreignKeysEnabled, openDb, snapshotTo, type Db, type SnapshotCheck } from './connection.js';
 export { MIGRATIONS_DIR, migrate } from './migrate.js';
 export * from './repos/approvals.js';
 export * from './repos/blobs.js';

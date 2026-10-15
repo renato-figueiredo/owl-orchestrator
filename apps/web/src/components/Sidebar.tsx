@@ -1,6 +1,8 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import type { Project, Session } from '../lib/types';
 import { Logo } from './Logo';
+import { StorageSettings } from './StorageSettings';
+import { TrashPanel } from './TrashPanel';
 
 interface Props {
   projects: Project[];
@@ -8,12 +10,16 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onNewSession: (projectId?: string) => void;
+  onDeleteSession: (id: string) => void;
+  /** Bumped when a conversation went to the trash, so the trash list reloads. */
+  trashVersion: number;
+  onRestored: () => void;
   onCreateProject: (input: { nome: string; pasta: string; instrucoes?: string }) => Promise<void>;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
 }
 
-export function Sidebar({ projects, sessions, selectedId, onSelect, onNewSession, onCreateProject, theme, onToggleTheme }: Props) {
+export function Sidebar({ projects, sessions, selectedId, onSelect, onNewSession, onDeleteSession, trashVersion, onRestored, onCreateProject, theme, onToggleTheme }: Props) {
   const listRef = useRef<HTMLElement>(null);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +121,7 @@ export function Sidebar({ projects, sessions, selectedId, onSelect, onNewSession
               <ul className="mt-1 space-y-0.5">
                 {g.items.length === 0 && <li className="px-2 py-1 text-sm text-muted">Nenhuma conversa</li>}
                 {g.items.map((s) => (
-                  <li key={s.id}>
+                  <li key={s.id} className="group relative">
                     <button
                       type="button"
                       data-session-item
@@ -126,6 +132,14 @@ export function Sidebar({ projects, sessions, selectedId, onSelect, onNewSession
                     >
                       {s.titulo ?? 'Nova conversa'}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteSession(s.id)}
+                      aria-label={`Mover para a lixeira: ${s.titulo ?? 'Nova conversa'}`}
+                      className="absolute right-1 top-1 rounded px-1.5 text-muted opacity-0 hover:bg-bg hover:text-danger focus:opacity-100 group-hover:opacity-100"
+                    >
+                      ✕
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -133,6 +147,8 @@ export function Sidebar({ projects, sessions, selectedId, onSelect, onNewSession
           ),
         )}
       </section>
+      <TrashPanel version={trashVersion} onRestored={onRestored} />
+      <StorageSettings />
     </nav>
   );
 }

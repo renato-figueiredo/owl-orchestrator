@@ -47,8 +47,8 @@ export function blobsRepo(db: Db) {
       altura?: number;
     }): Blob {
       db.prepare(
-        `INSERT INTO blobs (hash, caminho, mime, bytes, largura, altura) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(hash) DO NOTHING`,
+        `INSERT INTO blobs (hash, caminho, mime, bytes, largura, altura, visto_em) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(hash) DO UPDATE SET visto_em = datetime('now')`,
       ).run(input.hash, input.caminho, input.mime, input.bytes, input.largura ?? null, input.altura ?? null);
       return get(input.hash)!;
     },
@@ -66,6 +66,35 @@ export function blobsRepo(db: Db) {
     },
     delete(hash: string): void {
       db.prepare('DELETE FROM blobs WHERE hash = ?').run(hash);
+    },
+    /**
+     * Orphans not seen for `graceSeconds`: the sweep's candidates. The grace period protects an image that was
+     * uploaded but is not attached to a message yet.
+     */
+    staleOrphans(graceSeconds: number): Blob[] {
+      return db
+        .prepare(
+          `SELECT ${BLOB_COLS} FROM blobs
+           WHERE hash NOT IN (SELECT blob_hash FROM attachments)
+             AND strftime('%s', 'now') - strftime('%s', COALESCE(visto_em, criado_em)) >= ?`,
+        )
+        .all(graceSeconds) as Blob[];
+    },
+    /**
+     * Deletes the row only if nothing references it, in one statement (no check-then-delete gap). Returns the stored
+     * path when the row went away, so the caller can remove the file afterwards.
+     */
+    deleteIfOrphan(hash: string): string | undefined {
+      const row = db
+        .prepare(
+          `DELETE FROM blobs WHERE hash = ? AND hash NOT IN (SELECT blob_hash FROM attachments) RETURNING caminho`,
+        )
+        .get(hash) as { caminho: string } | undefined;
+      return row?.caminho;
+    },
+    /** Every stored path, to find files on disk that no row points to. */
+    allPaths(): Set<string> {
+      return new Set((db.prepare('SELECT caminho FROM blobs').all() as Array<{ caminho: string }>).map((r) => r.caminho));
     },
   };
 }
@@ -95,6 +124,17 @@ export function attachmentsRepo(db: Db) {
            WHERE a.message_id IN (${marks}) ORDER BY a.rowid`,
         )
         .all(...messageIds) as AttachmentInfo[];
+    },
+    /** Distinct blobs the attachments of a session point to (read BEFORE the session is purged). */
+    blobHashesOfSession(sessionId: string): string[] {
+      return (
+        db
+          .prepare(
+            `SELECT DISTINCT a.blob_hash AS h FROM attachments a JOIN messages m ON m.id = a.message_id
+             WHERE m.session_id = ?`,
+          )
+          .all(sessionId) as Array<{ h: string }>
+      ).map((r) => r.h);
     },
     listByMessage(messageId: number): Attachment[] {
       return db

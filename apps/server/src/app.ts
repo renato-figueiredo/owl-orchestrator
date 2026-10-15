@@ -3,6 +3,8 @@ import type { createRepos } from '@owl/db';
 import { createReadStream } from 'node:fs';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z, ZodError } from 'zod';
+import { BackupService, backupSettingsPatchSchema } from './backup.js';
+import { CleanupService, NotInTrashError, SessionBusyError, trashSettingsPatchSchema } from './cleanup.js';
 import { AttachmentError, AttachmentService, cleanName, HASH, MAX_NAME_CHARS } from './attachments.js';
 import type { Executor } from './executor.js';
 import { Library } from './library.js';
@@ -27,6 +29,10 @@ export interface AppDeps {
   attachmentsDir?: string;
   /** Largest image accepted, in bytes (default 10 MB). */
   maxAttachmentBytes?: number;
+  /** Permanent deletion, the orphan sweep and the trash settings. Without it those routes answer 501. */
+  cleanup?: CleanupService;
+  /** Optional snapshots. Without it the backup routes answer 501. */
+  backup?: BackupService;
 }
 
 /** Error with an HTTP status, rendered as `{ error: { code, message } }`. */
@@ -50,7 +56,11 @@ const createSession = z.object({
   projectId: z.string().min(1).optional(),
   titulo: z.string().trim().min(1).max(200).optional(),
 });
-const listSessions = z.object({ projectId: z.string().min(1).optional() });
+const listSessions = z.object({
+  projectId: z.string().min(1).optional(),
+  /** `trash=1` lists the conversations in the trash instead of the live ones. */
+  trash: z.enum(['0', '1']).optional(),
+});
 // Same shape the adapters accept as an option value: never starts with "-".
 const modelId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:[\]-]{0,99}$/);
 const attachmentRef = z.object({
@@ -181,7 +191,70 @@ export function buildApp(deps: AppDeps): FastifyInstance {
 
   app.get('/sessions', async (req) => {
     const q = listSessions.parse(req.query);
-    return { sessions: repos.sessions.list(q.projectId ? { projectId: q.projectId } : {}) };
+    return {
+      sessions: repos.sessions.list({
+        ...(q.projectId ? { projectId: q.projectId } : {}),
+        ...(q.trash === '1' ? { onlyDeleted: true } : {}),
+      }),
+    };
+  });
+
+  // ---- trash, deletion and backup -----------------------------------------------------------------------------
+
+  const needs = <T,>(service: T | undefined, what: string): T => {
+    if (!service) throw new HttpError(501, 'not_configured', `${what} is not available in this server`);
+    return service;
+  };
+
+  /** Moves a conversation to the trash (hidden, recoverable). Refused while it is running. */
+  app.delete('/sessions/:id', async (req) => {
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    liveSession(id);
+    if (executor.hasActive(id) || repos.sessions.hasRunningRun(id)) {
+      throw new HttpError(409, 'session_busy', 'The conversation has a run in progress: cancel it first');
+    }
+    repos.sessions.softDelete(id);
+    return { session: repos.sessions.get(id) };
+  });
+
+  app.post('/sessions/:id/restore', async (req) => {
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const s = repos.sessions.get(id);
+    if (!s?.deletedAt) throw new HttpError(404, 'session_not_in_trash', `Not in the trash: ${id}`);
+    repos.sessions.restore(id);
+    return { session: repos.sessions.get(id) };
+  });
+
+  /** Deletes a conversation that is already in the trash for good (the interface asks the user first). */
+  app.delete('/trash/:id', async (req) => {
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    try {
+      return { result: needs(deps.cleanup, 'Deletion').purge(id) };
+    } catch (e) {
+      if (e instanceof SessionBusyError) throw new HttpError(409, 'session_busy', e.message);
+      if (e instanceof NotInTrashError) throw new HttpError(409, 'not_in_trash', e.message);
+      if (e instanceof Error && e.message.startsWith('Session not found')) throw new HttpError(404, 'session_not_found', e.message);
+      throw e;
+    }
+  });
+
+  /** Empties the trash: every trashed conversation, or only those older than `dias`. */
+  app.delete('/trash', async (req) => {
+    const q = z.object({ dias: z.coerce.number().int().min(0).max(3650).default(0) }).parse(req.query);
+    return { result: needs(deps.cleanup, 'Deletion').purgeTrash(q.dias) };
+  });
+
+  /** The sweep on demand: orphan images, stray files and free pages. */
+  app.post('/maintenance/sweep', async () => ({ report: needs(deps.cleanup, 'Cleanup').sweep() }));
+
+  app.get('/backups', async () => {
+    const b = needs(deps.backup, 'Backup');
+    return { settings: b.settings(), destinos: b.destinations(), ultimo: b.lastStatus() ?? null, arquivos: b.list() };
+  });
+
+  app.post('/backups', async (_req, reply) => {
+    const status = await needs(deps.backup, 'Backup').run();
+    return reply.status(status.ok ? 201 : 502).send({ status });
   });
 
   app.get('/sessions/:id', async (req) => {
@@ -326,15 +399,30 @@ export function buildApp(deps: AppDeps): FastifyInstance {
 
   // ---- memory: settings, facts, summary ---------------------------------------------------------------------
 
-  app.get('/settings', async () => ({ memory: memory.settings() }));
+  const allSettings = () => ({
+    memory: memory.settings(),
+    ...(deps.cleanup ? { lixeira: deps.cleanup.settings() } : {}),
+    ...(deps.backup ? { backup: deps.backup.settings() } : {}),
+  });
+
+  app.get('/settings', async () => allSettings());
 
   app.put('/settings', async (req) => {
-    const patch = z.object({ memory: memorySettingsPatchSchema }).parse(req.body);
-    const provider = patch.memory.resumidor?.provider;
+    const patch = z
+      .object({
+        memory: memorySettingsPatchSchema.optional(),
+        lixeira: trashSettingsPatchSchema.optional(),
+        backup: backupSettingsPatchSchema.optional(),
+      })
+      .parse(req.body);
+    const provider = patch.memory?.resumidor?.provider;
     if (provider && !listAdapters().some((a) => a.id === provider)) {
       throw new HttpError(400, 'unknown_provider', `Unknown provider: ${provider}`);
     }
-    return { memory: memory.save(patch.memory) };
+    if (patch.lixeira) needs(deps.cleanup, 'The trash settings').saveSettings(patch.lixeira);
+    if (patch.backup) needs(deps.backup, 'Backup').saveSettings(patch.backup);
+    if (patch.memory) memory.save(patch.memory);
+    return allSettings();
   });
 
   app.get('/facts', async (req) => {

@@ -11,7 +11,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [x] 06 Pipeline "melhorar prompt" (`build/prompts/06`)
 - [x] 07 Memória em camadas + resumo incremental (`build/prompts/07`)
 - [x] 08 Anexos/prints (`build/prompts/08`) — falta `qa-testes` e `revisor`
-- [ ] 09 Exclusão, lixeira, limpeza, backup (`build/prompts/09`)
+- [x] 09 Exclusão, lixeira, limpeza, backup (`build/prompts/09`) — falta `qa-testes` e `revisor`
 - [ ] 10 Servidor MCP de memória (`build/prompts/10`)
 - [ ] 11 Revisão e testes da fase 1 (`build/prompts/11`)
 
@@ -34,7 +34,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Pacote de vídeo (ffmpeg, Remotion)
 
 ## Pendências (atualizado em 2026-10-14)
-**Próximo passo:** `qa-testes` e `revisor` no prompt 08; depois prompt 09 (exclusão e backup). 
+**Próximo passo:** `qa-testes` e `revisor` nos prompts 08 e 09; depois prompt 10 (MCP de memória).
 
 **Revisão**
 - [x] `qa-testes` e `revisor` nos prompts 02, 03 e 04 rodados em 2026-10-15; 3 bloqueantes corrigidos (NUL no adaptador, Host/Origin, raízes de pastas).
@@ -51,8 +51,12 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [x] `qa-testes` e `revisor` no prompt 06 rodados em 2026-10-15; 3 itens importantes corrigidos (saída vazia, slot de sessão, pausas órfãs).
 - [ ] Slot de sessão por (sessão, provedor) para alternar Claude/Codex sem perder o `--resume`.
 - [x] `qa-testes` e `revisor` no prompt 05 rodados em 2026-10-15 (E2E: `pnpm --filter @owl/web test:e2e`; precisa de `pnpm exec playwright install chromium` uma vez).
-- [ ] Anexos/imagens na caixa de envio (prompt 08); "melhorar prompt" (prompt 06); lixeira/exclusão de conversas (prompt 09).
+- [ ] Anexos/imagens na caixa de envio (prompt 08); "melhorar prompt" (prompt 06); lixeira/exclusão de conversas (prompt 09, feito).
 - [ ] Mostrar o uso das LLMs por sessão (tokens e custo, somando os `runs`; só para provedores que informam), com parâmetros configuráveis (ex.: limites e alertas).
+
+- [ ] Prompt 09: apagar a sessão da CLI ficou só como aviso (decisão em `docs/03-data/deletion-and-backup.md`); reavaliar se as CLIs ganharem comando oficial.
+- [ ] Prompt 09: testar `age`/`rclone` reais de ponta a ponta (os testes usam binários falsos); instalar `age` e `rclone` quando for ligar o backup.
+- [ ] Prompt 09: o E2E ainda não cobre lixeira/backup (só testes de componente e de API).
 
 **Adaptadores**
 - [x] Codex: JSON, resume e erros capturados do `codex-cli` 0.162 real (fixtures `codex-*.jsonl`). Falta: imagens (prompt 08).

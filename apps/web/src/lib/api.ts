@@ -1,4 +1,4 @@
-import type { Fact, MemorySettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './types';
+import type { BackupInfo, BackupSettings, BackupStatus, Fact, MemorySettings, PurgeResult, SweepReport, TrashSettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -65,6 +65,20 @@ export const api = {
   settings: () => call<{ memory: MemorySettings }>('GET', '/settings').then((r) => r.memory),
   saveSettings: (patch: Partial<MemorySettings>) =>
     call<{ memory: MemorySettings }>('PUT', '/settings', { memory: patch }).then((r) => r.memory),
+  trash: () => call<{ sessions: Session[] }>('GET', '/sessions?trash=1').then((r) => r.sessions),
+  trashSession: (id: string) => call<{ session: Session }>('DELETE', `/sessions/${encodeURIComponent(id)}`),
+  restoreSession: (id: string) => call<{ session: Session }>('POST', `/sessions/${encodeURIComponent(id)}/restore`),
+  /** Deletes a conversation that is in the trash for good. */
+  purgeSession: (id: string) => call<{ result: PurgeResult }>('DELETE', `/trash/${encodeURIComponent(id)}`).then((r) => r.result),
+  emptyTrash: () => call<{ result: { purged: number; skipped: number } }>('DELETE', '/trash').then((r) => r.result),
+  trashSettings: () => call<{ lixeira?: TrashSettings }>('GET', '/settings').then((r) => r.lixeira ?? null),
+  saveTrashSettings: (patch: Partial<TrashSettings>) =>
+    call<{ lixeira: TrashSettings }>('PUT', '/settings', { lixeira: patch }).then((r) => r.lixeira),
+  sweep: () => call<{ report: SweepReport }>('POST', '/maintenance/sweep').then((r) => r.report),
+  backups: () => call<BackupInfo>('GET', '/backups'),
+  runBackup: () => call<{ status: BackupStatus }>('POST', '/backups').then((r) => r.status),
+  saveBackupSettings: (patch: Partial<BackupSettings>) =>
+    call<{ backup: BackupSettings }>('PUT', '/settings', { backup: patch }).then((r) => r.backup),
   facts: (projectId: string | null) =>
     call<{ facts: Fact[] }>('GET', `/facts${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`).then((r) => r.facts),
   addFact: (input: { texto: string; projectId?: string; fixado?: boolean }) =>

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "start": "tsx src/main.ts"
+    "start": "tsx src/main.ts",
+    "restore": "tsx src/cli.ts restore"
   },
   "dependencies": {
     "@owl/core": "workspace:*",

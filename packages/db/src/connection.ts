@@ -19,3 +19,36 @@ export function openDb(file = ':memory:'): Db {
 export function foreignKeysEnabled(db: Db): boolean {
   return db.pragma('foreign_keys', { simple: true }) === 1;
 }
+
+/**
+ * Consistent copy of the live database into a NEW file (`VACUUM INTO`): safe with WAL and concurrent writers, and
+ * compacted. The target must not exist.
+ */
+export function snapshotTo(db: Db, file: string): void {
+  db.prepare('VACUUM INTO ?').run(file);
+}
+
+export interface SnapshotCheck {
+  ok: boolean;
+  error?: string;
+  sessions?: number;
+  messages?: number;
+}
+
+/** Opens a snapshot read-only (it is never modified) and checks that it is a healthy OWL database. */
+export function checkSnapshot(file: string): SnapshotCheck {
+  let db: Db | undefined;
+  try {
+    db = new Database(file, { readonly: true, fileMustExist: true });
+    const integrity = db.pragma('integrity_check', { simple: true });
+    if (integrity !== 'ok') return { ok: false, error: `integrity_check: ${String(integrity)}` };
+    const has = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('sessions','messages','schema_migrations')").all();
+    if (has.length !== 3) return { ok: false, error: 'Not an OWL database (tables are missing)' };
+    const count = (t: string) => (db!.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n;
+    return { ok: true, sessions: count('sessions'), messages: count('messages') };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  } finally {
+    db?.close();
+  }
+}

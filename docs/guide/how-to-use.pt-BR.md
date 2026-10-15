@@ -69,6 +69,13 @@ Cole (**Ctrl+V**), arraste um arquivo para a caixa de mensagem ou clique em 📎
 - Clique na miniatura na conversa para ver em tamanho real (**Esc** fecha).
 - Uma imagem sozinha já é uma mensagem válida.
 
+## Lixeira, exclusão e backup
+- Passe o mouse sobre uma conversa e clique em **✕**: ela vai para a **Lixeira** (no fim da barra lateral), escondida mas recuperável. Uma conversa com execução em andamento não pode ser movida: cancele a execução antes.
+- Na Lixeira: **Restaurar**, **Excluir de vez** (pede uma segunda confirmação) ou **Esvaziar lixeira**. Excluir de vez remove mensagens, execuções, os fatos que o resumidor extraiu daquela conversa (os fixados ficam) e toda imagem que nenhuma outra conversa usa.
+- Passado o prazo (30 dias por padrão, veja **Armazenamento e backup**) o OWL esvazia a lixeira sozinho. Dá para desligar.
+- **A sua CLI guarda uma cópia própria.** `claude` e `codex` guardam o histórico em pastas delas (`~/.claude/`, `~/.codex/`). Excluir no OWL **não** mexe nisso; o OWL avisa quando se aplica. Ele nunca apaga arquivos em pastas que não são dele.
+- **Armazenamento e backup** (no fim da barra lateral): prazo da lixeira, backup automático opcional do banco (desligado por padrão) e *Limpar arquivos sem uso*, que remove imagens que ninguém mais usa. Veja [Configuração](configuration.pt-BR.md#backup) para criptografar e enviar a cópia para outro lugar.
+
 ## Teclado e temas
 - Na lista de conversas: **↑ / ↓** movem, **Enter** abre, **Tab** sai da lista.
 - O botão ☾ / ☀ alterna claro e escuro (começa pela configuração do sistema e lembra a sua escolha).

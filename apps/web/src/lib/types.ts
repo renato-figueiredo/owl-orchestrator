@@ -95,3 +95,44 @@ export interface SessionDetail {
   runs: Run[];
   approvals: Approval[];
 }
+export interface TrashSettings {
+  diasRetencao: number;
+  purgaAutomatica: boolean;
+}
+export interface BackupSettings {
+  ativo: boolean;
+  retencao: number;
+  intervaloHoras: number;
+}
+export interface BackupStatus {
+  em: string;
+  ok: boolean;
+  arquivo?: string;
+  criptografado?: boolean;
+  enviado?: boolean;
+  erro?: string;
+}
+export interface BackupFile {
+  nome: string;
+  bytes: number;
+  criptografado: boolean;
+  em: string;
+}
+export interface BackupInfo {
+  settings: BackupSettings;
+  destinos: { criptografia: boolean; envio: boolean };
+  ultimo: BackupStatus | null;
+  arquivos: BackupFile[];
+}
+export interface PurgeResult {
+  sessionId: string;
+  blobsRemoved: number;
+  /** The conversation had a native CLI session whose transcript stays in the CLI's own folder. */
+  cliSession?: { provider: string; id: string };
+}
+export interface SweepReport {
+  orphanBlobs: number;
+  strayFiles: number;
+  missingFiles: number;
+  freedPages: number;
+}

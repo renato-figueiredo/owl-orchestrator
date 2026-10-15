@@ -186,6 +186,12 @@ export class Executor {
     return 'cancelled';
   }
 
+  /** True while a run of this session is queued or executing. */
+  hasActive(sessionId: string): boolean {
+    for (const e of this.entries.values()) if (e.state !== 'done' && e.input.sessionId === sessionId) return true;
+    return false;
+  }
+
   /** Resolves when nothing is queued or running. */
   idle(): Promise<void> {
     if (this.active === 0 && this.queue.length === 0) return Promise.resolve();

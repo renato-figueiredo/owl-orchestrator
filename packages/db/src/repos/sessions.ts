@@ -32,15 +32,35 @@ export function sessionsRepo(db: Db) {
       );
       return get(id)!;
     },
-    list(opts: { projectId?: string; includeDeleted?: boolean } = {}): Session[] {
+    list(opts: { projectId?: string; includeDeleted?: boolean; onlyDeleted?: boolean } = {}): Session[] {
       return db
         .prepare(
           `SELECT ${COLS} FROM sessions
            WHERE (@projectId IS NULL OR project_id = @projectId)
-             AND (@includeDeleted = 1 OR deleted_at IS NULL)
+             AND (CASE WHEN @onlyDeleted = 1 THEN deleted_at IS NOT NULL
+                       ELSE (@includeDeleted = 1 OR deleted_at IS NULL) END)
            ORDER BY criado_em DESC, rowid DESC`,
         )
-        .all({ projectId: opts.projectId ?? null, includeDeleted: opts.includeDeleted ? 1 : 0 }) as Session[];
+        .all({
+          projectId: opts.projectId ?? null,
+          includeDeleted: opts.includeDeleted ? 1 : 0,
+          onlyDeleted: opts.onlyDeleted ? 1 : 0,
+        }) as Session[];
+    },
+    /** Trashed sessions whose stay in the trash is at least `days` old (0 = every trashed session). */
+    trashedOlderThan(days: number): Session[] {
+      return db
+        .prepare(
+          `SELECT ${COLS} FROM sessions
+           WHERE deleted_at IS NOT NULL
+             AND julianday('now') - julianday(deleted_at) >= ?
+           ORDER BY deleted_at`,
+        )
+        .all(days) as Session[];
+    },
+    /** True while a run of this session has not finished (a purge would pull the rug from under it). */
+    hasRunningRun(id: string): boolean {
+      return db.prepare("SELECT 1 FROM runs WHERE session_id = ? AND status = 'rodando' LIMIT 1").get(id) !== undefined;
     },
     /** Moves to the trash (hidden, recoverable). */
     softDelete(id: string): void {

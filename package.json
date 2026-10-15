@@ -15,6 +15,7 @@
     "test": "vitest run",
     "lint": "eslint .",
     "typecheck": "pnpm -r typecheck",
+    "owl": "pnpm --filter @owl/server exec tsx src/cli.ts",
     "format": "prettier --write ."
   },
   "devDependencies": {
