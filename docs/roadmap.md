@@ -12,8 +12,8 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [x] 07 Memória em camadas + resumo incremental (`build/prompts/07`)
 - [x] 08 Anexos/prints (`build/prompts/08`) — QA e revisão feitos; achados do QA corrigidos
 - [x] 09 Exclusão, lixeira, limpeza, backup (`build/prompts/09`) — QA e revisão feitos; achados do QA corrigidos
-- [ ] 10 Servidor MCP de memória (`build/prompts/10`)
-- [ ] 11 Revisão e testes da fase 1 (`build/prompts/11`)
+- [x] 10 Servidor MCP de memória (`build/prompts/10`) — QA e revisão feitos
+- [x] 11 Revisão e testes da fase 1 (`build/prompts/11`) — revisão, E2E (7 cenários) e README feitos em 2026-10-15; sem bloqueantes
 
 ## Fase 2 — Equipes
 - [ ] 12 Agentes como arquivos + pipelines YAML (`build/prompts/12`)
@@ -34,7 +34,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Pacote de vídeo (ffmpeg, Remotion)
 
 ## Pendências (atualizado em 2026-10-14)
-**Próximo passo:** prompt 11 (revisão da fase 1). O 08/09 foi revisado de novo em 2026-10-15 (a lista antiga do revisor se perdeu): 9 itens corrigidos, 1 aberto abaixo.
+**Próximo passo:** fase 2, prompt 12 (agentes e pipelines; 12+13 juntos na revisão). Fase 1 concluída (prompt 11). O 08/09 foi revisado de novo em 2026-10-15 (a lista antiga do revisor se perdeu): 9 itens corrigidos, 1 aberto abaixo.
 
 **Revisão**
 - [x] `qa-testes` e `revisor` nos prompts 02, 03 e 04 rodados em 2026-10-15; 3 bloqueantes corrigidos (NUL no adaptador, Host/Origin, raízes de pastas).
@@ -57,7 +57,16 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Prompt 09: apagar a sessão da CLI ficou só como aviso (decisão em `docs/03-data/deletion-and-backup.md`); reavaliar se as CLIs ganharem comando oficial.
 - [ ] Prompt 09: testar `age`/`rclone` reais de ponta a ponta (os testes usam binários falsos); instalar `age` e `rclone` quando for ligar o backup.
 - [ ] Prompt 09 (revisão): a purga de uma conversa pode apagar um blob que o usuário acabou de reenviar por dedupe (mesmo print de uma conversa na lixeira) antes de ele anexar; o envio falha com 400 `attachment_not_found` e é preciso colar de novo. Estreito; corrigir respeitando `visto_em` na purga exige ajustar os testes que purgam logo após o upload.
-- [ ] Prompt 09: o E2E ainda não cobre lixeira/backup (só testes de componente e de API).
+- [ ] Prompt 09: o E2E cobre anexo → lixeira → exclusão (`attachment-trash.spec.ts`); backup ainda só tem testes de API.
+
+**Revisão da fase 1 (prompt 11)** — corrigidos: runs presas em `rodando` após reinício (`runs.failInterrupted` no startup) e `approvals` (prompt editado, erro do refinador) que sobravam na exclusão definitiva. Abertos:
+- [ ] `--allowedTools Read` sem escopo quando há imagem (`claude-cli.ts`): trocar por `Read(//<pasta-da-imagem>/**)` e confirmar com o `claude` real que fora da pasta é negado.
+- [ ] Nome do anexo no rótulo do prompt: filtrar `"`, `[` e `]` (ou citar com JSON).
+- [ ] Filho recebe o `process.env` inteiro: passar lista permitida antes de haver agentes com Bash (fase 2).
+- [ ] Fatos fixados novos no caminho com resume entram fora de `orcamentoTokens`; histórico lido inteiro a cada run (usar `lastN` + resumo).
+- [ ] Limpar `data/mcp/*.json` que sobram após crash, no startup.
+- [ ] Avaliar `purgaAutomatica` desligada por padrão ou aviso na primeira vez.
+- [ ] CLAUDE.md lista `packages/memory` como montador de contexto, mas o código está em `packages/core/src/memory`.
 
 **Adaptadores**
 - [x] Codex: JSON, resume e erros capturados do `codex-cli` 0.162 real (fixtures `codex-*.jsonl`). Falta: imagens (prompt 08).

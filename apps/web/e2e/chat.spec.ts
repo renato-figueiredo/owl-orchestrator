@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test';
 
 test('answer streams in, persists after reload, and the session is reachable by keyboard', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Nova conversa' }).click();
+  await page.getByRole('button', { name: 'Nova conversa', exact: true }).first().click();
 
   const box = page.getByLabel('Mensagem');
   await box.fill('diga olá');
@@ -20,17 +20,17 @@ test('answer streams in, persists after reload, and the session is reachable by 
   const replyText = (await reply.textContent())!;
 
   // The session title comes from the first message.
-  await expect(page.getByRole('button', { name: 'diga olá' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'diga olá', exact: true })).toBeVisible();
   await expect(page.getByTestId('session-total')).toContainText('ent');
 
   await page.reload();
-  await page.getByRole('button', { name: 'diga olá' }).click();
+  await page.getByRole('button', { name: 'diga olá', exact: true }).click();
   await expect(log.getByText('diga olá')).toBeVisible();
   await expect(log.getByText(replyText)).toBeVisible();
 
   // Keyboard: focus the session list, move with the arrows, activate with Enter.
-  await page.getByRole('button', { name: 'Nova conversa' }).click();
-  await page.getByRole('button', { name: 'diga olá' }).focus();
+  await page.getByRole('button', { name: 'Nova conversa', exact: true }).first().click();
+  await page.getByRole('button', { name: 'diga olá', exact: true }).focus();
   await page.keyboard.press('ArrowUp');
   await page.keyboard.press('Enter');
   await expect(page.getByLabel('Mensagem')).toBeEnabled();
@@ -38,7 +38,7 @@ test('answer streams in, persists after reload, and the session is reachable by 
 
 test('cancel stops a running run and the page shows it as cancelled', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Nova conversa' }).click();
+  await page.getByRole('button', { name: 'Nova conversa', exact: true }).first().click();
   await page.getByLabel('Provedor').selectOption('fake-hang');
   await page.getByLabel('Mensagem').fill('algo demorado');
   await page.getByLabel('Mensagem').press('Enter');
@@ -68,12 +68,12 @@ test('a project keeps its conversations apart and refuses folders outside the wo
   await page.getByLabel('Mensagem').press('Enter');
   await expect(page.getByRole('button', { name: 'Enviar' })).toBeVisible({ timeout: 15_000 });
   const nav = page.getByRole('navigation', { name: 'Projetos e conversas' });
-  await expect(nav.getByRole('button', { name: 'dentro do projeto' })).toBeVisible();
+  await expect(nav.getByRole('button', { name: 'dentro do projeto', exact: true })).toBeVisible();
 });
 
 test('melhorar prompt: the refined prompt can be edited and the edit is what runs; both steps show in the panel', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Nova conversa' }).click();
+  await page.getByRole('button', { name: 'Nova conversa', exact: true }).first().click();
   await page.getByLabel('Melhorar prompt').check();
   await page.getByLabel('Editar antes de executar').check();
   await page.getByLabel('Mensagem').fill('conserte o login');
@@ -94,14 +94,14 @@ test('melhorar prompt: the refined prompt can be edited and the edit is what run
 
   // persists after a reload, with both steps
   await page.reload();
-  await page.getByRole('button', { name: 'conserte o login' }).click();
+  await page.getByRole('button', { name: 'conserte o login', exact: true }).click();
   await expect(page.getByText('Prompt melhorado usado nesta execução')).toBeVisible();
   await expect(page.getByLabel('Histórico de execuções').getByText('executar', { exact: true })).toBeVisible();
 });
 
 test('melhorar prompt without review chains both steps by itself', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Nova conversa' }).click();
+  await page.getByRole('button', { name: 'Nova conversa', exact: true }).first().click();
   await page.getByLabel('Melhorar prompt').check();
   await page.getByLabel('Refinador').selectOption({ label: 'haiku' });
   await page.getByLabel('Mensagem').fill('liste os arquivos');
@@ -113,7 +113,7 @@ test('melhorar prompt without review chains both steps by itself', async ({ page
 
 test('switching provider: warns, summarizes first, hands the summary over, and the memory tab shows it', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Nova conversa' }).click();
+  await page.getByRole('button', { name: 'Nova conversa', exact: true }).first().click();
   await page.getByLabel('Mensagem').fill('primeira conversa sobre o login');
   await page.getByLabel('Mensagem').press('Enter');
   await expect(page.getByRole('button', { name: 'Enviar' })).toBeVisible({ timeout: 15_000 });

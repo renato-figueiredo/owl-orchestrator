@@ -178,6 +178,28 @@ describe('prompt 02: FTS5 search', () => {
   });
 });
 
+describe('prompt 11: review fixes', () => {
+  it('purging a session also removes its run gates (edited prompt, refiner error)', () => {
+    const { db, r } = setup();
+    const s = r.sessions.create();
+    const run = r.runs.start({ sessionId: s.id, provedor: 'x' });
+    db.prepare("INSERT INTO approvals (id, run_id, motivo, status, comentario) VALUES ('a1', ?, 'revisar', 'aprovado', 'PROMPT EDITADO')").run(run.id);
+    r.sessions.purge(s.id);
+    expect(count(db, 'approvals')).toBe(0);
+  });
+
+  it('failInterrupted closes runs left running by a dead server, so the session can be trashed', () => {
+    const { r } = setup();
+    const s = r.sessions.create();
+    const run = r.runs.start({ sessionId: s.id, provedor: 'x' });
+    expect(r.sessions.hasRunningRun(s.id)).toBe(true);
+    expect(r.runs.failInterrupted()).toBe(1);
+    expect(r.sessions.hasRunningRun(s.id)).toBe(false);
+    expect(r.runs.get(run.id)?.status).toBe('erro');
+    expect(r.runs.failInterrupted()).toBe(0);
+  });
+});
+
 describe('prompt 02: cascade and referential actions', () => {
   it('purging one session leaves other sessions untouched', () => {
     const { db, r } = setup();

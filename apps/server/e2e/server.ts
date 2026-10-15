@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { createClaudeCliAdapter, registerAdapter } from '@owl/core';
 import { createRepos, migrate, openDb } from '@owl/db';
 import { buildApp } from '../src/app.js';
+import { CleanupService } from '../src/cleanup.js';
 import { Executor } from '../src/executor.js';
 
 const FAKE = fileURLToPath(new URL('../../../packages/core/test/fake-cli.mjs', import.meta.url));
@@ -25,12 +26,15 @@ registerAdapter(fake('fake-hang', 'hang'));
 // A summarizer that answers with valid JSON (the plain fake CLIs answer "ok", which is not a summary).
 registerAdapter(fake('fake-summarizer', 'summary-ok'));
 
-const dir = mkdtempSync(join(tmpdir(), 'owl-e2e-'));
+// The Playwright config picks the folder so the tests can look inside it (files must really disappear).
+const dir = process.env.OWL_E2E_DIR ?? mkdtempSync(join(tmpdir(), 'owl-e2e-'));
 const db = openDb(join(dir, 'owl.sqlite'));
 migrate(db);
 const repos = createRepos(db);
 const executor = new Executor({ repos });
-const app = buildApp({ repos, executor, workspaceRoots: [tmpdir()], defaultCwd: dir });
+const attachmentsDir = join(dir, 'attachments');
+const cleanup = new CleanupService({ db, repos, dir: attachmentsDir, isBusy: (id) => executor.hasActive(id) });
+const app = buildApp({ repos, executor, cleanup, attachmentsDir, workspaceRoots: [tmpdir()], defaultCwd: dir });
 const port = Number(process.env.OWL_PORT ?? 4318);
 await app.listen({ host: '127.0.0.1', port });
 console.log(`e2e server on ${port}, data in ${dir}`);

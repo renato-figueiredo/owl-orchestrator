@@ -49,6 +49,18 @@ export function runsRepo(db: Db) {
   };
   return {
     get,
+    /**
+     * Marks runs still 'rodando' as failed. Call at startup, before serving: their process died with the server, and
+     * a stuck run would make the conversation impossible to trash or delete.
+     */
+    failInterrupted(): number {
+      return db
+        .prepare(
+          `UPDATE runs SET status = 'erro', erro = 'Servidor reiniciado durante a execução', fim = datetime('now')
+           WHERE status = 'rodando'`,
+        )
+        .run().changes;
+    },
     start(input: {
       provedor: string;
       sessionId?: string;

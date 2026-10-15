@@ -9,7 +9,8 @@
 | `apps/web` | Interface React + Tailwind (chat, painel de execução, revisão do prompt melhorado) |
 | `packages/core` | Adaptadores de provedor (`claude-cli`, `codex-cli`), configuração, arquivos de agente, "stepper" de pipeline |
 | `packages/db` | Conexão SQLite, migrações versionadas, repositórios tipados |
-| `packages/board`, `memory`, `mcp-memory`, `ui` | Espaços reservados para os próximos prompts (veja o [roadmap](../roadmap.md)) |
+| `packages/board`, `memory`, `ui` | Espaços reservados para os próximos prompts (veja o [roadmap](../roadmap.md)) |
+| `packages/mcp-memory` | Servidor MCP de memória sob demanda, usado pelas CLIs |
 | `examples/` | Agentes (`agents/*.md`) e pipelines (`pipelines/*.yaml`) |
 | `docs/` | Documentos de projeto (pastas numeradas, em português) e este guia |
 | `build/` | Os prompts de construção passo a passo e como usá-los |

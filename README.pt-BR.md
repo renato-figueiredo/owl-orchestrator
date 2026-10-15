@@ -15,7 +15,7 @@ Orquestrador local de agentes de IA para programar · <a href="README.md">Englis
 O OWL roda as **CLIs oficiais** que você já usa (Claude Code, Codex) e, depois, modelos locais (Ollama) como subprocessos **na sua
 própria máquina**, com uma interface web local. Ele nunca lê, copia ou guarda suas credenciais: cada CLI mantém o próprio login.
 
-> **Status: pré-alfa, o núcleo do chat funciona.** Equipes de agentes e quadro estão planejados. Veja o [roadmap](docs/roadmap.md).
+> **Status: pré-alfa, a fase 1 (o núcleo do chat) está pronta.** Equipes de agentes e quadro estão planejados. Veja o [roadmap](docs/roadmap.md).
 
 ## O que funciona hoje
 - Chat com streaming com o **Claude Code** e o **Codex**, com Markdown, blocos de código com cópia e botão de cancelar.
@@ -23,12 +23,15 @@ própria máquina**, com uma interface web local. Ele nunca lê, copia ou guarda
 - **Melhorar prompt**: um agente refinador reescreve o seu pedido, você pode editar antes de rodar, e se o refinador falhar (por
   exemplo, o limite do Codex) o OWL pergunta qual modelo usar em vez de trocar em silêncio.
 - **Memória**: fatos fixados por projeto e um resumo incremental editável da conversa; trocar de provedor no meio avisa e entrega o resumo à nova CLI.
+- **Prints**: cole, arraste ou escolha imagens; ficam guardadas uma vez por conteúdo, aparecem na conversa e vão para a CLI.
+- **Lixeira e backup**: conversas vão para uma lixeira recuperável; excluir de vez remove as linhas do banco, o índice de busca e os arquivos. Backup criptografado (age + rclone, opcional).
+- **Memória via MCP**: as CLIs consultam a memória do projeto sob demanda, em vez de receber tudo a cada mensagem.
 - Painel de execução com as ferramentas usadas, tokens, custo (quando a CLI informa) e as etapas encadeadas de um pipeline.
 - Temas claro e escuro, navegação completa por teclado na lista de conversas.
 - Seguro por padrão: só loopback, proteção contra DNS rebinding e requisições entre sites, agentes confinados às pastas que você permitir.
 
 ## O que vem a seguir
-Anexos e prints · lixeira e backup criptografado · agentes como arquivos, equipes e um quadro local
+Agentes como arquivos, equipes e um quadro local
 estilo Linear com portões de aprovação · git worktree por agente · roteamento por custo · espelho opcional no Linear e Ollama.
 Detalhes no [roadmap](docs/roadmap.md).
 
@@ -40,6 +43,7 @@ pnpm install
 pnpm dev          # depois abra http://127.0.0.1:5173
 ```
 Você precisa de Node 22+, pnpm, e da CLI `claude` e/ou `codex` instalada e logada.
+Testes: `pnpm test` (unitários e API) e, depois de `pnpm exec playwright install chromium`, `pnpm --filter @owl/web test:e2e` (navegador, CLIs falsas, sem login).
 Passo a passo: **[Primeiros passos](docs/guide/getting-started.pt-BR.md)**.
 
 ## Documentação

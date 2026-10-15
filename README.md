@@ -15,7 +15,7 @@ Local-first orchestrator of AI coding agents · English · <a href="README.pt-BR
 OWL runs the **official CLIs** you already use (Claude Code, Codex) and, later, local models (Ollama) as subprocesses on **your
 own machine**, with a local web UI. It never reads, copies or stores your credentials: each CLI keeps its own login.
 
-> **Status: pre-alpha, the chat core works.** Agent teams and the board are planned. See the [roadmap](docs/roadmap.md).
+> **Status: pre-alpha, phase 1 (the chat core) is done.** Agent teams and the board are planned. See the [roadmap](docs/roadmap.md).
 
 ## What works today
 - Streaming chat with **Claude Code** and **Codex**, with Markdown, copyable code blocks and a cancel button.
@@ -23,12 +23,15 @@ own machine**, with a local web UI. It never reads, copies or stores your creden
 - **Improve prompt**: a refiner agent rewrites your request, you can edit it before it runs, and if the refiner fails (for
   example the Codex limit) OWL asks which model to use instead of switching silently.
 - **Memory**: pinned facts per project and an editable, incremental conversation summary; switching provider mid-conversation warns you and hands the new CLI the summary.
+- **Screenshots**: paste, drop or pick images; they are stored once by content, shown in the conversation and sent to the CLI.
+- **Trash and backup**: conversations go to a recoverable trash; deleting for good removes the database rows, the search index and the files. Encrypted backup (age + rclone, optional).
+- **Memory over MCP**: the CLIs can look up the project's memory on demand instead of receiving it all on every message.
 - A run panel with the tools used, tokens, cost (when the CLI reports it) and the chained steps of a pipeline.
 - Light and dark themes, full keyboard navigation of the conversation list.
 - Safe by default: loopback only, DNS-rebinding and cross-site protection, agents confined to folders you allow.
 
 ## Coming next
-Attachments and screenshots · trash and encrypted backup · agents as files, teams and a local
+Agents as files, teams and a local
 Linear-style board with approval gates · git worktrees per agent · cost-aware routing · optional Linear mirror and Ollama.
 Details in the [roadmap](docs/roadmap.md).
 
@@ -40,6 +43,7 @@ pnpm install
 pnpm dev          # then open http://127.0.0.1:5173
 ```
 You need Node 22+, pnpm, and the `claude` and/or `codex` CLI installed and logged in.
+Tests: `pnpm test` (unit, API) and, once `pnpm exec playwright install chromium` has run, `pnpm --filter @owl/web test:e2e` (browser, fake CLIs, no login needed).
 Step by step: **[Getting started](docs/guide/getting-started.md)**.
 
 ## Documentation

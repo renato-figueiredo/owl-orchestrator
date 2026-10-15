@@ -16,6 +16,7 @@ writeFileSync(pidFile, String(process.pid), { mode: 0o600 });
 const db = openDb(join(config.dataDir, 'owl.sqlite'));
 migrate(db);
 const repos = createRepos(db);
+repos.runs.failInterrupted(); // a run cannot outlive its server; left 'rodando' it would block deleting the conversation
 repos.approvals.expirePendingRunGates(); // pipeline pauses live in memory and do not survive a restart
 const executor = new Executor({ repos, concurrency: config.concurrency });
 const attachmentsDir = join(config.dataDir, 'attachments');

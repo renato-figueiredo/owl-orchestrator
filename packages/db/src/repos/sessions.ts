@@ -79,6 +79,10 @@ export function sessionsRepo(db: Db) {
         db.prepare(
           `DELETE FROM facts WHERE fixado = 0 AND origem_run_id IN (SELECT id FROM runs WHERE session_id = ?)`,
         ).run(id);
+        // Run gates keep the user's edited prompt and the refiner's error text; their run_id would only become NULL.
+        db.prepare(
+          `DELETE FROM approvals WHERE ticket_id IS NULL AND run_id IN (SELECT id FROM runs WHERE session_id = ?)`,
+        ).run(id);
         db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
       })();
     },
