@@ -34,7 +34,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Pacote de vídeo (ffmpeg, Remotion)
 
 ## Pendências (atualizado em 2026-10-14)
-**Próximo passo:** prompt 06 (melhorar prompt). 
+**Próximo passo:** prompt 06 (melhorar prompt; refinador no Codex com alternativa haiku e depois Ollama). 
 
 **Revisão**
 - [x] `qa-testes` e `revisor` nos prompts 02, 03 e 04 rodados em 2026-10-15; 3 bloqueantes corrigidos (NUL no adaptador, Host/Origin, raízes de pastas).
@@ -52,7 +52,8 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Mostrar o uso das LLMs por sessão (tokens e custo, somando os `runs`; só para provedores que informam), com parâmetros configuráveis (ex.: limites e alertas).
 
 **Adaptadores**
-- [ ] Instalar o `codex`, rodar `codex exec --help`, capturar a saída real como fixtures e implementar JSON, imagens e resume (hoje: só texto, flags não verificadas).
+- [x] Codex: JSON, resume e erros capturados do `codex-cli` 0.162 real (fixtures `codex-*.jsonl`). Falta: imagens (prompt 08).
+- [ ] Detectar o erro real de limite do Codex quando acontecer (hoje só há a mensagem de modelo inválido) para oferecer troca para haiku/Ollama.
 - [ ] Imagens no `claude-cli` (hoje devolve `error`): fazer junto do prompt 08.
 - [ ] Adaptador Ollama opcional (prompt 18); Ollama já roda fora do repositório.
 

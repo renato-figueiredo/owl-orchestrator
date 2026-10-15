@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"019a0000-0000-7000-8000-000000000001"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Vou listar o diretório atual e resumir os nomes em uma frase."}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc ls","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc ls","aggregated_output":"nota.txt\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"Há um arquivo aqui: `nota.txt`."}}
+{"type":"turn.completed","usage":{"input_tokens":25735,"cached_input_tokens":23040,"cache_write_input_tokens":0,"output_tokens":68,"reasoning_output_tokens":0}}

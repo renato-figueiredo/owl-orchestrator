@@ -19,6 +19,11 @@ export interface RunCliParams {
   parser: LineParser;
   /** When true, exit code 0 without a terminal event is a successful `end`. */
   endOnCleanExit?: boolean;
+  /**
+   * Emit `start` as soon as the process is spawned instead of at the first useful event. For CLIs whose first
+   * lines carry nothing to show (and no model name), so the run is not invisible while it waits.
+   */
+  startEarly?: boolean;
   killGraceMs?: number | undefined;
 }
 
@@ -37,6 +42,8 @@ export async function* runCli(p: RunCliParams): AsyncGenerator<RunEvent> {
     const model = p.parser.model ?? p.req.model;
     return { type: 'start', runId, provider: p.provider, ...(model ? { model } : {}) };
   };
+
+  if (p.startEarly) yield start();
 
   for await (const chunk of runProcess(p.bin, p.args, {
     cwd: p.req.cwd,

@@ -245,19 +245,16 @@ describe('claude adapter via inline fake processes', () => {
   });
 });
 
-describe('codex adapter (text only)', () => {
+describe('codex adapter (process handling)', () => {
   const codex = (extra: { killGraceMs?: number; scenario?: string } = {}) =>
-    createCodexCliAdapter({ bin: process.execPath, binArgs: [FAKE], ...(extra.killGraceMs !== undefined ? { killGraceMs: extra.killGraceMs } : {}), env: { ...process.env, FAKE_SCENARIO: extra.scenario ?? 'codex', FAKE_RECORD: join(dir, 'c.json') } });
+    createCodexCliAdapter({ bin: process.execPath, binArgs: [FAKE], ...(extra.killGraceMs !== undefined ? { killGraceMs: extra.killGraceMs } : {}), env: { ...process.env, FAKE_SCENARIO: extra.scenario ?? 'codex-text', FAKE_RECORD: join(dir, 'c.json') } });
 
   it('passes model as separate safe args and prompt only via stdin', () => {
-    expect(buildCodexArgs(req({ model: 'gpt-x', prompt: 'SECRET' }))).toEqual(['exec', '--model', 'gpt-x', '-']);
-  });
-
-  it('emits only text events (no tool/usage) and each line ends with a newline', async () => {
-    const ev = await collect(codex().run(req(), new AbortController().signal));
-    expect(ev.filter((e) => !['start', 'end', 'text'].includes(e.type))).toEqual([]);
-    expect(ev.filter((e) => e.type === 'text').map((e) => (e as { delta: string }).delta)).toEqual(['first line\n', 'second line\n']);
-    expect(ev.at(-1)).toEqual({ type: 'end' });
+    const args = buildCodexArgs(req({ model: 'gpt-x', prompt: 'SECRET' }));
+    expect(args).toContain('--model');
+    expect(args.at(args.indexOf('--model') + 1)).toBe('gpt-x');
+    expect(args.join(' ')).not.toContain('SECRET');
+    expect(args.at(-1)).toBe('-');
   });
 
   it('non-zero exit yields a single error with stderr tail', async () => {

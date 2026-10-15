@@ -58,7 +58,17 @@ switch (scenario) {
     setInterval(() => {}, 1000);
     await new Promise(() => {});
     break;
-  case 'codex':
-    emit('first line\nsecond line\n');
+  case 'codex-text':
+    emit(fixture('codex-text.jsonl'));
+    break;
+  case 'codex-resume':
+    emit(fixture('codex-resume.jsonl'));
+    break;
+  case 'codex-tool':
+    emit(fixture('codex-tool.jsonl'));
+    break;
+  case 'codex-error':
+    emit(fixture('codex-error.jsonl'));
+    process.exitCode = 1;
     break;
 }

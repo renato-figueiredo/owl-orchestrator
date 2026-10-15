@@ -101,8 +101,7 @@ O prompt melhorado aparece na interface e pode ser editado antes de seguir (opci
   O OWL nunca lê o valor dessas variáveis nem arquivos de credencial.
 - **`resumeSessionId`** → `--resume=<uuid>` (testado no real: mantém o mesmo session id e o contexto).
 - **Imagens** ainda não são suportadas pelo adaptador (prompt 08); pedir imagens gera `error`, não flag inventada.
-- **Codex: somente texto, flags NÃO verificadas** (a CLI não está instalada aqui). Usa `codex exec -` com o prompt em stdin.
-  JSON, imagens e resume ficam para quando a CLI estiver instalada e a saída real puder virar fixture.
+- **Codex: JSON + resume verificados** (ver "Decisões (Codex)" abaixo). Imagens seguem para o prompt 08.
 - Testes usam CLIs falsas (`packages/core/test/fake-cli.mjs`) e fixtures **reais sanitizadas** (`test/fixtures/`).
 - Teste manual: `pnpm --filter @owl/core try "olá" [--model haiku] [--only claude-cli] [--resume <id>]`
   (use `-- "<prompt>"` se o prompt começar com `-`).
@@ -141,3 +140,18 @@ O prompt melhorado aparece na interface e pode ser editado antes de seguir (opci
 - **Título da sessão** vem da primeira mensagem (servidor, `setTitleIfEmpty`). `GET /providers` devolve `{ id, available }`.
 - **Testes**: Vitest + Testing Library (jsdom, `EventSource`/`fetch` falsos) e Playwright (`apps/web/e2e`, servidor com CLI falsa em
   `apps/server/e2e/server.ts`, portas 4318/5174 para não colidir com o dev).
+
+## Decisões (Codex, verificado com `codex-cli` 0.162.1 real)
+- Comando: `codex exec [resume <id>] --json --skip-git-repo-check --ignore-user-config --ignore-rules --sandbox read-only [--model m] -`
+  (prompt em stdin). Isolamento (`--ignore-user-config/--ignore-rules`) não mudou o consumo medido (~12,8k tokens de entrada num "diga ok",
+  contexto base do Codex), mas torna o run independente da configuração interativa do usuário. Login não é afetado.
+- **Sem deltas de texto:** cada `agent_message` chega inteiro e pode haver vários (os primeiros são "vou fazer X"). O stream mostra todos;
+  o resultado final guardado é o **último**. `thread_id` = id de sessão para `resume`. Uso: `input_tokens`/`output_tokens`, **sem custo**.
+- `command_execution` vira um evento `tool` (nome `command`). Item `error` é só aviso; o erro real é `error`/`turn.failed`, cuja mensagem é um JSON
+  em string (o adaptador extrai `error.message`). Saída com código 1 não gera segundo erro.
+- **`codex exec resume` não tem `--sandbox`:** o resume herda o sandbox do primeiro turno (read-only por padrão). Escrita (`workspace-write`)
+  só como opção do adaptador, a ser usada com worktrees (prompt 14).
+- Sem flag de "append system prompt": `systemAppend` vai antes do prompt, só no **primeiro turno**. `allowedTools` e `mcpConfigPath` não têm
+  equivalente no `exec` e são ignorados. Imagens: `-i` é variádico e engoliria o `-` do stdin; ficam para o prompt 08, com teste real.
+- O adaptador emite `start` assim que o processo sobe (`startEarly`), porque a primeira linha (`thread.started`) não traz nada para mostrar.
+- Sessões do Codex ficam no diretório da própria CLI (sem `--ephemeral`, necessário para o `resume`).

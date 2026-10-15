@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"019a0000-0000-7000-8000-000000000001"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Você pediu: “diga apenas ok”."}}
+{"type":"turn.completed","usage":{"input_tokens":25657,"cached_input_tokens":23040,"cache_write_input_tokens":0,"output_tokens":18,"reasoning_output_tokens":0}}
