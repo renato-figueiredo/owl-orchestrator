@@ -1,4 +1,4 @@
-import type { AgentLibrary, BoardData, TicketDetail, TicketStatus, BackupInfo, BackupSettings, BackupStatus, Fact, MemorySettings, PurgeResult, SweepReport, TrashSettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './types';
+import type { AgentFact, AgentLibrary, AgentProject, ProjectView, Team, BoardData, TicketDetail, TicketStatus, BackupInfo, BackupSettings, BackupStatus, Fact, MemorySettings, PurgeResult, SweepReport, TrashSettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -125,5 +125,26 @@ export const api = {
     call<{ runId: string | null }>('POST', `/tickets/${encodeURIComponent(id)}/run`, agente ? { agente } : {}),
   decideApproval: (id: string, decisao: 'aprovado' | 'rejeitado', comentario?: string) =>
     call<unknown>('POST', `/approvals/${encodeURIComponent(id)}/decide`, { decisao, ...(comentario ? { comentario } : {}) }),
+  projectView: (id: string) => call<ProjectView>('GET', `/projects/${encodeURIComponent(id)}`),
+  updateProject: (id: string, patch: { nome?: string; instrucoes?: string | null; maxConcorrencia?: number | null; branchBase?: string | null }) =>
+    call<{ project: Project }>('PATCH', `/projects/${encodeURIComponent(id)}`, patch).then((r) => r.project),
+  deleteProject: (id: string, confirmar: string) => call<{ status: string }>('DELETE', `/projects/${encodeURIComponent(id)}`, { confirmar }),
+  createTeam: (projectId: string, nome: string) =>
+    call<{ equipe: Team }>('POST', `/projects/${encodeURIComponent(projectId)}/teams`, { nome }).then((r) => r.equipe),
+  renameTeam: (id: string, nome: string) => call<{ equipe: Team }>('PATCH', `/teams/${encodeURIComponent(id)}`, { nome }).then((r) => r.equipe),
+  deleteTeam: (id: string) => call<{ status: string }>('DELETE', `/teams/${encodeURIComponent(id)}`),
+  setMember: (teamId: string, agente: string, papel: string | null) =>
+    call<{ equipe: Team }>('PUT', `/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(agente)}`, { papel }).then((r) => r.equipe),
+  removeMember: (teamId: string, agente: string) =>
+    call<{ equipe: Team }>('DELETE', `/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(agente)}`).then((r) => r.equipe),
+  agentProjects: (agente: string) =>
+    call<{ projetos: AgentProject[] }>('GET', `/agents/${encodeURIComponent(agente)}/projects`).then((r) => r.projetos),
+  agentFacts: (projectId: string, agente: string) =>
+    call<{ facts: AgentFact[] }>('GET', `/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agente)}/facts`).then((r) => r.facts),
+  addAgentFact: (projectId: string, agente: string, texto: string, fixado: boolean) =>
+    call<{ fact: AgentFact }>('POST', `/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agente)}/facts`, { texto, fixado }).then((r) => r.fact),
+  /** Opens a gate to merge the ticket branch into the base branch, or to discard it. Nothing happens until it is approved. */
+  requestBranchAction: (ticketId: string, acao: 'merge' | 'descartar') =>
+    call<unknown>('POST', `/tickets/${encodeURIComponent(ticketId)}/branch/${acao}`),
   cancel: (runId: string) => call<{ status: string }>('POST', `/runs/${encodeURIComponent(runId)}/cancel`),
 };

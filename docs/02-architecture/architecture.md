@@ -111,7 +111,7 @@ O prompt melhorado aparece na interface e pode ser editado antes de seguir (opci
   Numa sessão de projeto o `cwd` é sempre a `pasta` do projeto (`cwd` no body é recusado) e as instruções entram como `systemAppend`.
   `GET /sessions?projectId=` lista só as daquele projeto.
 - **Executor em `apps/server/src/executor.ts`** (o executor de pipelines do `core` vem no prompt 12). Fila FIFO, concorrência
-  `OWL_CONCURRENCY` (padrão 1), nunca dois runs da mesma sessão ao mesmo tempo (o `--resume` depende da ordem).
+  `OWL_CONCURRENCY` (padrão 1) e, por projeto, `max_concorrencia` / `OWL_PROJECT_CONCURRENCY` (padrão 2; prompt 14), nunca dois runs da mesma sessão ao mesmo tempo (o `--resume` depende da ordem).
   O `cli_session_id` é lido quando o run **começa**, não quando é enfileirado.
 - **Grava antes de anunciar:** o evento terminal (`end`/`error`/`cancelled`) só sai pelo SSE depois de mensagem, tokens e status
   estarem no banco. Quem reage ao `end` já encontra o estado final.

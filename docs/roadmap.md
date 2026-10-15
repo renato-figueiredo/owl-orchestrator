@@ -18,7 +18,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 ## Fase 2 — Equipes
 - [x] 12 Agentes como arquivos + pipelines YAML (`build/prompts/12`) — implementado em 2026-10-15; `qa-testes` e `revisor` rodam junto do 13
 - [x] 13 Quadro local + portões de aprovação (`build/prompts/13`) — implementado em 2026-10-15; `qa-testes` e `revisor` rodam junto do 12
-- [ ] 14 Projetos, equipes, gerente multi-projeto, worktrees (`build/prompts/14`)
+- [x] 14 Projetos, equipes, gerente multi-projeto, worktrees (`build/prompts/14`) — implementado em 2026-10-15; `qa-testes` e `revisor` ainda não rodaram (rodar **sozinho**, é de segurança)
 - [ ] 15 Roteador e métricas (`build/prompts/15`)
 - [ ] 16 Integração com Linear (`build/prompts/16`)
 
@@ -27,14 +27,14 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 
 ## Futuro
 - [x] Dev container (`.devcontainer/`, `docs/06-research/containers.md`)
-- [ ] Sandbox opcional de agentes em container (junto ao prompt 14)
+- [ ] Sandbox opcional de agentes em container (ver Limpeza e hardening)
 - [ ] GitHub Issues como quadro
 - [ ] Adaptadores de API e Ollama
 - [ ] Embeddings opcionais
 - [ ] Pacote de vídeo (ffmpeg, Remotion)
 
 ## Pendências (atualizado em 2026-10-14)
-**Próximo passo:** `qa-testes` + `revisor` do 12 e do 13 juntos; depois prompt 14 (projetos, equipes e worktrees), sozinho. Fase 1 concluída (prompt 11). O 08/09 foi revisado de novo em 2026-10-15 (a lista antiga do revisor se perdeu): 9 itens corrigidos, 1 aberto abaixo.
+**Próximo passo:** `qa-testes` + `revisor` do 14, sozinho (toca segurança: worktrees, escrita dos agentes, mesclagem); depois prompt 15 (roteador e métricas). Fase 1 concluída (prompt 11); 12 e 13 revisados. O 08/09 foi revisado de novo em 2026-10-15 (a lista antiga do revisor se perdeu): 9 itens corrigidos, 1 aberto abaixo.
 
 **Revisão**
 - [x] `qa-testes` e `revisor` nos prompts 02, 03 e 04 rodados em 2026-10-15; 3 bloqueantes corrigidos (NUL no adaptador, Host/Origin, raízes de pastas).
@@ -74,15 +74,15 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Escolher o pipeline na caixa de envio (hoje só pela API: `pipeline` em `POST /sessions/:id/messages`; `GET /pipelines` lista).
 - [ ] Editor de pipelines e de skills na interface (hoje só a biblioteca de agentes; pipelines e skills são arquivos).
 - [ ] Skills só carregam o `SKILL.md`; arquivos auxiliares da pasta (scripts, referências) não são entregues ao agente.
-- [ ] Agentes com `Edit/Write/Bash` só depois dos worktrees (prompt 14); `ferramentas` de um agente do usuário vão direto para `--allowedTools` sem aviso.
+- [x] Agentes com `Edit/Write/Bash` só em worktree (prompt 14); `ferramentas` validadas ao carregar o arquivo (lista de permissão em `packages/core/src/tools.ts`) e escrita confinada à pasta pelo adaptador.
 - [ ] Atualizar o índice de agentes ao mudar um arquivo sem ninguém listar/rodar (hoje reconstrói na listagem e ao iniciar pipeline; um `fs.watch` fica para depois).
-- [ ] Codex ignora `ferramentas` do agente (o sandbox é fixo): documentar/validar quando um agente de Codex declarar ferramentas de escrita.
+- [x] Codex ignora `ferramentas` do agente (o sandbox é fixo): agora a biblioteca recusa agente (ou `fallback`) de Codex que declare escrita ou Bash (prompt 14).
 
 **Quadro (prompt 13)**
 - [x] `qa-testes` (2026-10-15): os 3 critérios do 13 estão cobertos (`packages/board/src/board.test.ts`, `apps/server/src/board.test.ts`, `apps/web/src/board-ui.test.tsx`); novos casos em `packages/board/src/board-qa.test.ts`. Achados:
 - [x] `rules.ts`: `npm publish` agora abre portão (regex `publi(car|sh)`); teste trocado de `it.fails` por `it`.
 - [x] `local.ts` `decide`: aprovar a entrega com outro portão aberto grava `concluido` nos demais; o último decidido fecha o ticket (qualquer ordem).
-- [x] Lista de ações destrutivas ampliada (`rmdir`, `git clean`, `shred`, `mkfs`, `dd if=`, `branch -D`, `chmod/chown -R`, `curl | sh`). **Prompt 14:** inverter para lista de permissão (só ler/testar sem portão).
+- [x] Lista de ações destrutivas ampliada (`rmdir`, `git clean`, `shred`, `mkfs`, `dd if=`, `branch -D`, `chmod/chown -R`, `curl | sh`). Inversão para lista de permissão feita **na camada de ferramentas** (prompt 14): o `Bash` de um agente só aceita comandos de leitura/teste escopados; `proposeAction` segue com a lista larga de palavras destrutivas como segunda rede.
 - [x] Reinício: tickets `em_andamento` sem run viram `bloqueado` com comentário (`LocalBoard.recoverInterrupted`, chamado em `main.ts`).
 - [x] Comentários no `ticketBrief` agora dentro de `<comentarios>` com cada linha citada (não forjam cabeçalhos).
 - [x] **Autenticação das rotas** (bloqueante do 14, regra de ouro 5) — feita em 2026-10-15: `SessionAuth` (`apps/server/src/auth.ts`). O servidor imprime no próprio console um código de pareamento de uso único; o navegador o troca por cookie `HttpOnly`/`SameSite=Strict` e toda rota (menos `/health` e `/auth/*`) exige a sessão. Sessões em memória: reiniciar o servidor pede novo pareamento. Testes: `auth.test.ts`, `pairing-ui.test.tsx`. Limite: um agente com `Bash` que leia o console/processo do servidor ainda poderia obter o código; o isolamento real vem com os worktrees/sandbox do 14.
@@ -93,8 +93,20 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] O quadro atualiza por polling (3 s); trocar por SSE se pesar.
 - [ ] Portão `confianca` só existe na API (`requestGate`); o roteador (prompt 15) é quem vai abri-lo.
 - [ ] Sem exclusão de ticket (regra 5: apagar exige aprovação); definir se vira "cancelado" (Linear: `canceled`) em vez de apagar.
-- [ ] Agentes só leem (sem worktree): `proposeAction` está pronto para o prompt 14 chamar antes de escrever, apagar, dar push ou mesclar.
-- [ ] Equipes (`teams`/`team_members`) ainda não são usadas pelo quadro; vêm no prompt 14.
+- [x] Agentes escrevem em worktree (prompt 14). Mesclar e descartar a branch passam por portão `destrutiva` (`POST /tickets/:id/branch/merge|descartar`); `proposeAction` continua disponível para o agente anunciar ações.
+- [x] Equipes (`teams`/`team_members`) usadas pelo quadro: com ao menos um membro no projeto, só membros trabalham; o papel da equipe vale no projeto (prompt 14).
+
+**Projetos, equipes e worktrees (prompt 14)** — feito: CRUD de projeto e equipe, papel por equipe, memória do agente por projeto, worktree/branch por ticket que escreve, commit automático, mesclagem e descarte com portão, concorrência por projeto e global, tela do projeto e seletor. Abertos:
+- [ ] `qa-testes` + `revisor` do 14, sozinho. Pontos para olhar: `worktrees.ts` (git síncrono, `merge` na pasta do usuário), `scopeWriteTools` (confinamento da escrita), `analyzeTools` (lista de comandos), gate `acao` em `LocalBoard.decide`.
+- [ ] Git síncrono (`spawnSync`) bloqueia o loop do servidor durante `worktree add`/`commit`/`merge`: em repositório grande pode passar de segundos. Mover para `spawn` assíncrono (o fluxo do quadro é síncrono; exige tornar `BoardFlow.run` assíncrono).
+- [ ] Worktrees `ativo` que sobraram após queda do servidor: o ticket vira `bloqueado` e rodar de novo reaproveita a pasta, mas nada limpa pastas órfãs nem roda `git worktree prune` no startup.
+- [ ] Mesclar na pasta do usuário só com a branch base ativa e árvore limpa; não há mesclagem em worktree dedicado (evitaria exigir isso do usuário) nem `git push`/PR (fora do escopo: push exige portão próprio).
+- [ ] Subtarefas saem todas da branch base, não da branch do pai; dependências entre subtarefas que mexem nos mesmos arquivos vão dar conflito na mesclagem (o OWL só avisa).
+- [ ] Memória por agente: entra no prompt dos tickets do quadro e aparece na tela do projeto; o chat, o MCP de memória e o agente `memoria` (que grava fatos do projeto, não do agente) ainda não a usam.
+- [ ] A lista de comandos do `Bash` escopado é fixa no código (`BASH_FIRST`, `PACKAGE_SCRIPTS`...); tornar configurável por projeto se faltar `make`, `cargo`, `go test`...
+- [ ] `Read` continua sem escopo de pasta nos agentes do quadro (pendência da revisão 11): um agente pode ler fora do worktree.
+- [ ] Tela do projeto: sem E2E no navegador; testes de componente e de API cobrem.
+- [ ] Fluxo `dev` com `claude` real conferido uma vez em 2026-10-15 (repositório temporário, haiku): `dev-back` criou o arquivo só no worktree, o OWL commitou na branch, a pasta do usuário ficou intacta, o arquivo fora da pasta **não** foi criado e o `qa` reprovou (abriu o portão de reprovação). Falta uma bateria maior (testes que o projeto realmente roda, conflitos, vários tickets).
 
 **Adaptadores**
 - [x] Codex: JSON, resume e erros capturados do `codex-cli` 0.162 real (fixtures `codex-*.jsonl`). Falta: imagens (prompt 08).
@@ -117,7 +129,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [x] Prompt 10: `qa-testes` e `revisor` rodados; endurecimento feito (escritor `query_only`, `--tsconfig` fixo, resultados cercados como dado não confiável). Codex não recebe as ferramentas de memória (sem `--mcp-config`; avaliar `codex mcp`); testar o servidor MCP com o `claude` real em CI não é viável (só fake).
 - [ ] `RunPanel.onRetry` troca de provedor sem passar pelo aviso de troca (prompt 07, interface).
 - [ ] Apagar `references/` (clones de estudo, ~840 MB): o quadro (prompt 13) foi feito só com o schema público do Linear, sem consultar Plane/Vibe Kanban; pode apagar quando quiser.
-- [ ] Sandbox opcional de agentes em container (junto ao prompt 14).
+- [ ] Sandbox opcional de agentes em container: o worktree isola os arquivos do ticket e a escrita é confinada por regra `Edit(//<pasta>/**)`, mas `Bash(pnpm test:*)` roda scripts do projeto, que podem tocar fora. Container fecha essa porta.
 
 **Lançamento e divulgação (decisão de 2026-10-15: só ao final do projeto)**
 - [ ] Nada de divulgação, domínio novo ou site antes de o projeto estar funcional e pronto; o foco agora é construir.

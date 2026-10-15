@@ -21,7 +21,7 @@ const repos = createRepos(db);
 repos.runs.failInterrupted(); // a run cannot outlive its server; left 'rodando' it would block deleting the conversation
 new LocalBoard(repos).recoverInterrupted(); // their tickets would sit in em_andamento with nothing running
 repos.approvals.expirePendingRunGates(); // pipeline pauses live in memory and do not survive a restart
-const executor = new Executor({ repos, concurrency: config.concurrency });
+const executor = new Executor({ repos, concurrency: config.concurrency, projectConcurrency: config.projectConcurrency });
 const attachmentsDir = join(config.dataDir, 'attachments');
 const cleanup = new CleanupService({ db, repos, dir: attachmentsDir, isBusy: (id) => executor.hasActive(id) });
 const backup = new BackupService({
@@ -48,6 +48,8 @@ const app = buildApp({
   workspaceRoots: config.workspaceRoots,
   allowedOrigins: config.allowedOrigins,
   attachmentsDir,
+  worktreesDir: resolve(config.dataDir, 'worktrees'),
+  limits: { project: config.projectConcurrency, global: config.concurrency },
   maxAttachmentBytes: config.maxAttachmentBytes,
 });
 

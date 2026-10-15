@@ -115,3 +115,39 @@ Organizar em **pacotes** (ex.: `pacote-codigo`, futuramente `pacote-video` com f
 - **Fluxo de exemplo** (`BoardFlow`): objetivo → `po` (JSON com título/descrição/critérios) → `tech-lead` (JSON com `subtarefas`, até 8, cada uma com o `agente`) → `dev-*` por subtarefa → `qa` (linha `VEREDITO: aprovado|reprovado`) → portão de entrega → `memoria` (resumo vai para o ticket, fatos para o projeto **não fixados**, para a pessoa revisar). Resposta que não segue o formato **bloqueia** o ticket com um comentário; nada é adivinhado. O estado fica no banco (status, portões, comentários), não na memória: após reinício, só a execução em andamento se perde (o ticket fica bloqueado e dá para rodar de novo).
 - **Histórico**: `ticket_events` (quem, quando, de→para, run) + comentários com `autor_tipo`; o custo é a soma das `runs` ligadas ao ticket (`runs.ticket_id`), nada duplicado.
 - **Concorrência**: as execuções de um mesmo ticket são sequenciais (mesma conversa oculta); tickets diferentes seguem o `concurrency` do executor.
+
+## Decisões (prompt 14 — projetos, equipes e worktrees)
+- **Projeto**: `PATCH /projects/:id` (nome, pasta, instruções, `branchBase`, `maxConcorrencia`) e `DELETE /projects/:id` (o corpo traz `confirmar` = nome do projeto;
+  recusa com execução em andamento ou worktree aberto; apaga só o que está no banco, **nunca arquivos da pasta**). `GET /projects/:id` devolve também se a pasta é repositório git,
+  a branch atual/base, a concorrência efetiva e as equipes.
+- **Equipes**: `teams`/`team_members` (migração 0009 só acrescenta nome único por projeto). Enquanto o projeto não tem **nenhum membro em equipe nenhuma**, qualquer agente da
+  biblioteca trabalha nos tickets; com ao menos um membro, **só membros** (o `tech-lead` também só escolhe subtarefas para membros, senão cai no `dev` padrão, que também precisa ser
+  membro). O `papel` na equipe vale só naquele projeto e **substitui** o `papel` do arquivo do agente no fluxo do quadro (um gerente pode ser `techlead` aqui e `revisor` ali).
+  O mesmo agente pode estar em equipes de projetos diferentes (`GET /agents/:nome/projects`).
+- **Memória do agente por projeto**: `facts.agent_id` + `project_id`. `facts.listAgent` devolve só os fatos daquele par; `listScope` (fatos do projeto) continua com `agent_id IS NULL`,
+  então a memória de um agente nunca vaza para o projeto nem para o mesmo agente em outro projeto. Fatos **fixados** do agente entram no prompt dele nos tickets daquele projeto
+  (depois dos fatos do projeto). API: `GET|POST /projects/:id/agents/:agente/facts`; a tela da equipe lista, fixa, apaga e acrescenta.
+- **Um worktree por ticket que escreve** (`apps/server/src/worktrees.ts`): pasta em `<OWL_DATA_DIR>/worktrees/<projeto>/<id-do-ticket>`, branch `owl/<id>-<titulo>` a partir da branch
+  base do projeto (`branchBase` ou a branch em uso). Quem decide se um agente precisa de worktree é `analyzeTools` (`packages/core/src/tools.ts`): qualquer `Edit/Write/MultiEdit/NotebookEdit`
+  ou `Bash(...)` marca o agente como **escritor**; escritor sem worktree possível (pasta sem git, sem commit, HEAD solto) **não roda** e o ticket é bloqueado com a instrução do que
+  arrumar. Quem só lê (QA sem escrita, revisor, memória) roda no worktree do ticket se ele existir, senão na pasta do projeto. Chamadas ao git são `spawnSync` com vetor de argumentos
+  (regra 4), sem hooks e com identidade fixa `OWL <owl@localhost>` nos commits do OWL; elas são síncronas de propósito (operações locais curtas, e o fluxo que as chama é síncrono).
+- **Ciclo do worktree**: ao terminar uma execução que escreveu, o OWL **commita** tudo na branch do ticket (comentário no ticket). Ao **concluir** o ticket o worktree é removido
+  (`removido`) e **a branch fica** guardando o trabalho. Reabrir/rejeitar a entrega recria o worktree sobre a mesma branch. Nada é apagado nem mesclado sozinho.
+- **Mesclar e descartar exigem aprovação** (regra 5): `POST /tickets/:id/branch/merge|descartar` só abre um portão `destrutiva` com `retomar.acao`. Esse portão **não move o ticket**
+  (rejeitar uma mesclagem não reabre um ticket concluído). Aprovado, o OWL faz `git merge --no-ff` na branch base, **só** se a pasta do projeto estiver nela e sem alterações
+  não commitadas (senão recusa e diz por quê; nada é tocado); em conflito faz `merge --abort`. Descartar remove worktree e branch (`branch -D`) só depois de aprovado.
+  `merge`/`push`/`deploy` nunca saem de um agente: nem o `Bash` escopado deixa (veja abaixo).
+- **Ferramentas por agente** (`ferramentas` → `--allowedTools`): a biblioteca **recusa** o arquivo (aparece em "problemas") com `Bash` sem escopo, `Bash(...)` com comando fora da lista
+  (`pnpm|npm|yarn` só scripts do projeto: test/run/lint/typecheck/build…; `npx` só vitest/tsc/eslint/prettier; `git` só status/diff/log/show/add/commit/branch/rev-parse/ls-files;
+  `ls cat head tail wc rg grep pwd node`), com encadeamento/redirecionamento/`$()`, com palavra destrutiva (apagar, push, merge, deploy, `branch -D`…), `node -e`, ferramentas fora de
+  `Read Grep Glob LS Edit Write MultiEdit NotebookEdit Bash(...)`, e escrita em agente de **Codex** (sandbox fixo somente leitura). É a inversão para lista de permissão que o roadmap pedia, feita
+  na camada de ferramentas. No chat (pipelines) o agente **só lê**: ferramentas de escrita são descartadas, porque não há worktree.
+- **Escrita confinada (verificado com o `claude` real)**: `--allowedTools Edit`/`Write` **sem caminho deixa o modelo gravar em qualquer lugar** (um `Write` criou um arquivo fora da pasta de
+  trabalho). Só uma regra de caminho confina, e a CLI só honra `Edit(<caminho>)` (cobre Write/MultiEdit). Por isso o adaptador troca toda ferramenta de escrita por `Edit(//<cwd>/**)`
+  (caminho dado e caminho real, por causa de symlinks como `/home → /var/home`). Limite que continua: o `Bash(pnpm test:*)` roda os scripts do próprio projeto e esses podem tocar fora do
+  worktree; o isolamento total é o sandbox de container (opcional, ainda no roadmap).
+- **Concorrência**: global `OWL_CONCURRENCY` (padrão 1) **e** por projeto (`projects.max_concorrencia`, ou `OWL_PROJECT_CONCURRENCY`, padrão 2); vale o mais restrito. O limite do projeto é lido a
+  cada vez que a fila anda, então mudar na tela vale para a próxima execução. Chat sem projeto só obedece ao global. Para dois tickets rodarem em paralelo é preciso `OWL_CONCURRENCY ≥ 2`.
+- **Interface**: seletor de projeto no cabeçalho do quadro e da tela do projeto; **Equipe** na barra lateral abre a tela do projeto (configurações, equipes, papéis, memória por agente);
+  no painel do ticket, "Trabalho isolado" mostra a branch, os commits à frente e os dois pedidos de aprovação.

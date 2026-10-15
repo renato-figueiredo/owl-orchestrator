@@ -86,7 +86,7 @@ Clique em **Agentes** (barra lateral) para abrir a biblioteca. Um agente é um a
 - Um arquivo com erro não quebra nada: aparece na lista com o motivo (ex.: `ferramentas: Invalid input`) e é ignorado. Editar o arquivo à mão vale na próxima execução.
 - **Skills** são pastas com um `SKILL.md` (mesmo formato do Claude Code), em `skills/<nome>/`. O agente lista as skills que usa e as instruções delas vão junto do prompt dele.
 - **Pipelines** (`pipelines/<nome>.yaml`) encadeiam etapas. Cada etapa pode nomear um agente, rodar só `quando` uma condição valer, receber a saída da etapa anterior, repetir (`tentativas`) e rodar em um provedor diferente de uma etapa anterior (`outroProvedorQue`). O exemplo `refinar-executar-revisar` melhora o prompt, executa e pede ao revisor que confira o resultado no outro provedor. Para usar, envie `pipeline: "refinar-executar-revisar"` à API; escolher na caixa de mensagem está no [roadmap](../roadmap.md).
-- Os agentes de exemplo de desenvolvimento e QA são somente leitura de propósito: devolvem diffs. Escrever no seu projeto vem com os git worktrees.
+- Os agentes de exemplo `dev-front`, `dev-back` e `qa` **editam arquivos e rodam seus testes**, mas só dentro do git worktree do próprio ticket (veja [Projetos, equipes e worktrees](#projetos-equipes-e-worktrees)). Numa conversa comum todo agente só lê. As ferramentas são conferidas ao carregar o arquivo: `Bash` solto, comando que apaga, faz push ou merge, `pnpm install` ou qualquer ferramenta de escrita num agente do Codex tornam o arquivo inválido (ele aparece na lista com o motivo).
 
 ## O quadro e as aprovações
 Na barra lateral, cada projeto tem um botão **Quadro**. O quadro é o barramento dos agentes: eles se comunicam por tickets e comentários, não conversando entre si.
@@ -97,11 +97,20 @@ Na barra lateral, cada projeto tem um botão **Quadro**. O quadro é o barrament
 - Um agente vê **somente** o ticket (com o pai, as subtarefas e os últimos comentários), o resumo do ticket e os fatos fixados do projeto, nunca as suas conversas do chat. As execuções dele ficam numa conversa oculta por ticket.
 - Se um agente falha ou responde num formato que o OWL não consegue usar, o ticket fica **Bloqueado** com o motivo num comentário; rode o agente de novo quando quiser.
 
+## Projetos, equipes e worktrees
+Na barra lateral, **Equipe** num projeto abre a tela dele (o quadro tem um botão para ela e um seletor de projeto).
+- **Configurações**: nome, instruções, a *branch base* de onde os tickets saem e onde são mesclados (vazio = a branch em uso na pasta) e quantas execuções do projeto podem rodar juntas. Remover um projeto só o esquece no OWL (conversas, tickets, equipes, memória); sua pasta nunca é tocada e é preciso digitar o nome do projeto.
+- **Equipes**: crie equipes, adicione agentes da sua biblioteca e dê a cada um um papel *neste projeto*. Enquanto ninguém está em equipe, qualquer agente pode trabalhar nos tickets do projeto; a partir do primeiro membro, só os membros. O mesmo agente (um gerente, por exemplo) pode estar em equipes de vários projetos.
+- **Memória por agente e por projeto**: **Memória** ao lado do membro lista o que o agente lembra *neste projeto* (fatos fixados entram no prompt dele nos tickets daqui). O mesmo agente tem outra lista em cada outro projeto.
+- **Worktrees**: um agente que escreve (ou roda comandos) trabalha numa cópia própria do repositório, numa branch `owl/<ticket>-<título>` criada pelo OWL em `<OWL_DATA_DIR>/worktrees/`. Dois tickets nunca mexem nos mesmos arquivos. Quando o agente termina, o OWL commita as mudanças nessa branch; quando o ticket conclui, a pasta é removida e a branch fica com o trabalho. A pasta do projeto precisa ser um repositório git com ao menos um commit (`git init`); senão o agente não inicia e o ticket fica bloqueado com essa instrução.
+- **Nada chega na sua branch sozinho.** No ticket, **Trabalho isolado** mostra a branch e quantos commits ela tem à frente. *Pedir mesclagem* e *Descartar trabalho* só colocam um pedido na fila de aprovações; aprovar uma mesclagem faz `git merge --no-ff` na branch base, e só se a sua pasta estiver nela e sem alterações não commitadas (senão diz o motivo e não muda nada). Conflito aborta a mesclagem. Rejeitar uma mesclagem não reabre o ticket.
+- **Limites**: `OWL_CONCURRENCY` (global) e o limite do projeto valem juntos.
+
 ## Teclado e temas
 - Na lista de conversas: **↑ / ↓** movem, **Enter** abre, **Tab** sai da lista.
 - O botão ☾ / ☀ alterna claro e escuro (começa pela configuração do sistema e lembra a sua escolha).
 
 ## O que os agentes fazem (e não fazem) hoje
 - O Codex roda num **sandbox somente leitura**. O Claude roda sem nenhuma ferramenta pré-aprovada, e no modo não interativo a CLI nega o resto.
-  Na prática os agentes **leem e explicam, ainda não editam seus arquivos**. O acesso seguro de escrita (git worktrees, aprovações) está no [roadmap](../roadmap.md).
+  Os agentes escrevem só em tickets do quadro, dentro do git worktree do ticket e com a escrita confinada àquela pasta (o OWL reescreve `Edit`/`Write` como regra de caminho: um `Edit` solto deixa o modelo gravar em qualquer lugar). Os comandos se limitam à lista de permissão acima. Comandos como `pnpm test` rodam os scripts do próprio projeto, que o OWL não consegue confinar; um sandbox opcional em container está no [roadmap](../roadmap.md).
 - Excluir conversas ainda não existe; as imagens anexadas ficam no disco até lá.

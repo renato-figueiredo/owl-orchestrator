@@ -106,7 +106,7 @@ export class LocalBoard implements BoardProvider {
     if (ator.tipo === 'humano' && t.status === 'aguardando_aprovacao') this.closeOpenGates(id, 'movido manualmente');
     this.move(t, status, ator, opts.ordem);
     if (opts.comentario?.trim()) this.comment(id, ator, opts.comentario.trim());
-    if (status === 'aguardando_aprovacao' && this.repos.approvals.pendingByTicket(id).length === 0) {
+    if (status === 'aguardando_aprovacao' && this.repos.approvals.pendingByTicket(id).filter((g) => !g.retomar?.acao).length === 0) {
       this.repos.approvals.create({ ticketId: id, tipo: 'entrega', motivo: GATE_LABEL.entrega, retomar: { statusAnterior: t.status } });
     }
     if (status === 'concluido') this.closeParentIfDone(id);
@@ -127,12 +127,13 @@ export class LocalBoard implements BoardProvider {
         ...gate.retomar,
         statusAnterior:
           t.status === 'aguardando_aprovacao'
-            ? (this.repos.approvals.pendingByTicket(id)[0]?.retomar?.statusAnterior ?? 'em_andamento')
+            ? (this.repos.approvals.pendingByTicket(id).find((g) => !g.retomar?.acao)?.retomar?.statusAnterior ?? 'em_andamento')
             : (gate.retomar?.statusAnterior ?? t.status),
       },
     });
     this.repos.tickets.addEvent({ ticketId: id, ator, tipo: 'aprovacao', para: 'pendente', detalhe: `${gate.tipo}: ${gate.motivo}`, runId: gate.runId ?? null });
-    if (t.status !== 'aguardando_aprovacao') this.move(t, 'aguardando_aprovacao', ator);
+    // A gate that releases a server action (merge, discard) concerns the branch, not the ticket's progress: it stays where it is.
+    if (t.status !== 'aguardando_aprovacao' && !gate.retomar?.acao) this.move(t, 'aguardando_aprovacao', ator);
     return this.need(id);
   }
 
@@ -147,7 +148,7 @@ export class LocalBoard implements BoardProvider {
       return { allowed: true };
     }
     this.requestGate(id, { tipo: 'destrutiva', motivo: `${GATE_LABEL.destrutiva}: ${acao.slice(0, 300)}`, ...(runId ? { runId } : {}) }, ator);
-    return { allowed: false, approval: this.repos.approvals.pendingByTicket(id).find((a) => a.tipo === 'destrutiva')! };
+    return { allowed: false, approval: this.repos.approvals.pendingByTicket(id).find((a) => a.tipo === 'destrutiva' && !a.retomar?.acao)! };
   }
 
   /**
@@ -163,12 +164,15 @@ export class LocalBoard implements BoardProvider {
     const t = this.need(a.ticketId);
     this.repos.tickets.addEvent({ ticketId: t.id, ator, tipo: 'aprovacao', de: 'pendente', para: decisao, detalhe: a.motivo, runId: a.runId });
     if (note) this.comment(t.id, ator, decisao === 'rejeitado' ? `Rejeitado: ${note}` : `Aprovado: ${note}`);
+    // Merge / discard of the ticket branch: the decision only releases (or cancels) that action. The ticket does not move
+    // (rejecting a merge must not reopen a finished ticket) and other gates are none of its business.
+    if (a.retomar?.acao) return { approval: this.repos.approvals.get(approvalId)!, ticket: t, retomar: decisao === 'aprovado' ? a.retomar : null };
     let next: TicketStatus;
     if (decisao === 'rejeitado') next = 'em_andamento';
     else if (a.tipo === 'entrega') next = 'concluido';
     else next = (a.retomar?.statusAnterior as TicketStatus | undefined) ?? 'em_andamento';
     // Another gate may still be open on this ticket: it stays waiting.
-    const open = this.repos.approvals.pendingByTicket(t.id);
+    const open = this.repos.approvals.pendingByTicket(t.id).filter((g) => !g.retomar?.acao);
     const stillWaiting = open.length > 0;
     // A delivery approved while another gate is open must not be lost: the last gate decided closes the ticket.
     if (stillWaiting && decisao === 'aprovado' && a.tipo === 'entrega') {
@@ -232,7 +236,7 @@ export class LocalBoard implements BoardProvider {
   }
 
   private closeOpenGates(ticketId: string, why: string): void {
-    for (const g of this.repos.approvals.pendingByTicket(ticketId)) this.repos.approvals.decide(g.id, 'rejeitado', why);
+    for (const g of this.repos.approvals.pendingByTicket(ticketId)) if (!g.retomar?.acao) this.repos.approvals.decide(g.id, 'rejeitado', why);
   }
 
   /** When the last sub-task closes, the parent closes with it (the goal is met; no approval of its own). */

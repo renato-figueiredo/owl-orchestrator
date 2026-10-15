@@ -86,7 +86,7 @@ Click **Agents** (sidebar) to open the library. An agent is a Markdown file with
 - A file with a mistake does not break anything: it is listed with the reason (e.g. `ferramentas: Invalid input`) and skipped. Editing a file by hand takes effect on the next run.
 - **Skills** are folders with a `SKILL.md` (same format as Claude Code's), in `skills/<name>/`. An agent lists the skills it uses and their instructions travel with its prompt.
 - **Pipelines** (`pipelines/<name>.yaml`) chain steps. Each step can name an agent, run only `quando` a condition holds, take the previous step's output as input, retry (`tentativas`) and run on a provider different from an earlier step (`outroProvedorQue`). The example `refinar-executar-revisar` refines the prompt, runs it, and has the reviewer check the result on the other provider. Use it by sending `pipeline: "refinar-executar-revisar"` to the API; picking one in the message box is on the [roadmap](../roadmap.md).
-- The example developer and QA agents are read-only on purpose: they hand back diffs. Writing to your project comes with git worktrees.
+- The example `dev-front`, `dev-back` and `qa` agents can **edit files and run your tests**, but only inside a ticket's own git worktree (see [Projects, teams and worktrees](#projects-teams-and-worktrees)). In a plain chat every agent can only read. Tools are checked when the file is loaded: a bare `Bash`, a command that deletes, pushes or merges, `pnpm install`, or any writing tool on a Codex agent makes the file invalid (it is listed with the reason).
 
 ## The board and approvals
 In the sidebar, each project has a **Board** button. The board is the agents' message bus: they talk through tickets and comments, not to each other.
@@ -97,11 +97,20 @@ In the sidebar, each project has a **Board** button. The board is the agents' me
 - An agent sees **only** the ticket (with its parent, sub-tasks and latest comments), the ticket's summary and the project's pinned facts, never your chat conversations. Its runs live in a hidden conversation per ticket.
 - If an agent fails or answers in a format OWL cannot use, the ticket is **Blocked** with the reason in a comment; run the agent again when ready.
 
+## Projects, teams and worktrees
+In the sidebar, **Team** on a project opens its screen (the board has a button to it and a project selector).
+- **Settings**: name, instructions, the *base branch* tickets start from and merge into (empty = the branch currently checked out in the folder), and how many runs of this project may go at once. Removing a project only forgets it in OWL (conversations, tickets, teams, memory); your folder is never touched, and you must type the project name.
+- **Teams**: create teams, add agents from your library, give each a role *for this project*. While nobody is on a team, any agent may work on the project's tickets; once someone is, only members may. The same agent (a manager, say) can be on teams of several projects.
+- **Memory per agent per project**: **Memory** next to a member lists what that agent remembers *in this project* (pinned facts go into its prompt on this project's tickets). The same agent has a separate list in every other project.
+- **Worktrees**: an agent that writes (or runs commands) works in its own copy of the repository, on its own branch `owl/<ticket>-<title>`, created by OWL under `<OWL_DATA_DIR>/worktrees/`. Two tickets never touch the same files. When the agent finishes, OWL commits its changes to that branch; when the ticket is done the folder is removed and the branch stays with the work. The project folder must be a git repository with at least one commit (`git init`), otherwise the agent is not started and the ticket is blocked with that instruction.
+- **Nothing reaches your branch by itself.** In the ticket, **Trabalho isolado** shows the branch and how many commits it is ahead. *Pedir mesclagem* and *Descartar trabalho* only add a request to the approvals queue; approving a merge does a `git merge --no-ff` into the base branch, and only if your folder is on that branch with no uncommitted changes (otherwise it tells you why and changes nothing). A conflict aborts the merge. Rejecting a merge does not reopen the ticket.
+- **Limits**: `OWL_CONCURRENCY` (global) and the per-project limit both apply.
+
 ## Keyboard and themes
 - In the session list: **↑ / ↓** move, **Enter** opens, **Tab** leaves the list.
 - The ☾ / ☀ button switches light and dark (it starts from your system setting and remembers your choice).
 
 ## What agents can and cannot do today
 - Codex runs in a **read-only sandbox**. Claude runs without any tool pre-approved, and in non-interactive mode the CLI denies the rest.
-  In practice agents **read and explain, they do not edit your files yet**. Safe write access (git worktrees, approvals) is on the [roadmap](../roadmap.md).
+  Agents write only on board tickets, inside the ticket's git worktree and with writes confined to that folder (OWL rewrites `Edit`/`Write` to a path rule: a bare `Edit` lets the model write anywhere). Commands are limited to the allow-list above. Commands such as `pnpm test` run your project's own scripts, which OWL cannot confine; an optional container sandbox is on the [roadmap](../roadmap.md).
 - Deleting conversations is not available yet; images you attach stay on disk until then.

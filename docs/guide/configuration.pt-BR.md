@@ -9,6 +9,7 @@ O OWL lê variáveis de ambiente (veja [`.env.example`](../../.env.example); cop
 | `OWL_PORT` | `4317` | Porta do servidor da API. |
 | `OWL_DATA_DIR` | `./data` | Pasta do banco SQLite. Caminho relativo é relativo a onde o servidor roda (com `pnpm dev`: `apps/server/`). |
 | `OWL_CONCURRENCY` | `1` | Runs executando ao mesmo tempo (1–16). Uma mesma conversa nunca roda dois ao mesmo tempo. |
+| `OWL_PROJECT_CONCURRENCY` | `2` | Runs de um mesmo projeto ao mesmo tempo, a menos que o projeto defina o próprio limite (tela **Equipe e configurações**). Os dois limites valem, então dois tickets só rodam em paralelo com `OWL_CONCURRENCY` 2 ou mais. |
 | `OWL_MAX_ATTACHMENT_MB` | `10` | Maior imagem aceita ao anexar uma figura (0,1–100 MB, medida antes de o OWL reduzi-la). |
 | `OWL_BACKUP_AGE_RECIPIENT` | nenhuma | Chave pública (`age1…`) que criptografa os backups. Veja [Backup](#backup). |
 | `OWL_BACKUP_RCLONE_REMOTE` | nenhuma | Destino do `rclone` (ex.: `meuremoto:owl`) que recebe os backups criptografados. |

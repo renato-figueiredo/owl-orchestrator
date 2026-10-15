@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- JSON bodies of the API in a test */
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +12,7 @@ import { extractJson, parseMemoryOutput, parseVerdict } from './board-flow.js';
 import { Executor } from './executor.js';
 
 let dir: string;
+let wt: string;
 let app: FastifyInstance;
 let executor: Executor;
 let repos: ReturnType<typeof createRepos>;
@@ -46,6 +48,9 @@ const adapter: ProviderAdapter = {
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'owl-board-'));
+  wt = mkdtempSync(join(tmpdir(), 'owl-board-wt-'));
+  // Developers write inside a git worktree, so the project folder is a repository (one empty commit is enough).
+  for (const args of [['init', '-q', '-b', 'main'], ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'init']]) execFileSync('git', args, { cwd: dir });
   requests = [];
   usage = { in: 100, out: 50 };
   replies = {
@@ -60,13 +65,14 @@ beforeEach(async () => {
   migrate(db);
   repos = createRepos(db);
   executor = new Executor({ repos, concurrency: 2, resolveAdapter: () => adapter });
-  app = buildApp({ repos, executor, defaultCwd: dir, workspaceRoots: [tmpdir()], userLibraryDir: join(dir, 'lib') });
+  app = buildApp({ repos, executor, defaultCwd: dir, workspaceRoots: [tmpdir()], userLibraryDir: join(dir, 'lib'), worktreesDir: wt });
   base = await app.listen({ host: '127.0.0.1', port: 0 });
 });
 afterEach(async () => {
   await executor.shutdown();
   await app.close();
   rmSync(dir, { recursive: true, force: true });
+  rmSync(wt, { recursive: true, force: true });
 });
 
 const call = (method: string, path: string, body?: unknown) =>
@@ -114,7 +120,7 @@ describe('example flow: objective → po → tech-lead → dev → qa → approv
     );
     expect(d.runs.map((x: any) => x.agente)).toEqual(['dev-back', 'qa']);
     expect(d.uso).toMatchObject({ runs: 2, tokensIn: 200, tokensOut: 100 });
-    expect(d.comments.map((c: any) => [c.autor, c.autorTipo])).toEqual([['dev-back', 'agente'], ['qa', 'agente']]);
+    expect(d.comments.map((c: any) => [c.autor, c.autorTipo])).toEqual([['dev-back', 'agente'], ['sistema', 'sistema'], ['qa', 'agente']]); // the system notes that the developer changed nothing
 
     // Approve both: the tickets close, the parent closes with the last one, and the memory agent summarizes.
     for (const a of b.aprovacoes) {

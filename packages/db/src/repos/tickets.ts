@@ -12,6 +12,8 @@ export const TICKET_STATUSES = [
 ] as const;
 export type TicketStatus = (typeof TICKET_STATUSES)[number];
 
+export type WorktreeState = 'ativo' | 'removido' | 'mesclado' | 'descartado';
+
 export type ActorKind = 'humano' | 'agente' | 'sistema';
 export interface Actor {
   /** Agent name, or 'humano' / 'sistema'. */
@@ -39,6 +41,10 @@ export interface Ticket {
   requerAprovacao: boolean;
   resumo: string | null;
   sessionId: string | null;
+  /** Git branch and folder of the ticket's isolated work (prompt 14); null for tickets that never wrote code. */
+  branch: string | null;
+  worktree: string | null;
+  worktreeEstado: WorktreeState | null;
   criadoEm: string;
   atualizadoEm: string;
   concluidoEm: string | null;
@@ -83,7 +89,7 @@ interface Row extends Omit<Ticket, 'requerAprovacao' | 'identificador'> {
 const SELECT = `SELECT t.id, t.project_id AS projectId, t.parent_id AS parentId, t.numero, t.titulo, t.descricao,
   t.criterios_aceite AS criteriosAceite, t.status, t.responsavel_agent_id AS responsavelAgentId, a.nome AS responsavel,
   t.prioridade, t.ordem, t.orcamento_tokens AS orcamentoTokens, t.requer_aprovacao AS requerAprovacao, t.resumo,
-  t.session_id AS sessionId, t.criado_em AS criadoEm, t.atualizado_em AS atualizadoEm, t.concluido_em AS concluidoEm,
+  t.session_id AS sessionId, t.branch, t.worktree, t.worktree_estado AS worktreeEstado, t.criado_em AS criadoEm, t.atualizado_em AS atualizadoEm, t.concluido_em AS concluidoEm,
   p.prefixo AS prefixo, p.nome AS projetoNome
   FROM tickets t JOIN projects p ON p.id = t.project_id LEFT JOIN agents a ON a.id = t.responsavel_agent_id`;
 
@@ -228,6 +234,20 @@ export function ticketsRepo(db: Db) {
     },
     setSession(id: string, sessionId: string): void {
       db.prepare('UPDATE tickets SET session_id = ? WHERE id = ?').run(sessionId, id);
+    },
+    /** Records the isolated work of a ticket. `worktree: null` once the folder is gone (the branch may remain). */
+    setWorktree(id: string, w: { branch?: string; worktree: string | null; estado: WorktreeState }): void {
+      db.prepare(
+        `UPDATE tickets SET branch = COALESCE(?, branch), worktree = ?, worktree_estado = ?, atualizado_em = datetime('now') WHERE id = ?`,
+      ).run(w.branch ?? null, w.worktree, w.estado, id);
+    },
+    /** Tickets of a project that still have a worktree folder (what cleanup and the delete guard look at). */
+    withWorktree(projectId?: string): Ticket[] {
+      return (
+        db
+          .prepare(`${SELECT} WHERE t.worktree IS NOT NULL AND (? IS NULL OR t.project_id = ?) ORDER BY t.numero`)
+          .all(projectId ?? null, projectId ?? null) as Row[]
+      ).map(toTicket);
     },
     addComment(input: { ticketId: string; ator: Actor; texto: string; runId?: string }): TicketComment {
       const id = randomUUID();

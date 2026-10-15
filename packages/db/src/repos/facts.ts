@@ -90,6 +90,20 @@ export function factsRepo(db: Db) {
         }) as FactRow[];
       return rows.map(toFact);
     },
+    /**
+     * What one agent remembers inside one project (`facts.agent_id` + `project_id`). Never mixes with the project's own
+     * facts (`listScope`, agent_id NULL) nor with the same agent's memory in another project.
+     */
+    listAgent(scope: { projectId: string; agentId: string; apenasFixados?: boolean }): Fact[] {
+      const rows = db
+        .prepare(
+          `SELECT ${COLS} FROM facts
+           WHERE project_id = @projectId AND agent_id = @agentId AND (@apenasFixados = 0 OR fixado = 1)
+           ORDER BY criado_em, rowid`,
+        )
+        .all({ projectId: scope.projectId, agentId: scope.agentId, apenasFixados: scope.apenasFixados ? 1 : 0 }) as FactRow[];
+      return rows.map(toFact);
+    },
     update(id: string, changes: { texto?: string; fixado?: boolean }): Fact | undefined {
       if (changes.texto !== undefined) db.prepare('UPDATE facts SET texto = ? WHERE id = ?').run(changes.texto, id);
       if (changes.fixado !== undefined) db.prepare('UPDATE facts SET fixado = ? WHERE id = ?').run(changes.fixado ? 1 : 0, id);

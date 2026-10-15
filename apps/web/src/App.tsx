@@ -4,6 +4,7 @@ import { Board } from './components/Board';
 import { Pairing } from './components/Pairing';
 import { Chat } from './components/Chat';
 import { MemoryPanel } from './components/MemoryPanel';
+import { ProjectScreen } from './components/ProjectScreen';
 import { RunPanel } from './components/RunPanel';
 import { Sidebar } from './components/Sidebar';
 import { api, type SendInput } from './lib/api';
@@ -39,7 +40,7 @@ function Workspace() {
   const [memBusy, setMemBusy] = useState(false);
   const [memMessage, setMemMessage] = useState<string | null>(null);
   const [trashVersion, setTrashVersion] = useState(0);
-  const [view, setView] = useState<'chat' | 'agents' | 'board'>('chat');
+  const [view, setView] = useState<'chat' | 'agents' | 'board' | 'project'>('chat');
   const [boardProjectId, setBoardProjectId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -228,10 +229,30 @@ function Workspace() {
           setBoardProjectId(pid);
           setView('board');
         }}
+        onOpenProject={(pid) => {
+          setBoardProjectId(pid);
+          setView('project');
+        }}
       />
       {view === 'agents' && <AgentLibrary onClose={() => setView('chat')} />}
       {view === 'board' && projects.some((p) => p.id === boardProjectId) && (
-        <Board project={projects.find((p) => p.id === boardProjectId)!} onClose={() => setView('chat')} />
+        <Board
+          project={projects.find((p) => p.id === boardProjectId)!}
+          projects={projects}
+          onSwitch={setBoardProjectId}
+          onOpenProject={() => setView('project')}
+          onClose={() => setView('chat')}
+        />
+      )}
+      {view === 'project' && projects.some((p) => p.id === boardProjectId) && (
+        <ProjectScreen
+          projects={projects}
+          projectId={boardProjectId!}
+          onSwitch={setBoardProjectId}
+          onClose={() => setView('chat')}
+          onOpenBoard={() => setView('board')}
+          onChanged={() => void api.projects().then(setProjects).catch((e) => setError(message(e)))}
+        />
       )}
       {/* Kept mounted while the library or the board is open, so a stream or a draft in progress is not lost. */}
       <div className={view === 'chat' ? 'contents' : 'hidden'}>

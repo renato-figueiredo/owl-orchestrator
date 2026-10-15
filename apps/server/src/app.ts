@@ -2,6 +2,8 @@ import { BoardError, LocalBoard } from '@owl/board';
 import { listAdapters, type RunEvent } from '@owl/core';
 import type { createRepos } from '@owl/db';
 import { createReadStream } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z, ZodError } from 'zod';
 import { registerAuth, type SessionAuth } from './auth.js';
@@ -14,6 +16,8 @@ import type { Executor } from './executor.js';
 import { Library, LibraryError } from './library.js';
 import { MemoryService, memorySettingsPatchSchema, type McpMemoryLaunch } from './memory.js';
 import { PipelineError, PipelineRunner } from './pipeline-runner.js';
+import { registerProjectRoutes } from './projects-routes.js';
+import { WorktreeError, WorktreeService } from './worktrees.js';
 import { FolderError, registerGuards, resolveWorkspace } from './security.js';
 
 type Repos = ReturnType<typeof createRepos>;
@@ -31,6 +35,10 @@ export interface AppDeps {
   libraryDir?: string;
   /** The user's own library (default none), same layout; it wins over `libraryDir` and is where the interface saves. */
   userLibraryDir?: string;
+  /** Folder that holds the git worktrees of tickets (default: a folder in the system temp dir). */
+  worktreesDir?: string;
+  /** Runs of one project at once unless the project sets its own limit, and runs at once overall (shown in the project view). */
+  limits?: { project: number; global: number };
   /** Where processed images are stored (default: a folder in the system temp dir). */
   attachmentsDir?: string;
   /** Largest image accepted, in bytes (default 10 MB). */
@@ -135,11 +143,13 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   library.sync(); // index the agent files now; a broken one is listed by GET /agents, it does not stop the server
   const runner = new PipelineRunner({ repos, executor, library });
   const board = new LocalBoard(repos);
+  const worktrees = new WorktreeService({ repos, dir: deps.worktreesDir ?? join(tmpdir(), 'owl-worktrees') });
   const flow = new BoardFlow({
     repos,
     executor,
     library,
     board,
+    worktrees,
     // Checked at every run, like the chat: the folder may have been replaced since the project was created.
     cwdOf: (p) => folder(p.pasta),
   });
@@ -176,6 +186,9 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       return reply.status(400).send({ error: { code: 'invalid_request', message } });
     }
     if (err instanceof LibraryError) {
+      return reply.status(err.status).send({ error: { code: err.code, message: err.message } });
+    }
+    if (err instanceof WorktreeError) {
       return reply.status(err.status).send({ error: { code: err.code, message: err.message } });
     }
     if (err instanceof BoardError) {
@@ -222,7 +235,14 @@ export function buildApp(deps: AppDeps): FastifyInstance {
 
   app.get('/projects', async () => ({ projects: repos.projects.list() }));
 
-  registerBoardRoutes(app, { repos, board, flow, library });
+  registerBoardRoutes(app, { repos, board, flow, library, worktrees });
+  registerProjectRoutes(app, {
+    repos,
+    worktrees,
+    folder,
+    projectConcurrency: deps.limits?.project ?? 2,
+    globalConcurrency: deps.limits?.global ?? 1,
+  });
 
   app.post('/sessions', async (req, reply) => {
     const body = createSession.parse(req.body ?? {});

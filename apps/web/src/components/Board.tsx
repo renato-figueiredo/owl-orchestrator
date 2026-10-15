@@ -2,7 +2,8 @@ import { DndContext, KeyboardSensor, PointerSensor, useDraggable, useDroppable, 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { fmtCost, fmtTokens } from '../lib/format';
-import { TICKET_STATUSES, type BoardData, type GateKind, type Project, type Ticket, type TicketApproval, type TicketDetail, type TicketStatus } from '../lib/types';
+import { ProjectSwitcher } from './ProjectSwitcher';
+import { TICKET_STATUSES, type BoardData, type BranchInfo, type GateKind, type Project, type Ticket, type TicketApproval, type TicketDetail, type TicketStatus } from '../lib/types';
 
 const message = (e: unknown) => (e instanceof Error ? e.message : 'Algo deu errado');
 
@@ -28,6 +29,10 @@ const EVENT_LABEL: Record<string, string> = { criado: 'criou', status: 'moveu', 
 interface Props {
   project: Project;
   onClose: () => void;
+  /** With these, the header offers the project selector and a link to the team screen. */
+  projects?: Project[];
+  onSwitch?: (id: string) => void;
+  onOpenProject?: (id: string) => void;
   /** Reload interval in ms while the board is open (0 = never; tests). */
   pollMs?: number;
 }
@@ -50,7 +55,7 @@ export function dropTarget(tickets: Ticket[], dragged: string, over: string): { 
   return { status: target.status, ordem: prev ? (prev.ordem + target.ordem) / 2 : target.ordem - 1 };
 }
 
-export function Board({ project, onClose, pollMs = 3000 }: Props) {
+export function Board({ project, onClose, projects, onSwitch, onOpenProject, pollMs = 3000 }: Props) {
   const [data, setData] = useState<BoardData | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -141,7 +146,13 @@ export function Board({ project, onClose, pollMs = 3000 }: Props) {
     <section aria-label={`Quadro de ${project.nome}`} className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <header className="flex flex-wrap items-center gap-3 border-b border-line p-4">
         <h1 className="text-lg font-semibold">Quadro · {project.nome}</h1>
+        {projects && onSwitch && projects.length > 1 && <ProjectSwitcher projects={projects} value={project.id} onChange={onSwitch} />}
         <span className="text-sm text-muted">Os agentes se falam por tickets e comentários.</span>
+        {onOpenProject && (
+          <button type="button" onClick={() => onOpenProject(project.id)} className="rounded border border-line px-3 py-1.5 text-sm hover:bg-raised">
+            Equipe e configurações
+          </button>
+        )}
         <button type="button" onClick={() => setCreating(creating === 'goal' ? null : 'goal')} aria-expanded={creating === 'goal'} className="ml-auto rounded bg-accent px-3 py-1.5 text-sm font-medium text-accent-fg">
           Novo objetivo
         </button>
@@ -393,6 +404,8 @@ function TicketPanel({ ticketId, busy, onClose, onOpen, act, version }: { ticket
             </div>
           )}
 
+          {d.branch?.branch && <BranchPanel ticketId={t.id} branch={d.branch} busy={busy} pending={pending.length > 0} running={running} act={act} />}
+
           <div>
             <h3 className="font-semibold">Execução</h3>
             <p className="text-muted" aria-label="Custo do ticket">
@@ -473,6 +486,39 @@ function TicketPanel({ ticketId, busy, onClose, onOpen, act, version }: { ticket
         </div>
       </div>
     </aside>
+  );
+}
+
+const BRANCH_STATE: Record<NonNullable<BranchInfo['estado']>, string> = {
+  ativo: 'worktree aberto',
+  removido: 'trabalho guardado na branch',
+  mesclado: 'mesclada',
+  descartado: 'descartada',
+};
+
+/** The ticket's isolated work: branch, whether the folder is still open, and the two actions that need your approval. */
+function BranchPanel({ ticketId, branch, busy, pending, running, act }: { ticketId: string; branch: BranchInfo; busy: boolean; pending: boolean; running: boolean; act: (fn: () => Promise<unknown>) => Promise<void> }) {
+  const open = branch.estado === 'ativo' || branch.estado === 'removido';
+  return (
+    <div aria-label="Branch do ticket">
+      <h3 className="font-semibold">Trabalho isolado</h3>
+      <p className="text-muted">
+        <code>{branch.branch}</code> · {branch.estado ? BRANCH_STATE[branch.estado] : ''}
+        {branch.commitsAdiante != null ? ` · ${branch.commitsAdiante} commit(s) à frente de ${branch.base ?? 'a base'}` : ''}
+        {branch.alterado ? ' · há alterações ainda sem commit' : ''}
+      </p>
+      {open && (
+        <div className="mt-1 flex gap-2">
+          <button type="button" disabled={busy || running || pending || !branch.commitsAdiante} onClick={() => void act(() => api.requestBranchAction(ticketId, 'merge'))} className="rounded border border-line px-3 py-1 hover:bg-raised disabled:opacity-50">
+            Pedir mesclagem em {branch.base ?? 'a base'}
+          </button>
+          <button type="button" disabled={busy || running || pending} onClick={() => void act(() => api.requestBranchAction(ticketId, 'descartar'))} className="rounded border border-danger px-3 py-1 text-danger hover:bg-raised disabled:opacity-50">
+            Descartar trabalho
+          </button>
+        </div>
+      )}
+      {open && <p className="mt-1 text-xs text-muted">Nada entra na sua branch sem a sua aprovação na fila acima.</p>}
+    </div>
   );
 }
 

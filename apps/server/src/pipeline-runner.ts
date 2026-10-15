@@ -1,4 +1,4 @@
-import { nextStep, pickOtherProvider, type AgentDefinition, type Pipeline, type PipelineState, type PipelineStep } from '@owl/core';
+import { nextStep, readOnlyTools, pickOtherProvider, type AgentDefinition, type Pipeline, type PipelineState, type PipelineStep } from '@owl/core';
 import type { createRepos, Run } from '@owl/db';
 import type { Executor, StepOutcome } from './executor.js';
 import type { Library } from './library.js';
@@ -166,7 +166,8 @@ export class PipelineRunner {
       ...(ctx.userMessageId !== undefined ? { contextBeforeMessageId: ctx.userMessageId } : {}),
       storeAs: agent ? 'agente' : 'assistente',
       ...(agent ? { stateless: true } : ctx.req.anexos?.length ? { anexos: ctx.req.anexos } : {}),
-      ...(agent?.ferramentas.length ? { allowedTools: agent.ferramentas } : {}),
+      // A chat has no worktree: whatever the agent declares, here it can only read. Writing happens on board tickets.
+      ...(agent && readOnlyTools(agent.ferramentas).length ? { allowedTools: readOnlyTools(agent.ferramentas) } : {}),
       after: (outcome) => this.afterStep(ctx, step, outcome),
     });
   }

@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { BoardFlow } from './board-flow.js';
 import type { Library } from './library.js';
+import type { WorktreeService } from './worktrees.js';
 
 type Repos = ReturnType<typeof createRepos>;
 
@@ -54,9 +55,9 @@ const decide = z.object({ decisao: z.enum(['aprovado', 'rejeitado']), comentario
 /** Routes of the local board (prompt 13). Everything is scoped by project; the board is the agents' message bus. */
 export function registerBoardRoutes(
   app: FastifyInstance,
-  deps: { repos: Repos; board: LocalBoard; flow: BoardFlow; library: Library },
+  deps: { repos: Repos; board: LocalBoard; flow: BoardFlow; library: Library; worktrees: WorktreeService },
 ): void {
-  const { repos, board, flow, library } = deps;
+  const { repos, board, flow, library, worktrees } = deps;
   const actor = (agente: string | undefined) => (agente ? agentActor(agente) : HUMAN);
   const project = (pid: string) => {
     const p = repos.projects.get(pid);
@@ -116,7 +117,17 @@ export function registerBoardRoutes(
     return reply.status(202).send({ ticket: repos.tickets.get(started.ticket.id), runId: started.run?.id ?? null });
   });
 
-  app.get('/tickets/:id', async (req) => board.detail(id.parse(req.params).id));
+  app.get('/tickets/:id', async (req) => {
+    const detail = board.detail(id.parse(req.params).id);
+    return { ...detail, branch: worktrees.info(detail.ticket, project(detail.ticket.projectId)) };
+  });
+
+  /** Merging the ticket branch into the project's base branch, or throwing the work away: both only after a person approves. */
+  app.post('/tickets/:id/branch/:acao', async (req, reply) => {
+    const params = z.object({ id: z.string().min(1).max(100), acao: z.enum(['merge', 'descartar']) }).parse(req.params);
+    const t = flow.requestBranchAction(params.id, params.acao);
+    return reply.status(202).send({ ticket: t, aprovacoes: repos.approvals.pendingByTicket(params.id) });
+  });
 
   app.patch('/tickets/:id', async (req) => {
     const { id: tid } = id.parse(req.params);
@@ -140,7 +151,8 @@ export function registerBoardRoutes(
       ...(body.ordem !== undefined ? { ordem: body.ordem } : {}),
       ...(body.comentario ? { comentario: body.comentario } : {}),
     });
-    return { ticket: updated, aprovacoes: repos.approvals.pendingByTicket(tid) };
+    if (updated.status === 'concluido') flow.settle(tid); // a closed ticket gives its worktree back; the branch stays
+    return { ticket: repos.tickets.get(tid), aprovacoes: repos.approvals.pendingByTicket(tid) };
   });
 
   app.post('/tickets/:id/comments', async (req, reply) => {

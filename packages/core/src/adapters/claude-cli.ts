@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs';
 import { assertImagePath, assertSafeArg, buildEnv, CLAUDE_API_KEY_ENV_VARS, probeVersion } from '../process.js';
 import type { CliAdapterOptions, ProviderAdapter, RunRequest } from '../types.js';
 import { ClaudeStreamParser } from './claude-stream.js';
@@ -15,6 +16,32 @@ export interface ClaudeCliOptions extends CliAdapterOptions {
 const SAFE_ID = /^[\w.:/[\]@-]+$/;
 const SAFE_TOOL = /^[^\s\0-][^\n\r\0]*$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const WRITE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+
+/**
+ * `--allowedTools Edit` (or `Write`) lets the model write ANYWHERE the user can, not only in the working folder (verified
+ * with the real CLI: a bare `Write` created a file outside the cwd). Only a path rule confines it, and the CLI says that
+ * only `Edit(<path>)` rules count (they cover Write and MultiEdit too). So every file-writing tool becomes
+ * `Edit(//<cwd>/**)`: absolute path from the root, for the folder as given and for its real path (symlinks such as
+ * /home -> /var/home are resolved by the CLI). A rule the agent already scoped keeps its own path.
+ */
+export function scopeWriteTools(tools: readonly string[], cwd: string): string[] {
+  const roots = new Set([cwd]);
+  try {
+    roots.add(realpathSync(cwd));
+  } catch {
+    // a folder that does not exist yet: the CLI will fail on it by itself
+  }
+  const out: string[] = [];
+  for (const tool of tools) {
+    const m = tool.trim().match(/^([A-Za-z]+)(?:\((.*)\))?$/);
+    if (!m?.[1] || !WRITE_TOOLS.has(m[1])) out.push(tool);
+    else if (m[2] !== undefined) out.push(`Edit(${m[2]})`);
+    else for (const root of roots) out.push(`Edit(/${root.replace(/\/+$/, '')}/**)`);
+  }
+  return [...new Set(out)];
+}
 
 /**
  * Builds the argument vector for `claude`. The prompt is NOT part of it (it goes through stdin), so user
@@ -38,7 +65,7 @@ export function buildClaudeArgs(req: RunRequest, opts: Pick<ClaudeCliOptions, 'i
   if (req.noTools && images.length === 0) args.push('--tools', '');
   else {
     // Claude looks at an image by reading the file: allow the Read tool and the folders the images live in.
-    const tools = [...new Set([...(req.allowedTools ?? []), ...(images.length ? ['Read'] : [])])];
+    const tools = scopeWriteTools([...new Set([...(req.allowedTools ?? []), ...(images.length ? ['Read'] : [])])], req.cwd);
     for (const t of tools) assertSafeArg('allowed tool', t, SAFE_TOOL);
     for (const dir of new Set(images.map((p) => p.slice(0, p.lastIndexOf('/')) || '/'))) args.push(`--add-dir=${dir}`);
     if (tools.length) args.push('--allowedTools', ...tools);

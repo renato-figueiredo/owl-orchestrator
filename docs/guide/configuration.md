@@ -9,6 +9,7 @@ OWL reads environment variables (see [`.env.example`](../../.env.example); copy 
 | `OWL_PORT` | `4317` | Port of the API server. |
 | `OWL_DATA_DIR` | `./data` | Folder of the SQLite database. A relative path is relative to where the server runs (with `pnpm dev`: `apps/server/`). |
 | `OWL_CONCURRENCY` | `1` | Runs executing at once (1–16). A single conversation never runs two at the same time. |
+| `OWL_PROJECT_CONCURRENCY` | `2` | Runs of one project at once, unless the project sets its own limit (**Team and settings** screen). Both limits apply, so two tickets only run in parallel when `OWL_CONCURRENCY` is 2 or more. |
 | `OWL_MAX_ATTACHMENT_MB` | `10` | Largest image accepted when you attach a picture (0.1–100 MB, measured before OWL shrinks it). |
 | `OWL_BACKUP_AGE_RECIPIENT` | none | Public key (`age1…`) that encrypts backups. See [Backup](#backup). |
 | `OWL_BACKUP_RCLONE_REMOTE` | none | `rclone` destination (e.g. `myremote:owl`) that receives the encrypted backups. |

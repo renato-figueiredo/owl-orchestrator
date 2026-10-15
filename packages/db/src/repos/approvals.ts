@@ -12,6 +12,8 @@ export interface ResumeInfo {
   /** The instruction the paused agent step was given, so it can be resumed as it was. */
   tarefa?: string;
   statusAnterior?: string;
+  /** A server-side action the approval releases (prompt 14): merge the ticket branch, or discard its worktree and branch. */
+  acao?: 'merge' | 'descartar';
 }
 
 export interface Approval {

@@ -14,6 +14,49 @@ export interface Project {
   id: string;
   nome: string;
   pasta: string;
+  /** Most runs of this project at once; null = the server default. */
+  maxConcorrencia?: number | null;
+  branchBase?: string | null;
+}
+export interface TeamMember {
+  agentId: string;
+  agente: string;
+  papel: string | null;
+}
+export interface Team {
+  id: string;
+  projectId: string;
+  nome: string;
+  membros: TeamMember[];
+}
+export interface ProjectView {
+  project: Project;
+  instrucoes: string | null;
+  git: boolean;
+  branchAtual: string | null;
+  branchBase: string | null;
+  concorrencia: { projeto: number; padraoDoServidor: number; global: number; emExecucao: number };
+  equipes: Team[];
+}
+export interface AgentProject {
+  projectId: string;
+  projeto: string;
+  teamId: string;
+  equipe: string;
+  papel: string | null;
+}
+export interface AgentFact {
+  id: string;
+  texto: string;
+  fixado: boolean;
+}
+export interface BranchInfo {
+  branch: string | null;
+  worktree: string | null;
+  estado: 'ativo' | 'removido' | 'mesclado' | 'descartado' | null;
+  base: string | null;
+  commitsAdiante: number | null;
+  alterado: boolean;
 }
 export interface Session {
   id: string;
@@ -248,4 +291,5 @@ export interface TicketDetail {
   runs: TicketRun[];
   uso: TicketUsage;
   aprovacoes: TicketApproval[];
+  branch?: BranchInfo | null;
 }

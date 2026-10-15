@@ -153,3 +153,8 @@ Arquivos `packages/db/migrations/0001_*.sql`, aplicados em ordem, com tabela `sc
 `tickets` ganhou `numero` (por projeto), `prioridade`, `ordem` (float), `resumo`, `session_id` (conversa oculta das execuções) e `concluido_em`;
 `ticket_comments` ganhou `autor_tipo` e `run_id`; nova `ticket_events` (histórico); `approvals` ganhou `tipo`, `retomar_json` e `criado_em`;
 `projects.prefixo` (opcional). Conversas de ticket não aparecem na lista de conversas (`sessions.list` as filtra).
+
+## Projetos, equipes e worktrees (migração 0009, prompt 14)
+`projects.max_concorrencia` (NULL = padrão do servidor) e `projects.branch_base`; `teams` ganhou índice único `(project_id, nome)`; `tickets.branch`, `tickets.worktree` (caminho
+absoluto enquanto a pasta existe) e `tickets.worktree_estado` (`ativo | removido | mesclado | descartado`); `approvals.retomar_json` pode levar `acao: 'merge' | 'descartar'`
+(portão que libera uma ação do servidor sem mover o ticket). Índice `facts(project_id, agent_id)` para a memória do agente dentro do projeto.

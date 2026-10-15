@@ -83,6 +83,8 @@ export interface ExecutorOptions {
   repos: Repos;
   /** Maximum runs executing at once. */
   concurrency?: number;
+  /** Maximum runs of one project executing at once when the project sets no limit of its own (default: no extra limit). */
+  projectConcurrency?: number;
   /** Adapter lookup (defaults to the core registry); tests inject fakes here. */
   resolveAdapter?: (id: string) => ProviderAdapter;
   /** Finished runs whose events stay replayable from memory. */
@@ -103,6 +105,8 @@ interface Entry {
   listeners: Set<Listener>;
   controller: AbortController;
   state: 'queued' | 'running' | 'done';
+  /** Project of the run's conversation, or null for a chat with no project (only the global limit applies). */
+  projectId: string | null;
 }
 
 const TERMINAL = new Set(['end', 'error', 'cancelled']);
@@ -114,6 +118,7 @@ const TERMINAL = new Set(['end', 'error', 'cancelled']);
 export class Executor {
   private readonly repos: Repos;
   private readonly concurrency: number;
+  private readonly projectConcurrency: number;
   private readonly resolveAdapter: (id: string) => ProviderAdapter;
   private readonly keepFinished: number;
   private memory: MemoryProvider | undefined;
@@ -123,12 +128,14 @@ export class Executor {
   private readonly entries = new Map<string, Entry>();
   private readonly queue: Entry[] = [];
   private readonly activeSessions = new Set<string>();
+  private readonly activeByProject = new Map<string, number>();
   private active = 0;
   private idleWaiters: Array<() => void> = [];
 
   constructor(opts: ExecutorOptions) {
     this.repos = opts.repos;
     this.concurrency = Math.max(1, opts.concurrency ?? 1);
+    this.projectConcurrency = Math.max(1, opts.projectConcurrency ?? this.concurrency);
     this.resolveAdapter = opts.resolveAdapter ?? getAdapter;
     this.keepFinished = opts.keepFinished ?? 200;
     this.memory = opts.memory;
@@ -170,6 +177,7 @@ export class Executor {
       listeners: new Set(),
       controller: new AbortController(),
       state: 'queued',
+      projectId: repos.sessions.get(input.sessionId)?.projectId ?? null,
     };
     this.entries.set(run.id, entry);
     this.queue.push(entry);
@@ -225,21 +233,30 @@ export class Executor {
 
   private pump(): void {
     while (this.active < this.concurrency) {
-      const entry = this.queue.find((e) => !this.activeSessions.has(e.input.sessionId));
+      const entry = this.queue.find((e) => !this.activeSessions.has(e.input.sessionId) && this.projectHasRoom(e));
       if (!entry) break;
       this.queue.splice(this.queue.indexOf(entry), 1);
       this.active++;
       this.activeSessions.add(entry.input.sessionId);
+      if (entry.projectId) this.activeByProject.set(entry.projectId, (this.activeByProject.get(entry.projectId) ?? 0) + 1);
       entry.state = 'running';
       void this.execute(entry).finally(() => {
         this.active--;
         this.activeSessions.delete(entry.input.sessionId);
+        if (entry.projectId) this.activeByProject.set(entry.projectId, Math.max(0, (this.activeByProject.get(entry.projectId) ?? 1) - 1));
         this.pump();
         if (this.active === 0 && this.queue.length === 0) {
           for (const resolve of this.idleWaiters.splice(0)) resolve();
         }
       });
     }
+  }
+
+  /** The project's own limit (read now, so a change applies to the next run) or the server default. */
+  private projectHasRoom(e: Entry): boolean {
+    if (!e.projectId) return true;
+    const limit = this.repos.projects.get(e.projectId)?.maxConcorrencia ?? this.projectConcurrency;
+    return (this.activeByProject.get(e.projectId) ?? 0) < limit;
   }
 
   private async execute(entry: Entry): Promise<void> {

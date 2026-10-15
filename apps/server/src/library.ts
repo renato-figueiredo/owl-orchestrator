@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, s
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  analyzeTools,
   isSafeName,
   listAdapters,
   parseAgentFile,
@@ -105,6 +106,12 @@ export class Library {
     }
     for (const f of def.fallback) {
       if (!listAdapters().some((a) => a.id === f.provedor)) throw new Error(`fallback: unknown provider "${f.provedor}"`);
+    }
+    const tools = analyzeTools(def.ferramentas);
+    if (tools.problems.length) throw new Error(`ferramentas: ${tools.problems.join('; ')}`);
+    // Codex runs in a fixed read-only sandbox and ignores `ferramentas`: a Codex agent that claims to write would silently do nothing.
+    if (tools.writes && [def.provedor, ...def.fallback.map((f) => f.provedor)].includes('codex-cli')) {
+      throw new Error('ferramentas: o Codex roda somente leitura; agentes que escrevem ou rodam comandos precisam de claude-cli (e fallback também)');
     }
     for (const s of def.skills) if (!this.findSkill(s)) throw new Error(`skills: "${s}" is not in the library`);
   }

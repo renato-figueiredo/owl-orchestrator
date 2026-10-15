@@ -19,9 +19,10 @@ interface Props {
   onToggleTheme: () => void;
   onOpenAgents: () => void;
   onOpenBoard: (projectId: string) => void;
+  onOpenProject?: (projectId: string) => void;
 }
 
-export function Sidebar({ projects, sessions, selectedId, onSelect, onNewSession, onDeleteSession, trashVersion, onRestored, onCreateProject, theme, onToggleTheme, onOpenAgents, onOpenBoard }: Props) {
+export function Sidebar({ projects, sessions, selectedId, onSelect, onNewSession, onDeleteSession, trashVersion, onRestored, onCreateProject, theme, onToggleTheme, onOpenAgents, onOpenBoard, onOpenProject }: Props) {
   const listRef = useRef<HTMLElement>(null);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -119,6 +120,11 @@ export function Sidebar({ projects, sessions, selectedId, onSelect, onNewSession
                     <button type="button" onClick={() => onOpenBoard(g.projectId!)} aria-label={`Quadro de ${g.title}`} className="rounded px-1.5 text-xs text-muted hover:bg-raised hover:text-fg">
                       Quadro
                     </button>
+                    {onOpenProject && (
+                      <button type="button" onClick={() => onOpenProject(g.projectId!)} aria-label={`Equipe e configurações de ${g.title}`} className="rounded px-1.5 text-xs text-muted hover:bg-raised hover:text-fg">
+                        Equipe
+                      </button>
+                    )}
                     <button type="button" onClick={() => onNewSession(g.projectId)} aria-label={`Nova conversa em ${g.title}`} className="rounded px-1.5 text-muted hover:bg-raised hover:text-fg">
                       +
                     </button>

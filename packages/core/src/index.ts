@@ -2,7 +2,7 @@ export * from './config.js';
 export * from './types.js';
 export { buildEnv, childEnv, assertSafeArg, assertImagePath, runProcess } from './process.js';
 export { ClaudeStreamParser } from './adapters/claude-stream.js';
-export { buildClaudeArgs, createClaudeCliAdapter, type ClaudeCliOptions } from './adapters/claude-cli.js';
+export { buildClaudeArgs, createClaudeCliAdapter, scopeWriteTools, type ClaudeCliOptions } from './adapters/claude-cli.js';
 export { buildCodexArgs, buildCodexPrompt, createCodexCliAdapter, type CodexCliOptions } from './adapters/codex-cli.js';
 export { CodexStreamParser, codexErrorMessage } from './adapters/codex-stream.js';
 export { getAdapter, listAdapters, registerAdapter } from './registry.js';
@@ -37,3 +37,5 @@ export {
   summaryOutputSchema,
   type SummaryOutput,
 } from './memory/summary.js';
+export { isDestructive } from './destructive.js';
+export { analyzeTools, parseTool, readOnlyTools, type ToolReport } from './tools.js';

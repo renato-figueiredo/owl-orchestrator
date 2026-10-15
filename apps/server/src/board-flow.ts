@@ -1,9 +1,10 @@
 import { agentActor, BoardError, type Decision, HUMAN, LocalBoard, SYSTEM, ticketBrief, ticketContext, estimateTokens } from '@owl/board';
-import type { AgentDefinition } from '@owl/core';
+import { analyzeTools, type AgentDefinition } from '@owl/core';
 import type { Actor, createRepos, Project, Run, Ticket } from '@owl/db';
 import { z } from 'zod';
 import type { Executor, StepOutcome } from './executor.js';
 import type { Library } from './library.js';
+import { WorktreeError, type WorktreeService } from './worktrees.js';
 
 type Repos = ReturnType<typeof createRepos>;
 
@@ -81,6 +82,8 @@ export interface BoardFlowDeps {
   executor: Executor;
   library: Library;
   board: LocalBoard;
+  /** One git worktree per development ticket; agents that write only run inside one. */
+  worktrees: WorktreeService;
   /** Working folder of a project's runs (already checked against the allowed roots). */
   cwdOf: (project: Project) => string;
   /** Agent names of the example flow (override to use other ones). */
@@ -133,9 +136,46 @@ export class BoardFlow {
     }
     this.deps.library.sync();
     const agentRow = repos.agents.byName(agente);
+
+    // Once a project has a team, only its members work on its tickets; the team role can differ from the agent's own.
+    let teamRole: string | null = null;
+    if (repos.teams.hasRoster(project.id)) {
+      const mine = agentRow ? repos.teams.membershipsInProject(project.id, agentRow.id) : [];
+      if (mine.length === 0) {
+        this.fail(ticket, agente, `"${agente}" não está em nenhuma equipe do projeto ${project.nome}; adicione-o na tela da equipe ou use outro agente`);
+        return undefined;
+      }
+      teamRole = mine.find((m) => m.papel)?.papel ?? null;
+    }
+
+    // Tools: reading is free, anything that writes or runs commands happens only inside the ticket's worktree.
+    const tools = analyzeTools(def.ferramentas);
+    if (tools.problems.length) {
+      this.fail(ticket, agente, `ferramentas do agente não são permitidas: ${tools.problems.join('; ')}`);
+      return undefined;
+    }
+    const projectCwd = this.deps.cwdOf(project);
+    let cwd = projectCwd;
+    if (tools.writes) {
+      try {
+        cwd = this.deps.worktrees.ensure(ticket, project);
+      } catch (e) {
+        if (!(e instanceof WorktreeError)) throw e;
+        this.fail(ticket, agente, e.message);
+        return undefined;
+      }
+    } else {
+      // Reviewers and QA look at the developer's work, so they run where it is.
+      cwd = this.deps.worktrees.existingCwd(ticket, project) ?? projectCwd;
+    }
+
     const parent = ticket.parentId ? (repos.tickets.get(ticket.parentId) ?? null) : null;
     const brief = ticketBrief({ ticket, comments: repos.tickets.comments(ticketId), parent, children: repos.tickets.children(ticketId), tarefa });
-    const facts = repos.facts.listScope({ projectId: project.id, apenasFixados: true }).map((f) => f.texto);
+    // What the project knows, then what THIS agent remembers in THIS project (never its memory in another project).
+    const facts = [
+      ...repos.facts.listScope({ projectId: project.id, apenasFixados: true }).map((f) => f.texto),
+      ...(agentRow ? repos.facts.listAgent({ projectId: project.id, agentId: agentRow.id, apenasFixados: true }).map((f) => f.texto) : []),
+    ];
     const memory = ticketContext({ fatos: facts, resumo: ticket.resumo ?? parent?.resumo, orcamentoTokens: CONTEXT_TOKENS });
     const texto = `${memory}${brief}`;
 
@@ -154,7 +194,7 @@ export class BoardFlow {
     }
 
     // Planners, reviewers and the memory agent work on the ticket where it is; an executor puts it in progress.
-    const role = def.papel ?? '';
+    const role = teamRole ?? def.papel ?? '';
     const keepsStatus = STAYS.has(role);
     const expected = keepsStatus ? ticket.status : 'em_andamento';
     if (!keepsStatus) {
@@ -168,7 +208,7 @@ export class BoardFlow {
       texto,
       provider: def.provedor,
       ...(def.modelo ? { model: def.modelo } : {}),
-      cwd: this.deps.cwdOf(project),
+      cwd,
       systemAppend,
       etapa: `quadro:${def.papel ?? agente}`,
       ...(agentRow ? { agentId: agentRow.id } : {}),
@@ -178,15 +218,22 @@ export class BoardFlow {
       storeAs: false,
       ...(def.ferramentas.length ? { allowedTools: def.ferramentas } : {}),
       noTools: def.ferramentas.length === 0,
-      after: (outcome) => this.afterRun(ticketId, agente, role, expected, outcome),
+      after: (outcome) => this.afterRun(ticketId, agente, role, expected, outcome, tools.writes),
     });
   }
 
   /** Continues after a person decided a gate: resumes the paused step, or re-runs the author after a rejection. */
   onDecision(decision: Decision, decisao: 'aprovado' | 'rejeitado'): Run | undefined {
     const { ticket, approval } = decision;
+    if (decision.approval.retomar?.acao) {
+      this.branchAction(ticket, decision.approval.retomar.acao, decisao);
+      return undefined;
+    }
     if (decisao === 'aprovado') {
-      if (approval.tipo === 'entrega' && ticket.status === 'concluido') return this.run(ticket.id, this.names.memoria, MEMORY_TASK);
+      if (approval.tipo === 'entrega' && ticket.status === 'concluido') {
+        this.settle(ticket.id);
+        return this.run(ticket.id, this.names.memoria, MEMORY_TASK);
+      }
       const r = decision.retomar;
       // The paused step goes on; an approved cost gate lets exactly this step past the ceiling.
       if (r?.agente && r.tarefa) return this.run(ticket.id, r.agente, r.tarefa, { force: approval.tipo === 'custo' });
@@ -199,13 +246,56 @@ export class BoardFlow {
     return approval.tipo === 'entrega' || approval.tipo === 'reprovacao' ? this.rework(ticket) : undefined;
   }
 
+  /** A finished ticket gives its worktree back (the branch stays until merged or discarded). Never throws: it is a note on the ticket. */
+  settle(ticketId: string): void {
+    const t = this.deps.repos.tickets.get(ticketId);
+    if (!t || t.status !== 'concluido' || t.worktreeEstado !== 'ativo') return;
+    try {
+      this.deps.worktrees.release(t, this.deps.repos.projects.get(t.projectId)!);
+    } catch (e) {
+      this.deps.board.comment(t.id, SYSTEM, `Não consegui liberar o worktree: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  /** Asks for approval to merge the ticket branch into the project's base branch, or to throw the branch away. */
+  requestBranchAction(ticketId: string, acao: 'merge' | 'descartar', who: Actor = HUMAN): Ticket {
+    const t = this.need(ticketId);
+    const project = this.deps.repos.projects.get(t.projectId)!;
+    if (!t.branch || !t.worktreeEstado || t.worktreeEstado === 'mesclado' || t.worktreeEstado === 'descartado') {
+      throw new BoardError(409, 'no_branch', 'Este ticket não tem uma branch pendente');
+    }
+    if (acao === 'merge' && this.deps.repos.tickets.runs(t.id).some((r) => r.status === 'rodando')) {
+      throw new BoardError(409, 'ticket_busy', 'Um agente ainda está trabalhando neste ticket');
+    }
+    const base = this.deps.worktrees.baseOf(project) ?? 'a branch base';
+    const motivo =
+      acao === 'merge'
+        ? `Mesclar a branch ${t.branch} em ${base} (merge)`
+        : `Descartar o trabalho: apagar o worktree e a branch ${t.branch} (apagar)`;
+    return this.deps.board.requestGate(t.id, { tipo: 'destrutiva', motivo, retomar: { acao, statusAnterior: t.status } }, who);
+  }
+
+  /** Runs the approved action (and only that), or just records that it was refused. */
+  private branchAction(ticket: Ticket, acao: 'merge' | 'descartar', decisao: 'aprovado' | 'rejeitado'): void {
+    const { repos, board, worktrees } = this.deps;
+    if (decisao === 'rejeitado') return;
+    const t = this.need(ticket.id);
+    const project = repos.projects.get(t.projectId)!;
+    try {
+      const r = acao === 'merge' ? worktrees.merge(t, project) : worktrees.discard(t, project);
+      board.comment(t.id, SYSTEM, r.ok ? r.resumo : `Não foi possível ${acao === 'merge' ? 'mesclar' : 'descartar'}: ${r.erro}`);
+    } catch (e) {
+      board.comment(t.id, SYSTEM, `Falha na ação ${acao}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   private rework(ticket: Ticket): Run | undefined {
     const t = this.need(ticket.id);
     if (t.status !== 'em_andamento' || !t.responsavel) return undefined;
     return this.run(t.id, t.responsavel, 'A entrega foi devolvida. Leia os últimos comentários, corrija o que foi apontado e responda com a versão revisada.');
   }
 
-  private afterRun(ticketId: string, agente: string, role: Role, expected: string, outcome: StepOutcome): void {
+  private afterRun(ticketId: string, agente: string, role: Role, expected: string, outcome: StepOutcome, wrote: boolean): void {
     const { repos, board } = this.deps;
     const ticket = repos.tickets.get(ticketId);
     if (!ticket) return;
@@ -217,6 +307,16 @@ export class BoardFlow {
     }
     const text = outcome.result.trim();
     board.comment(ticketId, who, text, outcome.run.id);
+    // What the agent changed becomes a commit on the ticket branch, so QA, the reviewer and the merge all see the same thing.
+    if (wrote) {
+      try {
+        const done = this.deps.worktrees.commitAll(ticket, `${ticket.identificador}: ${ticket.titulo} (${agente})`);
+        if (done || !STAYS.has(role)) board.comment(ticketId, SYSTEM, done ? `Alterações commitadas na branch ${repos.tickets.get(ticketId)?.branch}.` : 'O agente não alterou nenhum arquivo.');
+      } catch (e) {
+        this.fail(ticket, agente, e instanceof Error ? e.message : String(e), outcome.run.id);
+        return;
+      }
+    }
     // A person may have moved the card while the agent worked: then the answer is only a comment.
     if (ticket.status !== expected) return;
 
@@ -253,7 +353,7 @@ export class BoardFlow {
     if (!parsed.success) return this.unreadable(ticket, who, 'o tech lead não devolveu as subtarefas no formato esperado (JSON com "subtarefas")');
     const created: Ticket[] = [];
     for (const s of parsed.data.subtarefas) {
-      const name = s.agente && repos.agents.byName(s.agente) ? s.agente : this.names.dev;
+      const name = s.agente && repos.agents.byName(s.agente) && this.onTeam(ticket.projectId, s.agente) ? s.agente : this.names.dev;
       const agentRow = repos.agents.byName(name);
       const child = board.createTicket(
         {
@@ -287,7 +387,10 @@ export class BoardFlow {
       // Needs approval → the delivery gate; otherwise the reviewer closes it.
       board.updateStatus(ticket.id, 'concluido', who);
       const t = this.need(ticket.id);
-      if (t.status === 'concluido') this.run(ticket.id, this.names.memoria, MEMORY_TASK);
+      if (t.status === 'concluido') {
+        this.settle(t.id);
+        this.run(ticket.id, this.names.memoria, MEMORY_TASK);
+      }
       return;
     }
     board.requestGate(
@@ -302,6 +405,14 @@ export class BoardFlow {
     const { resumo, fatos } = parseMemoryOutput(text);
     if (resumo) repos.tickets.update(ticket.id, { resumo });
     for (const f of fatos) repos.facts.add({ projectId: ticket.projectId, texto: f, fixado: false, origemRunId: runId });
+  }
+
+  /** True when the project has no roster yet, or the agent is on one of its teams. */
+  private onTeam(projectId: string, agente: string): boolean {
+    const { repos } = this.deps;
+    if (!repos.teams.hasRoster(projectId)) return true;
+    const row = repos.agents.byName(agente);
+    return Boolean(row && repos.teams.membershipsInProject(projectId, row.id).length);
   }
 
   /** The answer cannot be used: say so on the ticket and block it, for a person to decide. */
