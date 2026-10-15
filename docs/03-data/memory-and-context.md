@@ -51,6 +51,11 @@ em vez de receber tudo empurrado no prompt.
   execução (`<dados>/mcp/<runId>.json`, modo 0600, apagado ao fim) e o executor o passa em `mcpConfigPath` com a permissão
   `mcp__owl-memory`. Só `claude-cli`; execuções sem estado (resumidor, refinador) ou sem ferramentas não recebem. O isolamento
   (`--strict-mcp-config`) continua: só este servidor é carregado.
+- **Endurecimento (revisão do 10)**: (1) a conexão de escrita do servidor MCP roda em `query_only`; `salvar_fato` só a libera
+  para o insert em `facts` e restaura em seguida. (2) O servidor é iniciado com `--tsconfig` do repositório (`memoryServerLaunch`):
+  a CLI o inicia na pasta do projeto, e um `tsconfig.json` ali (`paths`) redirecionaria os imports; há teste com tsconfig hostil.
+  (3) Tudo que vem do histórico (busca, resumos, fatos) é devolvido dentro de `<dados-nao-confiaveis>` com aviso de que são
+  dados, não instruções, e um fechamento forjado no texto é neutralizado.
 - **Registro**: `runs.memoria_chamadas` (JSON `{"buscar_memoria": 2}`, migração 0005), mostrado no painel de execuções.
 - O servidor é iniciado com o mesmo carregador `tsx` do processo principal (os pacotes exportam TypeScript).
 

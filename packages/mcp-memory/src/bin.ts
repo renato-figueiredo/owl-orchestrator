@@ -1,6 +1,6 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { openDb, openReadonly } from '@owl/db';
-import { createMemoryServer } from './server.js';
+import { createMemoryServer, restrictWriter } from './server.js';
 
 /** Entry point started by the CLI: `OWL_DB`, `OWL_MEMORY_SESSION` and optionally `OWL_MEMORY_PROJECT` / `OWL_MEMORY_RUN`. */
 const file = process.env.OWL_DB;
@@ -11,6 +11,7 @@ if (!file || !sessionId) {
 }
 const read = openReadonly(file);
 const write = openDb(file);
+restrictWriter(write);
 const server = createMemoryServer({
   read,
   write,

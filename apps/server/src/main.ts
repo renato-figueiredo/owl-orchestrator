@@ -1,8 +1,7 @@
 import { mkdirSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { loadConfig } from '@owl/core';
+import { memoryServerLaunch } from '@owl/mcp-memory';
 import { createRepos, migrate, openDb } from '@owl/db';
 import { buildApp } from './app.js';
 import { BackupService } from './backup.js';
@@ -25,15 +24,12 @@ const backup = new BackupService({
   recipient: config.backupAgeRecipient,
   remote: config.backupRcloneRemote,
 });
-// The workspace packages export TypeScript, so the MCP server is started through the same tsx loader as this process.
-const mcpEntry = fileURLToPath(new URL('../../../packages/mcp-memory/src/bin.ts', import.meta.url));
 const app = buildApp({
   mcpMemory: {
     // absolute: the CLI runs in the project folder, not in ours
     dbFile: resolve(config.dataDir, 'owl.sqlite'),
     dir: resolve(config.dataDir, 'mcp'),
-    command: process.execPath,
-    args: [createRequire(import.meta.url).resolve('tsx/cli'), mcpEntry],
+    ...memoryServerLaunch(),
   },
   cleanup,
   backup,

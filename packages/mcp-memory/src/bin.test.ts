@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +8,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { createRepos, migrate, openDb } from '@owl/db';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildMcpConfig } from './config.js';
+import { memoryServerLaunch } from './launch.js';
 
 const BIN = fileURLToPath(new URL('./bin.ts', import.meta.url));
 const TSX = createRequire(import.meta.url).resolve('tsx/cli');
@@ -44,6 +45,35 @@ describe('memory MCP server over stdio (the way the CLI starts it)', () => {
     const client = new Client({ name: 'test', version: '0' });
     const transport = new StdioClientTransport({ command: process.execPath, args: [TSX, BIN], env: { PATH: process.env.PATH ?? '' } });
     await expect(client.connect(transport)).rejects.toThrow();
+  }, 30_000);
+});
+
+describe('start folder', () => {
+  it('a hostile tsconfig in the project folder cannot redirect what the server loads', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'owl-mcp-'));
+    const file = join(dir, 'owl.sqlite');
+    const db = openDb(file);
+    migrate(db);
+    const project = join(dir, 'project');
+    mkdirSync(project);
+    // Without the explicit --tsconfig, tsx would apply this `paths` and load the evil module instead of the real one.
+    writeFileSync(join(project, 'evil.ts'), `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(join(dir, 'PWNED'))}, 'x'); export const MEMORY_SERVER_NAME = 'evil';`);
+    writeFileSync(join(project, 'tsconfig.json'), JSON.stringify({ compilerOptions: { baseUrl: '.', paths: { '@owl/db': ['./evil.ts'], zod: ['./evil.ts'] } } }));
+    const repos = createRepos(db);
+    const p = repos.projects.create({ nome: 'P', pasta: project });
+    const s = repos.sessions.create({ projectId: p.id });
+    const launch = memoryServerLaunch();
+    const client = new Client({ name: 'test', version: '0' });
+    await client.connect(
+      new StdioClientTransport({ ...launch, cwd: project, env: { ...process.env, OWL_DB: file, OWL_MEMORY_SESSION: s.id, OWL_MEMORY_PROJECT: p.id } as Record<string, string> }),
+    );
+    try {
+      expect((await client.listTools()).tools).toHaveLength(4);
+    } finally {
+      await client.close();
+      db.close();
+    }
+    expect(readdirSync(dir)).not.toContain('PWNED');
   }, 30_000);
 });
 

@@ -76,7 +76,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 
 **Limpeza e hardening**
 - [ ] Memória por agente dentro do projeto (`facts.agent_id` já existe; falta usar no montador, na API e no MCP) e escopo global para conversas sem projeto (hoje o MCP dá a elas só a própria conversa).
-- [ ] Prompt 10: `qa-testes` e `revisor`; Codex não recebe as ferramentas de memória (sem `--mcp-config`; avaliar `codex mcp`); testar o servidor MCP com o `claude` real em CI não é viável (só fake).
+- [x] Prompt 10: `qa-testes` e `revisor` rodados; endurecimento feito (escritor `query_only`, `--tsconfig` fixo, resultados cercados como dado não confiável). Codex não recebe as ferramentas de memória (sem `--mcp-config`; avaliar `codex mcp`); testar o servidor MCP com o `claude` real em CI não é viável (só fake).
 - [ ] `RunPanel.onRetry` troca de provedor sem passar pelo aviso de troca (prompt 07, interface).
 - [ ] Apagar `references/` (clones de estudo, ~840 MB) ao terminar de consultar Plane e Vibe Kanban para o quadro (prompt 13).
 - [ ] Sandbox opcional de agentes em container (junto ao prompt 14).
