@@ -53,6 +53,10 @@ export function sessionsRepo(db: Db) {
     purge(id: string): void {
       db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
     },
+    /** Sets the title only while it is still empty (auto-title from the first message). */
+    setTitleIfEmpty(id: string, titulo: string): void {
+      db.prepare('UPDATE sessions SET titulo = ? WHERE id = ? AND titulo IS NULL').run(titulo, id);
+    },
     setCliSession(id: string, provider: string, cliSessionId: string): void {
       db.prepare('UPDATE sessions SET cli_provider = ?, cli_session_id = ? WHERE id = ?').run(
         provider,

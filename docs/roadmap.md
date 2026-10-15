@@ -7,7 +7,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [x] 02 Banco: conexão, migrações, schema (`build/prompts/02`)
 - [x] 03 Adaptadores `claude-cli` e `codex-cli` (Codex só texto, não verificado — ver architecture.md) (`build/prompts/03`)
 - [x] 04 Servidor Fastify + SSE + executor simples (`build/prompts/04`)
-- [ ] 05 Interface de chat com stream (`build/prompts/05`)
+- [x] 05 Interface de chat com stream (`build/prompts/05`)
 - [ ] 06 Pipeline "melhorar prompt" (`build/prompts/06`)
 - [ ] 07 Memória em camadas + resumo incremental (`build/prompts/07`)
 - [ ] 08 Anexos/prints (`build/prompts/08`)
@@ -34,7 +34,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Pacote de vídeo (ffmpeg, Remotion)
 
 ## Pendências (atualizado em 2026-10-14)
-**Próximo passo:** prompt 05 (interface de chat), que consome as rotas do prompt 04.
+**Próximo passo:** prompt 06 (melhorar prompt). Antes: rodar `qa-testes` e `revisor` no prompt 05.
 
 **Revisão**
 - [x] `qa-testes` e `revisor` nos prompts 02, 03 e 04 rodados em 2026-10-15; 3 bloqueantes corrigidos (NUL no adaptador, Host/Origin, raízes de pastas).
@@ -46,7 +46,9 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Conferir em Settings → Security se o relato privado de vulnerabilidades (`SECURITY.md`) está ativo.
 - [ ] Decidir sobre o nome do bot de dependências: manter Dependabot (personalizando prefixo/labels) ou migrar para Renovate com um GitHub App próprio.
 
-**Interface (prompt 05+)**
+**Interface**
+- [ ] Rodar `qa-testes` e `revisor` no prompt 05 (E2E: `pnpm --filter @owl/web test:e2e`; precisa de `pnpm exec playwright install chromium` uma vez).
+- [ ] Anexos/imagens na caixa de envio (prompt 08); "melhorar prompt" (prompt 06); lixeira/exclusão de conversas (prompt 09).
 - [ ] Mostrar o uso das LLMs por sessão (tokens e custo, somando os `runs`; só para provedores que informam), com parâmetros configuráveis (ex.: limites e alertas).
 
 **Adaptadores**

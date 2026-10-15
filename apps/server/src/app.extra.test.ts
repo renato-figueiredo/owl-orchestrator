@@ -59,7 +59,12 @@ const project = async (nome: string, instrucoes?: string) => {
 describe('REST routes', () => {
   it('GET /providers lists the registered adapters', async () => {
     const r = await json('GET', '/providers');
-    expect(r.body.providers).toEqual(expect.arrayContaining(['claude-cli', 'codex-cli']));
+    expect(r.body.providers).toEqual(
+      expect.arrayContaining([
+        { id: 'claude-cli', available: expect.any(Boolean) },
+        { id: 'codex-cli', available: expect.any(Boolean) },
+      ]),
+    );
   });
 
   it('POST /sessions returns 201 with the session; GET /sessions lists it; GET /sessions/:id returns detail', async () => {

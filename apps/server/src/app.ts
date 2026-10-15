@@ -100,7 +100,9 @@ export function buildApp(deps: AppDeps): FastifyInstance {
 
   app.get('/health', async () => ({ status: 'ok', name: 'owl' }));
 
-  app.get('/providers', async () => ({ providers: listAdapters().map((a) => a.id) }));
+  app.get('/providers', async () => ({
+    providers: await Promise.all(listAdapters().map(async (a) => ({ id: a.id, available: await a.isAvailable() }))),
+  }));
 
   app.post('/projects', async (req, reply) => {
     const body = createProject.parse(req.body);
@@ -151,6 +153,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     // Checked on every run, not only at creation: the folder may have been removed or replaced by a symlink since.
     const cwd = folder(project?.pasta ?? body.cwd ?? deps.defaultCwd ?? process.cwd());
 
+    repos.sessions.setTitleIfEmpty(id, body.texto.replace(/\s+/g, ' ').slice(0, 60));
     const systemAppend = project ? projectInstructions(project.configJson) : undefined;
     const run = executor.submit({
       sessionId: id,

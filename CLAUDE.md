@@ -56,7 +56,7 @@ scripts/             repo tooling
 | Roadmap | `docs/roadmap.md` |
 
 ## Commands (created in prompt 01)
-`pnpm dev` · `pnpm test` · `pnpm lint` · `pnpm typecheck`
+`pnpm dev` · `pnpm test` · `pnpm lint` · `pnpm typecheck` · `pnpm --filter @owl/web test:e2e` (E2E no navegador)
 
 ## Definition of done
 Tests pass, typecheck clean, acceptance criteria met, docs updated, roadmap item ticked.

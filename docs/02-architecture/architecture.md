@@ -130,3 +130,14 @@ O prompt melhorado aparece na interface e pode ser editado antes de seguir (opci
   A aprovação humana para sair das raízes entra com o quadro/portões (prompt 13).
 - **Adaptador nunca lança:** byte NUL em `systemAppend`/ferramentas vira `error`; `spawn` que lança (NUL no `cwd`) também.
 - **Acesso remoto (Tailscale):** exigirá permitir o nome do host Tailscale no guard; não é possível hoje por padrão (de propósito).
+
+## Decisões (prompt 05, interface)
+- **Tailwind v4** (`@tailwindcss/vite`) com tokens de tema em variáveis CSS (`--c-*`, paleta da marca) mapeados via `@theme inline`;
+  tema pelo atributo `data-theme` (segue o SO por padrão; só o nome do tema vai ao `localStorage`).
+- **Navegador só fala com a origem do Vite**: `/api/*` é proxy para o servidor, sem CORS. O guard de Host/Origin segue sem exceções.
+- **Stream**: `useRunStream` + `reduceStream` (puro, testado). `start` zera o estado, então a reconexão automática do `EventSource`
+  (que reenvia o histórico) não duplica texto. Terminal fecha a conexão. Run em andamento reconecta ao recarregar a página.
+- **Markdown sem HTML cru** (react-markdown): saída do modelo não injeta marcação; links abrem com `noopener`.
+- **Título da sessão** vem da primeira mensagem (servidor, `setTitleIfEmpty`). `GET /providers` devolve `{ id, available }`.
+- **Testes**: Vitest + Testing Library (jsdom, `EventSource`/`fetch` falsos) e Playwright (`apps/web/e2e`, servidor com CLI falsa em
+  `apps/server/e2e/server.ts`, portas 4318/5174 para não colidir com o dev).

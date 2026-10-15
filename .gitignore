@@ -17,3 +17,5 @@ backups/
 *.age
 coverage/
 *.tsbuildinfo
+test-results/
+playwright-report/

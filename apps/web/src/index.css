@@ -1,0 +1,103 @@
+@import 'tailwindcss';
+
+/* Dark mode follows the `data-theme` attribute (set by the theme toggle, defaulting to the OS preference). */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* Brand: night blue #1B1B3A, cream #F4F1EA, amber #F5B942. Tokens switch with the theme. */
+:root {
+  --c-bg: #f4f1ea;
+  --c-panel: #fbf9f4;
+  --c-raised: #ffffff;
+  --c-line: #ddd6c6;
+  --c-fg: #1b1b3a;
+  --c-muted: #5d5b78;
+  --c-accent: #b87d0b;
+  --c-accent-fg: #ffffff;
+  --c-user: #e9e3d3;
+  --c-danger: #b42318;
+  --c-ok: #1a7f4b;
+  color-scheme: light;
+}
+:root[data-theme='dark'] {
+  --c-bg: #12122a;
+  --c-panel: #1b1b3a;
+  --c-raised: #24244a;
+  --c-line: #34345e;
+  --c-fg: #f4f1ea;
+  --c-muted: #a9a7c4;
+  --c-accent: #f5b942;
+  --c-accent-fg: #1b1b3a;
+  --c-user: #2b2b55;
+  --c-danger: #ff8a80;
+  --c-ok: #5fd39a;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--c-bg);
+  --color-panel: var(--c-panel);
+  --color-raised: var(--c-raised);
+  --color-line: var(--c-line);
+  --color-fg: var(--c-fg);
+  --color-muted: var(--c-muted);
+  --color-accent: var(--c-accent);
+  --color-accent-fg: var(--c-accent-fg);
+  --color-user: var(--c-user);
+  --color-danger: var(--c-danger);
+  --color-ok: var(--c-ok);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  background: var(--c-bg);
+  color: var(--c-fg);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Blinking caret while text streams. Motion is only decoration here, so reduced-motion turns it off. */
+@keyframes owl-caret {
+  50% {
+    opacity: 0;
+  }
+}
+.owl-caret::after {
+  content: '▍';
+  margin-left: 1px;
+  color: var(--c-accent);
+  animation: owl-caret 1s steps(1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .owl-caret::after {
+    animation: none;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+}
+
+.owl-blink .owl-eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: owl-blink 5s infinite;
+}
+@keyframes owl-blink {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  95% {
+    transform: scaleY(0.08);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .owl-blink .owl-eyes {
+    animation: none;
+  }
+}
