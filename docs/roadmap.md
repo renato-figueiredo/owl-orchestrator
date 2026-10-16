@@ -37,6 +37,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 **Próximo passo:** finalização — 17 e 18 feitos e revisados; restam os pontos de atenção abaixo. 15 e 16 já revisados. Fase 1 concluída (prompt 11); 12, 13 e 14 revisados. O 08/09 foi revisado de novo em 2026-10-15 (a lista antiga do revisor se perdeu): 9 itens corrigidos, 1 aberto abaixo.
 
 **Revisão**
+- [ ] Itens menores das revisões do 07 e do 15 viraram tickets prontos em `docs/backlog-dogfood.md`, para o próprio OWL tratar já em teste (2026-10-16).
 - [ ] Prompt 16: ordenar/alertar por prazo e ciclo ativo automático (hoje só estimativa/prazo exibidos); revisar o bloqueio por relação no fluxo (`BoardFlow.run`) e o filtro do quadro.
 - [x] `qa-testes` e `revisor` nos prompts 02, 03 e 04 rodados em 2026-10-15; 3 bloqueantes corrigidos (NUL no adaptador, Host/Origin, raízes de pastas).
 - [x] Prompt 02 (banco), conferido em 2026-10-16: sem bloqueantes. Os 3 bloqueantes da revisão 02–04 (`1fbfba4`) ficaram em `apps/server` e `packages/core`; o QA do 02 só acrescentou `db.acceptance.test.ts`.
