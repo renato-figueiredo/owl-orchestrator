@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MEMORY_TOOLS_ALLOW, writeMcpConfig } from '@owl/mcp-memory';
@@ -307,4 +307,15 @@ export class MemoryService implements MemoryProvider, McpProvider {
     this.scratch ??= mkdtempSync(join(tmpdir(), 'owl-summarizer-'));
     return this.scratch;
   }
+}
+
+/** Run configs are removed when their run ends; a crash leaves them behind, so at startup (no run is active) they all go. */
+export function clearStaleMcpConfigs(dir: string): void {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const n of names) if (n.endsWith('.json')) rmSync(join(dir, n), { force: true });
 }

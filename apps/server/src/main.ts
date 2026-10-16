@@ -9,6 +9,7 @@ import { SessionAuth } from './auth.js';
 import { BackupService } from './backup.js';
 import { CleanupService } from './cleanup.js';
 import { Executor } from './executor.js';
+import { clearStaleMcpConfigs } from './memory.js';
 import { LocalModels } from './local-models.js';
 
 const config = loadConfig();
@@ -37,6 +38,7 @@ const auth = new SessionAuth();
 const ollama = listAdapters().find((a): a is OllamaAdapter => a.id === 'ollama' && 'listModels' in a);
 const localModels = ollama ? new LocalModels(ollama, process.env.OLLAMA_MODEL) : undefined;
 localModels?.start();
+clearStaleMcpConfigs(resolve(config.dataDir, 'mcp'));
 const app = buildApp({
   auth,
   ...(localModels ? { localModels } : {}),

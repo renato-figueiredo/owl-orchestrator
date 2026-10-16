@@ -163,7 +163,7 @@ export class AttachmentService {
     for (const ref of refs) {
       const blob = this.deps.repos.blobs.get(ref.hash);
       if (!blob) continue;
-      const label = ref.nome ? ` "${ref.nome}"` : '';
+      const label = labelOf(ref.nome);
       if (blob.descricao) {
         lines.push(describedLine(label, blob.descricao, blob.ocr));
         continue;
@@ -216,9 +216,15 @@ export class AttachmentService {
   }
 }
 
+/** The file name as a label inside `[...]` in the prompt: no quotes, brackets or control characters, so it cannot close the label or forge text. */
+export function labelOf(name: string | null | undefined): string {
+  const clean = (name ?? '').replace(/["[\]\p{Cc}\p{Cf}]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
+  return clean ? ` "${clean}"` : '';
+}
+
 /** An attachment of a message already in the history, as text. */
 export function historyLine(a: AttachmentInfo): string {
-  const label = a.nomeOriginal ? ` "${a.nomeOriginal}"` : '';
+  const label = labelOf(a.nomeOriginal);
   return a.descricao ? describedLine(label, a.descricao, a.ocr) : `[Imagem anexa${label}]`;
 }
 

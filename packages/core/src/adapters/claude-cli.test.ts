@@ -119,7 +119,7 @@ describe('buildClaudeArgs', () => {
     expect(() => buildClaudeArgs({ prompt: 'x', cwd: '/x', allowedTools: ['--bad'] })).toThrow();
     const args = buildClaudeArgs({ prompt: 'x', cwd: '/x', images: ['/data/a.png'] });
     expect(args).toContain('--add-dir=/data');
-    expect(args.slice(args.indexOf('--allowedTools'))).toEqual(['--allowedTools', 'Read']);
+    expect(args.slice(args.indexOf('--allowedTools'))).toEqual(['--allowedTools', 'Read(//data/**)']);
     expect(() => buildClaudeArgs({ prompt: 'x', cwd: '/x', images: ['relativo.png'] })).toThrow(/image path/);
     expect(() => buildClaudeArgs({ prompt: 'x', cwd: '/x', images: ['/a\n.png'] })).toThrow(/image path/);
   });

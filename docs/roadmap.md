@@ -22,8 +22,8 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [x] 15 Roteador e métricas (`build/prompts/15`) — implementado em 2026-10-15; `qa-testes` e `revisor` rodados em 2026-10-15; achados corrigidos (fim de mês em `/metrics`, delimitador do classificador, orçamento com execuções em andamento, configuração campo a campo, retrabalho independente do filtro, modelo validado no PUT). Roteamento implementado mas desligado por padrão (`roteamento: fixo`)
 - [x] 16 Quadro avançado: etiquetas, relações, ciclos, estimativa e prazo (`build/prompts/16-quadro-avancado.md`) — implementado em 2026-10-15; `qa-testes` e `revisor` pendentes, junto do 15. (A integração com o Linear real foi descartada: o quadro é próprio.)
 
-- [ ] 17 Motion e animações (`build/prompts/17-motion.md`)
-- [ ] 18 Adaptador Ollama (`build/prompts/18-ollama.md`)
+- [x] 17 Motion e animações (`build/prompts/17-motion.md`) — implementado (3eaab8b); `qa-testes` e `revisor` rodados, correções em affe944
+- [x] 18 Adaptador Ollama (`build/prompts/18-ollama.md`) — implementado, com keep-alive e fallback; testes e typecheck verdes em 2026-10-16
 
 ## Futuro
 - [x] Dev container (`.devcontainer/`, `docs/06-research/containers.md`)
@@ -34,7 +34,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Pacote de vídeo (ffmpeg, Remotion)
 
 ## Pendências (atualizado em 2026-10-14)
-**Próximo passo:** `qa-testes` + `revisor` do 17 (motion: `packages/ui` com `useMotionPreference`, `FadeIn`, `ListAnimated`, `Pulse`, `StreamCaret`; kanban com `layoutId` + dnd-kit; coruja piscando nos estados vazio/carregando), depois prompt 18. 15 e 16 já revisados. Fase 1 concluída (prompt 11); 12, 13 e 14 revisados. O 08/09 foi revisado de novo em 2026-10-15 (a lista antiga do revisor se perdeu): 9 itens corrigidos, 1 aberto abaixo.
+**Próximo passo:** finalização — 17 e 18 feitos e revisados; restam os pontos de atenção abaixo. 15 e 16 já revisados. Fase 1 concluída (prompt 11); 12, 13 e 14 revisados. O 08/09 foi revisado de novo em 2026-10-15 (a lista antiga do revisor se perdeu): 9 itens corrigidos, 1 aberto abaixo.
 
 **Revisão**
 - [ ] Prompt 16: ordenar/alertar por prazo e ciclo ativo automático (hoje só estimativa/prazo exibidos); revisar o bloqueio por relação no fluxo (`BoardFlow.run`) e o filtro do quadro.
@@ -61,11 +61,11 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Prompt 09: o E2E cobre anexo → lixeira → exclusão (`attachment-trash.spec.ts`); backup ainda só tem testes de API.
 
 **Revisão da fase 1 (prompt 11)** — corrigidos: runs presas em `rodando` após reinício (`runs.failInterrupted` no startup) e `approvals` (prompt editado, erro do refinador) que sobravam na exclusão definitiva. Abertos:
-- [ ] `--allowedTools Read` sem escopo quando há imagem (`claude-cli.ts`): trocar por `Read(//<pasta-da-imagem>/**)` e confirmar com o `claude` real que fora da pasta é negado.
-- [ ] Nome do anexo no rótulo do prompt: filtrar `"`, `[` e `]` (ou citar com JSON).
+- [x] `--allowedTools Read` agora vai como `Read(//<pasta-da-imagem>/**)`; confirmado com o `claude` real em 2026-10-16 (dentro da pasta lê, fora é negado).
+- [x] Nome do anexo no rótulo: `labelOf` remove `"`, `[`, `]`, controles e limita a 100 caracteres.
 - [x] Filho recebia o `process.env` inteiro: agora `childEnv` (lista permitida + `OWL_ENV_PASSTHROUGH`), testado com `claude` e `codex` reais no prompt 12.
 - [ ] Fatos fixados novos no caminho com resume entram fora de `orcamentoTokens`; histórico lido inteiro a cada run (usar `lastN` + resumo).
-- [ ] Limpar `data/mcp/*.json` que sobram após crash, no startup.
+- [x] `data/mcp/*.json` que sobram após crash são removidos no startup (`clearStaleMcpConfigs`).
 - [ ] Avaliar `purgaAutomatica` desligada por padrão ou aviso na primeira vez.
 - [ ] CLAUDE.md lista `packages/memory` como montador de contexto, mas o código está em `packages/core/src/memory`.
 

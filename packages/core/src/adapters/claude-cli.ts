@@ -43,6 +43,11 @@ export function scopeWriteTools(tools: readonly string[], cwd: string): string[]
   return [...new Set(out)];
 }
 
+/** `Read` limited to one folder (absolute path from the root: `//<dir>/**`), so an image never opens up the whole disk. */
+function readRule(dir: string): string {
+  return `Read(/${dir.replace(/\/+$/, '')}/**)`;
+}
+
 /**
  * Builds the argument vector for `claude`. The prompt is NOT part of it (it goes through stdin), so user
  * text can never be interpreted as a flag. Flags verified against `claude --help` (v2.1.x).
@@ -65,9 +70,10 @@ export function buildClaudeArgs(req: RunRequest, opts: Pick<ClaudeCliOptions, 'i
   if (req.noTools && images.length === 0) args.push('--tools', '');
   else {
     // Claude looks at an image by reading the file: allow the Read tool and the folders the images live in.
-    const tools = scopeWriteTools([...new Set([...(req.allowedTools ?? []), ...(images.length ? ['Read'] : [])])], req.cwd);
+    const dirs = [...new Set(images.map((p) => p.slice(0, p.lastIndexOf('/')) || '/'))];
+    const tools = scopeWriteTools([...new Set([...(req.allowedTools ?? []), ...dirs.map(readRule)])], req.cwd);
     for (const t of tools) assertSafeArg('allowed tool', t, SAFE_TOOL);
-    for (const dir of new Set(images.map((p) => p.slice(0, p.lastIndexOf('/')) || '/'))) args.push(`--add-dir=${dir}`);
+    for (const dir of dirs) args.push(`--add-dir=${dir}`);
     if (tools.length) args.push('--allowedTools', ...tools);
   }
   return args;
