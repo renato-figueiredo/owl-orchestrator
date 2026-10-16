@@ -9,6 +9,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from './app.js';
 import { Executor } from './executor.js';
+import { WorktreeService } from './worktrees.js';
 
 // Prompt 14: projects, teams, agent memory per project, git worktrees, tool limits, concurrency.
 
@@ -190,6 +191,40 @@ describe('equipes', () => {
 });
 
 describe('worktrees', () => {
+  it('no startup: prune de registros sem pasta e limpeza de pastas órfãs, sem perder trabalho pendente', async () => {
+    await start();
+    const p = await mkProject('Alfa');
+    const svc = new WorktreeService({ repos, dir: join(wt, 'trees') });
+    const project = repos.projects.get(p.id)!;
+    const mk = async (titulo: string) => {
+      const id = await mkTicket(p.id, titulo);
+      svc.ensure(repos.tickets.get(id)!, project);
+      return repos.tickets.get(id)!;
+    };
+    const kept = await mk('Ativo');
+    const orphan = await mk('Órfão');
+    const gone = await mk('Sumiu');
+    const stray = join(wt, 'trees', p.id, 'desconhecida');
+    writeFileSync(join(kept.worktree!, 'k.txt'), 'k');
+    writeFileSync(join(orphan.worktree!, 'pendente.txt'), 'trabalho pendente\n');
+    repos.tickets.setWorktree(orphan.id, { worktree: null, estado: 'removido' }); // the record lost track of the folder
+    rmSync(gone.worktree!, { recursive: true, force: true }); // folder removed behind git's back
+    execFileSync('git', ['worktree', 'add', '-q', '--detach', stray], { cwd: p.dir });
+    writeFileSync(join(stray, 'meu.txt'), 'não é do OWL'); // unknown folder with changes
+
+    const r = svc.reconcile();
+    expect(existsSync(kept.worktree!)).toBe(true);
+    expect(existsSync(join(kept.worktree!, 'k.txt'))).toBe(true);
+    expect(existsSync(orphan.worktree!)).toBe(false);
+    expect(git(p.dir, 'show', `${orphan.branch}:pendente.txt`)).toBe('trabalho pendente');
+    expect(existsSync(join(stray, 'meu.txt'))).toBe(true);
+    expect(r.removed).toHaveLength(1);
+    const listed = git(p.dir, 'worktree', 'list', '--porcelain');
+    expect(listed).not.toContain(gone.worktree!);
+    expect(listed).not.toContain(orphan.worktree!);
+    expect(listed).toContain(kept.worktree!);
+  });
+
   it('dois tickets em paralelo trabalham em worktrees distintos sem conflitar nos arquivos', async () => {
     await start({ concurrency: 2, projectConcurrency: 2 });
     const p = await mkProject('Alfa');

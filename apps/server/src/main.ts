@@ -11,6 +11,7 @@ import { CleanupService } from './cleanup.js';
 import { Executor } from './executor.js';
 import { clearStaleMcpConfigs } from './memory.js';
 import { LocalModels } from './local-models.js';
+import { WorktreeService } from './worktrees.js';
 
 const config = loadConfig();
 mkdirSync(config.dataDir, { recursive: true });
@@ -23,6 +24,13 @@ const repos = createRepos(db);
 repos.runs.failInterrupted(); // a run cannot outlive its server; left 'rodando' it would block deleting the conversation
 new LocalBoard(repos).recoverInterrupted(); // their tickets would sit in em_andamento with nothing running
 repos.approvals.expirePendingRunGates(); // pipeline pauses live in memory and do not survive a restart
+const worktreesDir = resolve(config.dataDir, 'worktrees');
+try {
+  const wt = new WorktreeService({ repos, dir: worktreesDir }).reconcile(); // leftovers of a crash: stale records and orphan folders
+  if (wt.removed.length) console.log('owl worktrees cleaned', wt.removed);
+} catch (e) {
+  console.error('owl worktree cleanup failed', e instanceof Error ? e.message : e);
+}
 const executor = new Executor({ repos, concurrency: config.concurrency, projectConcurrency: config.projectConcurrency });
 const attachmentsDir = join(config.dataDir, 'attachments');
 const cleanup = new CleanupService({ db, repos, dir: attachmentsDir, isBusy: (id) => executor.hasActive(id) });
@@ -56,7 +64,7 @@ const app = buildApp({
   workspaceRoots: config.workspaceRoots,
   allowedOrigins: config.allowedOrigins,
   attachmentsDir,
-  worktreesDir: resolve(config.dataDir, 'worktrees'),
+  worktreesDir,
   limits: { project: config.projectConcurrency, global: config.concurrency },
   maxAttachmentBytes: config.maxAttachmentBytes,
 });

@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { childEnv } from '@owl/core';
 import type { createRepos, Project, Ticket } from '@owl/db';
@@ -303,6 +303,69 @@ export class WorktreeService {
     this.git(root, ['branch', '-d', t.branch]); // safe delete: refuses if it were not merged
     this.repos.tickets.setWorktree(t.id, { worktree: null, estado: 'mesclado' });
     return { ok: true, resumo: `${t.branch} mesclada em ${base}` };
+  }
+
+  /**
+   * Startup housekeeping after a crash: `git worktree prune` in every project repository (drops records whose folder
+   * is gone) and removal of folders under our worktrees dir that no `ativo` ticket owns. A leftover folder of a ticket
+   * has its pending work committed onto the ticket branch first; a folder no ticket knows is removed only when its
+   * git status is clean, otherwise it is left alone and reported. Never throws.
+   */
+  reconcile(): { pruned: number; removed: string[]; kept: string[] } {
+    const report = { pruned: 0, removed: [] as string[], kept: [] as string[] };
+    let base: string;
+    try {
+      if (!existsSync(this.deps.dir)) return report;
+      base = realpathSync(this.deps.dir);
+    } catch {
+      return report;
+    }
+    for (const project of this.repos.projects.list()) {
+      const root = this.repoRoot(project.pasta);
+      if (root && this.git(root, ['worktree', 'prune']).ok) report.pruned++;
+      const projectDir = join(base, project.id);
+      let st;
+      try {
+        st = lstatSync(projectDir);
+      } catch {
+        continue;
+      }
+      if (st.isSymbolicLink() || !st.isDirectory()) continue;
+      const tickets = this.repos.tickets.list(project.id);
+      const owned = new Set(tickets.filter((t) => t.worktreeEstado === 'ativo' && t.worktree).map((t) => this.realOrSame(t.worktree!)));
+      for (const entry of readdirSync(projectDir, { withFileTypes: true })) {
+        const path = join(projectDir, entry.name);
+        if (!entry.isDirectory() || owned.has(this.realOrSame(path))) {
+          if (owned.has(this.realOrSame(path))) report.kept.push(path);
+          continue;
+        }
+        const owner = tickets.find((t) => this.folderOf(t) === join(this.deps.dir, project.id, entry.name) || this.folderOf(t) === path);
+        try {
+          if (root && owner && this.isOurWorktree(path, root, owner.branch)) {
+            this.commitAll({ ...owner, worktree: path, worktreeEstado: 'ativo' }, `${owner.identificador}: ${owner.titulo}`, project);
+          } else if (root && this.git(path, ['status', '--porcelain']).out) {
+            report.kept.push(path); // unknown folder with changes: not ours to throw away
+            continue;
+          }
+          const rm = root ? this.git(root, ['worktree', 'remove', '--force', path]) : undefined;
+          if (!rm?.ok) rmSync(path, { recursive: true, force: true });
+          if (root) this.git(root, ['worktree', 'prune']);
+          if (owner && owner.worktreeEstado === 'ativo') this.repos.tickets.setWorktree(owner.id, { worktree: null, estado: 'removido' });
+          report.removed.push(path);
+        } catch {
+          report.kept.push(path);
+        }
+      }
+    }
+    return report;
+  }
+
+  private realOrSame(path: string): string {
+    try {
+      return realpathSync(path);
+    } catch {
+      return resolve(path);
+    }
   }
 
   /** Throws the worktree and the branch away (cancelling the ticket's work). Only called after a person approved. */
