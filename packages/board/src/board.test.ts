@@ -61,6 +61,18 @@ describe('tickets', () => {
     board.updateStatus(b.id, 'concluido', dev);
     expect(board.getTicket(parent.id)!.status).toBe('concluido');
   });
+
+  it('opens the delivery gate instead of closing a parent that asks for approval', () => {
+    const { board, repos, make } = setup();
+    const parent = make({ status: 'em_andamento', requerAprovacao: true });
+    const a = make({ parentId: parent.id, status: 'em_revisao' });
+    board.updateStatus(a.id, 'concluido', dev);
+    expect(board.getTicket(parent.id)!.status).toBe('aguardando_aprovacao');
+    const gate = repos.approvals.pendingByTicket(parent.id)[0];
+    expect(gate?.tipo).toBe('entrega');
+    board.decide(gate!.id, 'aprovado', undefined);
+    expect(board.getTicket(parent.id)!.status).toBe('concluido');
+  });
 });
 
 describe('states', () => {

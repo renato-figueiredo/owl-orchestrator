@@ -119,6 +119,19 @@ describe('board', () => {
     await waitFor(() => expect(calls.find((c) => c.path === '/approvals/a1/decide')?.body).toEqual({ decisao: 'aprovado' }));
   });
 
+  it('a "reprovacao" gate says the author redoes it either way', async () => {
+    data.aprovacoes = [{ id: 'a1', ticketId: '2', motivo: 'Revisor reprovou', tipo: 'reprovacao', status: 'pendente', comentario: null, criadoEm: null, ticketIdentificador: 'OWL-2', ticketTitulo: 'Ticket 2' }];
+    const user = userEvent.setup();
+    open();
+    const queue = await screen.findByRole('region', { name: 'Fila de aprovações' });
+    expect(within(queue).queryByRole('button', { name: 'Aprovar' })).toBeNull();
+    expect(within(queue).queryByRole('button', { name: 'Rejeitar' })).toBeNull();
+    expect(queue).toHaveTextContent('Nos dois casos o autor refaz');
+    expect(within(queue).getByRole('button', { name: 'Refazer do meu jeito' })).toBeDisabled();
+    await user.click(within(queue).getByRole('button', { name: 'Confirmar e refazer' }));
+    await waitFor(() => expect(calls.find((c) => c.path === '/approvals/a1/decide')?.body).toEqual({ decisao: 'aprovado' }));
+  });
+
   it('creates a ticket and starts a goal', async () => {
     const user = userEvent.setup();
     open();

@@ -190,7 +190,7 @@ describe('quadro avancado: lacunas (QA)', () => {
     // cria projeto + ticket com o esquema antigo (sem colunas novas)
     const project = repos0.projects.create({ nome: 'Velho', pasta: '/tmp/v' });
     db.prepare("INSERT INTO tickets (id, project_id, titulo, status, numero) VALUES ('t-old', ?, 'antigo', 'backlog', 1)").run(project.id);
-    expect(migrate(db)).toEqual(['0011_quadro_avancado.sql']);
+    expect(migrate(db)).toEqual(['0011_quadro_avancado.sql', '0012_backfill_numero.sql']);
     const row = db.prepare("SELECT titulo, estimativa, prazo, cycle_id FROM tickets WHERE id='t-old'").get();
     expect(row).toEqual({ titulo: 'antigo', estimativa: null, prazo: null, cycle_id: null });
     const board = new LocalBoard(createRepos(db));

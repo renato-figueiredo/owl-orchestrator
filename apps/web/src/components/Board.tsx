@@ -351,12 +351,13 @@ function Gate({ approval: a, busy, onDecide, onOpen }: { approval: TicketApprova
       </label>
       <div className="mt-2 flex gap-2">
         <button type="button" disabled={busy} onClick={() => void onDecide('aprovado', text.trim() || undefined).then(() => setText(''))} className="rounded bg-ok px-3 py-1 font-medium text-accent-fg disabled:opacity-50">
-          Aprovar
+          {a.tipo === 'reprovacao' ? 'Confirmar e refazer' : 'Aprovar'}
         </button>
         <button type="button" disabled={busy || !text.trim()} onClick={() => void onDecide('rejeitado', text.trim()).then(() => setText(''))} className="rounded border border-danger px-3 py-1 text-danger disabled:opacity-50">
-          Rejeitar
+          {a.tipo === 'reprovacao' ? 'Refazer do meu jeito' : 'Rejeitar'}
         </button>
       </div>
+      {a.tipo === 'reprovacao' && <p className="mt-1 text-xs text-muted">Nos dois casos o autor refaz; o comentário (obrigatório no segundo) vira a instrução.</p>}
     </Pulse>
   );
 }

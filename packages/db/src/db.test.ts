@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -56,9 +56,9 @@ describe('connection', () => {
 describe('migrate', () => {
   it('applies from scratch and is idempotent', () => {
     const db = fresh();
-    expect(migrate(db)).toEqual(['0001_initial.sql', '0002_settings.sql', '0003_runs_sem_estado.sql', '0004_blobs_visto_em.sql', '0005_runs_memoria_chamadas.sql', '0006_facts_sessao.sql', '0007_agents_origem.sql', '0008_board.sql', '0009_projetos_equipes_worktrees.sql', '0010_roteador_metricas.sql', '0011_quadro_avancado.sql']);
+    expect(migrate(db)).toEqual(['0001_initial.sql', '0002_settings.sql', '0003_runs_sem_estado.sql', '0004_blobs_visto_em.sql', '0005_runs_memoria_chamadas.sql', '0006_facts_sessao.sql', '0007_agents_origem.sql', '0008_board.sql', '0009_projetos_equipes_worktrees.sql', '0010_roteador_metricas.sql', '0011_quadro_avancado.sql', '0012_backfill_numero.sql']);
     expect(migrate(db)).toEqual([]);
-    expect(count(db, 'schema_migrations')).toBe(11);
+    expect(count(db, 'schema_migrations')).toBe(12);
     for (const t of ['projects', 'agents', 'teams', 'sessions', 'tickets', 'runs', 'messages', 'blobs', 'approvals']) {
       expect(count(db, t)).toBe(0);
     }
@@ -249,5 +249,25 @@ describe('repositories', () => {
   it('enforces foreign keys', () => {
     const { r } = setup();
     expect(() => r.messages.add({ sessionId: 'nope', papel: 'usuario', conteudo: 'x' })).toThrow(/FOREIGN KEY/);
+  });
+});
+
+describe('0012_backfill_numero', () => {
+  it('numbers tickets that had no number, per project, after the highest one', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'owl-mig-'));
+    dirs.push(dir);
+    const db = fresh();
+    const real = join(__dirname, '..', 'migrations');
+    for (const f of readdirSync(real).filter((f) => f < '0012')) copyFileSync(join(real, f), join(dir, f));
+    migrate(db, dir);
+    db.prepare("INSERT INTO projects (id, nome, pasta) VALUES ('p1','A','/a'), ('p2','B','/b')").run();
+    const ins = db.prepare("INSERT INTO tickets (id, project_id, titulo, numero) VALUES (?, ?, 't', ?)");
+    ins.run('t1', 'p1', 1);
+    ins.run('t2', 'p1', null);
+    ins.run('t3', 'p1', null);
+    ins.run('t4', 'p2', null);
+    expect(migrate(db)).toEqual(['0012_backfill_numero.sql']);
+    const n = (id: string) => (db.prepare('SELECT numero FROM tickets WHERE id = ?').get(id) as { numero: number }).numero;
+    expect([n('t1'), n('t2'), n('t3'), n('t4')]).toEqual([1, 2, 3, 1]);
   });
 });

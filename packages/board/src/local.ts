@@ -377,7 +377,7 @@ export class LocalBoard implements BoardProvider {
     for (const g of this.repos.approvals.pendingByTicket(ticketId)) if (!g.retomar?.acao) this.repos.approvals.decide(g.id, 'rejeitado', why);
   }
 
-  /** When the last sub-task closes, the parent closes with it (the goal is met; no approval of its own). */
+  /** When the last sub-task closes, the parent closes with it, unless it asks for approval: then its delivery gate opens. */
   private closeParentIfDone(id: string): void {
     const t = this.need(id);
     if (!t.parentId) return;
@@ -385,6 +385,13 @@ export class LocalBoard implements BoardProvider {
     if (siblings.length === 0 || siblings.some((s) => s.status !== 'concluido')) return;
     const parent = this.need(t.parentId);
     if (parent.status === 'concluido') return;
+    if (parent.requerAprovacao) {
+      if (parent.status !== 'aguardando_aprovacao') {
+        this.comment(parent.id, SYSTEM, 'Todas as subtarefas foram concluídas; falta a aprovação da entrega.');
+        this.requestGate(parent.id, { tipo: 'entrega', motivo: GATE_LABEL.entrega }, SYSTEM);
+      }
+      return;
+    }
     this.move(parent, 'concluido', SYSTEM);
     this.comment(parent.id, SYSTEM, 'Todas as subtarefas foram concluídas.');
     this.closeParentIfDone(parent.id);
