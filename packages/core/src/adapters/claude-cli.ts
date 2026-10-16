@@ -43,6 +43,26 @@ export function scopeWriteTools(tools: readonly string[], cwd: string): string[]
   return [...new Set(out)];
 }
 
+/**
+ * Same mold for reading: a bare `Read` opens the whole disk (the CLI applies `Read` rules to Grep and Glob too), so for
+ * runs that ask for it every bare `Read` becomes `Read(//<cwd>/**)`, for the folder as given and its real path. A rule
+ * the agent already scoped keeps its own path.
+ */
+export function scopeReadTools(tools: readonly string[], cwd: string): string[] {
+  const roots = new Set([cwd]);
+  try {
+    roots.add(realpathSync(cwd));
+  } catch {
+    // a folder that does not exist yet: the CLI will fail on it by itself
+  }
+  const out: string[] = [];
+  for (const tool of tools) {
+    if (tool.trim() === 'Read') for (const root of roots) out.push(readRule(root));
+    else out.push(tool);
+  }
+  return [...new Set(out)];
+}
+
 /** `Read` limited to one folder (absolute path from the root: `//<dir>/**`), so an image never opens up the whole disk. */
 function readRule(dir: string): string {
   return `Read(/${dir.replace(/\/+$/, '')}/**)`;
@@ -71,7 +91,8 @@ export function buildClaudeArgs(req: RunRequest, opts: Pick<ClaudeCliOptions, 'i
   else {
     // Claude looks at an image by reading the file: allow the Read tool and the folders the images live in.
     const dirs = [...new Set(images.map((p) => p.slice(0, p.lastIndexOf('/')) || '/'))];
-    const tools = scopeWriteTools([...new Set([...(req.allowedTools ?? []), ...dirs.map(readRule)])], req.cwd);
+    const given = req.confineReads ? scopeReadTools(req.allowedTools ?? [], req.cwd) : (req.allowedTools ?? []);
+    const tools = scopeWriteTools([...new Set([...given, ...dirs.map(readRule)])], req.cwd);
     for (const t of tools) assertSafeArg('allowed tool', t, SAFE_TOOL);
     for (const dir of dirs) args.push(`--add-dir=${dir}`);
     if (tools.length) args.push('--allowedTools', ...tools);

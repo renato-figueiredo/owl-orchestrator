@@ -55,6 +55,8 @@ export interface SubmitInput {
   fallback?: { provider: string; model?: string | undefined; onUsed?: () => void };
   /** Run with no tools at all (the summarizer reads untrusted text and needs none). */
   noTools?: boolean;
+  /** Confine `Read` to the run's working folder (board agents work in a worktree and must not read outside it). */
+  confineReads?: boolean;
   /** Tools pre-approved for this run (agent `ferramentas`); empty or absent leaves the adapter's default. */
   allowedTools?: string[];
   /** Library agent this run executes (`agents.id`), stored in `runs.agent_id`. */
@@ -319,6 +321,7 @@ export class Executor {
           ...(allowedTools.length ? { allowedTools } : {}),
           ...(mcp ? { mcpConfigPath: mcp.configPath } : {}),
           ...(input.noTools ? { noTools: true } : {}),
+          ...(input.confineReads ? { confineReads: true } : {}),
           ...(images.length ? { images } : {}),
           // A run on a ticket is background work (nobody is waiting on this screen); a chat message or a refinement is interactive.
           ...(input.provider === 'ollama' ? { keepAlive: keepAliveFor(this.safeMemoria(), Boolean(input.ticketId)) } : {}),

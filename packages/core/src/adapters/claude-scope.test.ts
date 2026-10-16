@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { buildClaudeArgs, scopeWriteTools } from './claude-cli.js';
+import { buildClaudeArgs, scopeReadTools, scopeWriteTools } from './claude-cli.js';
 
 let dir: string;
 beforeEach(() => {
@@ -39,5 +39,18 @@ describe('scopeWriteTools', () => {
     const tools = args.slice(args.indexOf('--allowedTools') + 1);
     expect(tools).toEqual(['Edit(/' + dir + '/**)', 'Read'].sort((a, b) => tools.indexOf(a) - tools.indexOf(b)));
     expect(tools).not.toContain('Edit');
+  });
+});
+
+describe('scopeReadTools', () => {
+  it('turns a bare Read into a rule confined to the working folder and leaves the rest alone', () => {
+    expect(scopeReadTools(['Read', 'Grep', 'Read(//x/**)', 'Bash(pnpm test:*)'], dir)).toEqual([`Read(/${dir}/**)`, 'Grep', 'Read(//x/**)', 'Bash(pnpm test:*)']);
+  });
+
+  it('only applies when the run asks for it', () => {
+    const on = buildClaudeArgs({ prompt: 'p', cwd: dir, allowedTools: ['Read'], confineReads: true });
+    expect(on.slice(on.indexOf('--allowedTools') + 1)).toContain(`Read(/${dir}/**)`);
+    const off = buildClaudeArgs({ prompt: 'p', cwd: dir, allowedTools: ['Read'] });
+    expect(off.slice(off.indexOf('--allowedTools') + 1)).toEqual(['Read']);
   });
 });

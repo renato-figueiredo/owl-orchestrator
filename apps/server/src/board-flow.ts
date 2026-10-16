@@ -287,6 +287,7 @@ export class BoardFlow {
       storeAs: false,
       ...(def.ferramentas.length ? { allowedTools: def.ferramentas } : {}),
       noTools: def.ferramentas.length === 0,
+      confineReads: true,
       after: (outcome) => this.afterRun(ticketId, agente, role, expected, outcome, tools.writes),
     });
   }
