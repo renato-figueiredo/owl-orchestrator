@@ -192,4 +192,15 @@ describe('what an agent sees', () => {
     expect(brief).toContain('comentário 19');
     expect(brief).not.toContain('comentário 0\n');
   });
+
+  it('caps the description, the criteria and the comments on their own', () => {
+    const { board, make } = setup();
+    const t = make({ titulo: 'Grande', descricao: 'd'.repeat(50_000), criteriosAceite: 'c'.repeat(50_000) });
+    for (let i = 0; i < 12; i++) board.comment(t.id, HUMAN, `${i}-${'x'.repeat(1990)}`);
+    const d = board.detail(t.id);
+    const brief = ticketBrief({ ticket: d.ticket, comments: d.comments, tarefa: 'faça' });
+    expect(brief.length).toBeLessThan(6000 + 3000 + 8000 + 2500);
+    expect(brief).toContain('11-xxx');
+    expect(brief).not.toContain('\n> 0-xxx');
+  });
 });

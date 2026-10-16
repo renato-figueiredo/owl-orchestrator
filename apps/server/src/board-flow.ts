@@ -57,9 +57,13 @@ export function extractJson(text: string): unknown {
   return undefined;
 }
 
-/** "VEREDITO: aprovado|reprovado" (any case, accents optional). Undefined when the agent did not say. */
+/**
+ * "VEREDITO: aprovado|reprovado" (any case, accents optional) on the LAST non-empty line, so a quoted or discussed
+ * verdict earlier in the text does not count. Undefined when the agent did not say.
+ */
 export function parseVerdict(text: string): 'aprovado' | 'reprovado' | undefined {
-  const m = [...text.matchAll(/veredito\s*[:\-]\s*\**\s*(aprovad[oa]|reprovad[oa])/gi)].pop();
+  const last = text.split('\n').map((l) => l.trim()).filter(Boolean).pop() ?? '';
+  const m = last.match(/^[\s>#*_-]*veredito\s*[:-]\s*[*_]*\s*(aprovad[oa]|reprovad[oa])/i);
   if (!m?.[1]) return undefined;
   return m[1].toLowerCase().startsWith('aprov') ? 'aprovado' : 'reprovado';
 }

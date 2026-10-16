@@ -300,6 +300,9 @@ describe('parsers', () => {
     expect(parseVerdict('ok\nVEREDITO: aprovado')).toBe('aprovado');
     expect(parseVerdict('**Veredito:** Reprovado — falta teste')).toBe('reprovado');
     expect(parseVerdict('talvez')).toBeUndefined();
+    expect(parseVerdict('VEREDITO: aprovado\nna verdade falta teste')).toBeUndefined();
+    expect(parseVerdict('Se eu dissesse veredito: aprovado, mentiria')).toBeUndefined();
+    expect(parseVerdict('ok\n\n> **VEREDITO:** aprovado\n\n')).toBe('aprovado');
   });
   it('parseMemoryOutput', () => {
     expect(parseMemoryOutput('1. Resumo\nFeito.\n\n2. Fatos\n- A\n- B')).toEqual({ resumo: 'Feito.', fatos: ['A', 'B'] });
