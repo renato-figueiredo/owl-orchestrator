@@ -26,6 +26,21 @@ NVIDIA users: use the default image with the NVIDIA container toolkit. Always pu
 - Without Ollama the adapter reports `available: false` and everything else works unchanged.
 - Router: with `localPequeno.ativo` (default off: opt-in) the tier `pequeno` goes to Ollama when the last check (startup, every 30 s, and when the settings screen opens) found it up with a model, **only for steps without tools** (the classifier, tool-less agents). Steps with tools keep the tier's configured provider. The model is the one chosen in the settings if installed, else `OLLAMA_MODEL`, else the first installed. If Ollama dies between checks, or the step fails before any text (images attached, unreachable), the executor marks the local model down, reruns the step on the tier's configured provider and records it (system message, run provider). Requests never follow redirects, a reply is capped (4 MiB of text) and a server silent for 120 s is cut. Local runs still count in the daily token budget (see the roadmap).
 
+## Using Ollama for the prompt refiner
+
+The bundled `refinador-de-prompt` still defaults to Codex (with Haiku as the alternative), so OWL works without Ollama. To refine locally, copy it to your library (`~/.owl/agents/refinador-de-prompt.md`, which wins over the bundled one) and change the header:
+
+```yaml
+provedor: ollama
+modelo: gemma4:e4b
+fallback:
+  - provedor: claude-cli
+    modelo: haiku
+  - provedor: codex-cli
+```
+
+If Ollama is down the step fails and the interface offers the `fallback` providers; OWL never switches provider silently. In our small test `gemma4:e4b` answered in about a second and followed the refiner's rules (see the measurements below).
+
 ## GPU memory: keep-alive modes
 
 A loaded model keeps its VRAM until Ollama's keep-alive expires. OWL sends `keep_alive` on every local run, chosen by the setting "Memória da placa de vídeo" (router settings, `localPequeno.memoria`):
