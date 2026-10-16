@@ -140,7 +140,7 @@ export function createOllamaAdapter(opts: OllamaOptions = {}): OllamaAdapter {
       return;
     }
 
-    if (req.keepAlive !== undefined && !(typeof req.keepAlive === 'number' ? Number.isInteger(req.keepAlive) && req.keepAlive >= 0 : KEEP_ALIVE.test(req.keepAlive))) {
+    if (req.keepAlive !== undefined && !(typeof req.keepAlive === 'number' ? Number.isInteger(req.keepAlive) && req.keepAlive >= 0 && req.keepAlive <= 999_999 : KEEP_ALIVE.test(req.keepAlive))) {
       yield { type: 'error', message: `ollama: invalid keepAlive ${JSON.stringify(req.keepAlive)}` };
       return;
     }

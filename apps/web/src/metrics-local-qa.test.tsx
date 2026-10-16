@@ -63,4 +63,28 @@ describe('MetricsPanel local model (QA)', () => {
     await screen.findByText('Roteador salvo.');
     expect(puts[0]!.localPequeno).toEqual({ ativo: true, memoria: 'auto' });
   });
+  it('shows the saved memory mode, defaults to auto when absent, and sends the chosen one', async () => {
+    const puts: Array<Record<string, any>> = []; // eslint-disable-line @typescript-eslint/no-explicit-any
+    stub({ disponivel: true, modelos: ['a:1'] }, puts);
+    open();
+    const form = await screen.findByRole('form', { name: 'Roteador' });
+    const sel = within(form).getByLabelText(/Memória da placa de vídeo/);
+    expect(sel).toHaveValue('auto'); // the stored config has no `memoria`
+    await userEvent.selectOptions(sel, 'economico');
+    await userEvent.click(within(form).getByRole('button', { name: 'Salvar roteador' }));
+    await screen.findByText('Roteador salvo.');
+    expect(puts[0]!.localPequeno).toEqual({ ativo: true, modelo: 'gemma4:e2b', memoria: 'economico' });
+    expect(Array.from(sel.querySelectorAll('option')).map((o) => (o as HTMLOptionElement).value)).toEqual(['auto', 'rapido', 'economico']);
+  });
+  it('a saved mode reappears in the select', async () => {
+    router.localPequeno = { ativo: true, modelo: 'gemma4:e2b', memoria: 'rapido' } as typeof router.localPequeno;
+    try {
+      stub({ disponivel: true, modelos: [] });
+      open();
+      const form = await screen.findByRole('form', { name: 'Roteador' });
+      expect(within(form).getByLabelText(/Memória da placa de vídeo/)).toHaveValue('rapido');
+    } finally {
+      router.localPequeno = { ativo: true, modelo: 'gemma4:e2b' };
+    }
+  });
 });

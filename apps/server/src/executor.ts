@@ -355,8 +355,9 @@ export class Executor {
         });
         terminal = undefined;
         tokensIn = tokensOut = cost = undefined;
-        const again: typeof request & { model?: string } = { ...request }; // the local model's name means nothing to the other provider
+        const again: typeof request & { model?: string; keepAlive?: string | number } = { ...request }; // the local model's name and keep-alive mean nothing to the other provider
         delete again.model;
+        delete again.keepAlive;
         if (fb.model) again.model = fb.model;
         await consume(this.resolveAdapter(fb.provider).run(again, entry.controller.signal));
       }

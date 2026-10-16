@@ -81,6 +81,28 @@ describe('ollama adapter', () => {
     expect(bodies).toHaveLength(3);
   });
 
+  it('keepAlive boundaries: regex limits, zero, negatives, NaN and non-finite numbers', async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const url = await fake((_q, res, body) => {
+      bodies.push(JSON.parse(body));
+      res.end(lines({ message: { content: 'ok' }, done: true }));
+    });
+    const ad = createOllamaAdapter({ baseUrl: url });
+    const sig = new AbortController().signal;
+    const good = ['0s', '0m', '999999h', '1ms', '60s', '5m', '1h', 0, 1, 3600];
+    for (const g of good) {
+      const ev = await collect(ad.run({ ...req, keepAlive: g }, sig));
+      expect(ev.at(-1), String(g)).not.toMatchObject({ type: 'error' });
+    }
+    expect(bodies.map((b) => b.keep_alive)).toEqual(good);
+    const bad = ['', '0', '5', '1000000s', '-5m', '+5m', '1.5m', '5M', '5d', '5 m', 'm', ' 5m', '5m\n', 5.5, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, null, true, {}] as unknown[];
+    for (const b of bad) {
+      const ev = await collect(ad.run({ ...req, keepAlive: b as never }, sig));
+      expect(ev.at(-1), JSON.stringify(b) + String(b)).toMatchObject({ type: 'error', message: expect.stringContaining('keepAlive') });
+    }
+    expect(bodies).toHaveLength(good.length);
+  });
+
   it('does not show the reasoning text', async () => {
     const url = await fake((_q, res) => {
       res.end(lines({ message: { content: '', thinking: 'hmm' }, done: false }, { message: { content: 'ok' }, done: true }));

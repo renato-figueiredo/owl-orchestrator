@@ -53,7 +53,8 @@ export class RouterService {
         medio: pick(tierTargetSchema, tiers.medio, DEFAULT_ROUTER.tiers.medio),
         forte: pick(tierTargetSchema, tiers.forte, DEFAULT_ROUTER.tiers.forte),
       },
-      localPequeno: pick(localPequenoSchema, s.localPequeno, DEFAULT_ROUTER.localPequeno),
+      // A bad `memoria` only loses itself: the switch and the chosen model stay.
+      localPequeno: pick(localPequenoSchema, s.localPequeno, pick(localPequenoSchema, { ...(s.localPequeno as object | undefined), memoria: undefined }, DEFAULT_ROUTER.localPequeno)),
       limiarConfianca: pick(routerConfigSchema.shape.limiarConfianca, s.limiarConfianca, DEFAULT_ROUTER.limiarConfianca),
       orcamentoDiaTokens: 'orcamentoDiaTokens' in s ? pick(routerConfigSchema.shape.orcamentoDiaTokens, s.orcamentoDiaTokens, DEFAULT_ROUTER.orcamentoDiaTokens) : DEFAULT_ROUTER.orcamentoDiaTokens,
     };
