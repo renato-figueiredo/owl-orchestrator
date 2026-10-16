@@ -46,6 +46,20 @@ describe('ollama adapter', () => {
     expect(sent.messages).toEqual([{ role: 'system', content: 'seja breve' }, { role: 'user', content: 'oi' }]);
   });
 
+  it('sends options.use_mmap=false only when asked, and nothing by default', async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const url = await fake((_q, res, body) => {
+      bodies.push(JSON.parse(body));
+      res.end(lines({ message: { content: 'ok' }, done: true }));
+    });
+    await collect(createOllamaAdapter({ baseUrl: url }).run(req, new AbortController().signal));
+    await collect(createOllamaAdapter({ baseUrl: url, useMmap: false }).run(req, new AbortController().signal));
+    await collect(createOllamaAdapter({ baseUrl: url, useMmap: true }).run(req, new AbortController().signal));
+    expect(bodies[0]).not.toHaveProperty('options');
+    expect(bodies[1]).toMatchObject({ options: { use_mmap: false } });
+    expect(bodies[2]).not.toHaveProperty('options');
+  });
+
   it('does not show the reasoning text', async () => {
     const url = await fake((_q, res) => {
       res.end(lines({ message: { content: '', thinking: 'hmm' }, done: false }, { message: { content: 'ok' }, done: true }));

@@ -30,6 +30,7 @@ try {
     createOllamaAdapter({
       ...(process.env.OLLAMA_MODEL ? { defaultModel: process.env.OLLAMA_MODEL } : {}),
       allowRemote: process.env.OWL_OLLAMA_ALLOW_REMOTE === '1',
+      ...(process.env.OLLAMA_USE_MMAP === '0' ? { useMmap: false } : {}),
     }),
   );
 } catch (e) {

@@ -14,6 +14,11 @@ export interface OllamaOptions {
    * does not need it, so it is off unless the caller asks.
    */
   think?: boolean;
+  /**
+   * Memory-map the model file (the server default when unset). Set `false` for a model that does not fit the GPU:
+   * measured with a 18 GB model on 16 GB of VRAM, mmap made prompt processing crawl (~3 tok/s) and requests hang.
+   */
+  useMmap?: boolean;
   /** Accept a non-loopback server. Off by default: prompts and project text would leave the machine. */
   allowRemote?: boolean;
   /** Milliseconds to wait for the server to answer a probe (default 1500). */
@@ -86,6 +91,7 @@ export function createOllamaAdapter(opts: OllamaOptions = {}): OllamaAdapter {
   const doFetch = opts.fetch ?? fetch;
   const probeTimeout = opts.probeTimeoutMs ?? 1500;
   const think = opts.think ?? false;
+  const modelOptions = opts.useMmap === false ? { options: { use_mmap: false } } : {};
   const idleTimeout = opts.idleTimeoutMs ?? 120_000;
   const maxChars = opts.maxReplyChars ?? 4 * 1024 * 1024;
 
@@ -142,7 +148,7 @@ export function createOllamaAdapter(opts: OllamaOptions = {}): OllamaAdapter {
       doFetch(`${baseUrl}/api/chat`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ model, messages, stream: true, ...(withThink ? { think } : {}) }),
+        body: JSON.stringify({ model, messages, stream: true, ...modelOptions, ...(withThink ? { think } : {}) }),
         redirect: 'error',
         signal: ctl.signal,
       });
