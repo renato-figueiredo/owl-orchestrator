@@ -26,6 +26,14 @@ NVIDIA users: use the default image with the NVIDIA container toolkit. Always pu
 - Without Ollama the adapter reports `available: false` and everything else works unchanged.
 - Router: with `localPequeno.ativo` (default off: opt-in) the tier `pequeno` goes to Ollama when the last check (startup, every 30 s, and when the settings screen opens) found it up with a model, **only for steps without tools** (the classifier, tool-less agents). Steps with tools keep the tier's configured provider. The model is the one chosen in the settings if installed, else `OLLAMA_MODEL`, else the first installed. If Ollama dies between checks, or the step fails before any text (images attached, unreachable), the executor marks the local model down, reruns the step on the tier's configured provider and records it (system message, run provider). Requests never follow redirects, a reply is capped (4 MiB of text) and a server silent for 120 s is cut. Local runs still count in the daily token budget (see the roadmap).
 
+## GPU memory: keep-alive modes
+
+A loaded model keeps its VRAM until Ollama's keep-alive expires. OWL sends `keep_alive` on every local run, chosen by the setting "Memória da placa de vídeo" (router settings, `localPequeno.memoria`):
+
+- `auto` (default): `5m` when a person waits (chat message, prompt refinement), `60s` for work on a board ticket (long enough to hand over to the next step, then the memory is given back).
+- `rapido`: always `5m`.
+- `economico`: `0`, the model is unloaded right after each run (every call pays the load time, a few seconds for the small models).
+
 ## Measured notes on local models (2026-10-15)
 
 One 16 GB-VRAM AMD GPU, 32 GB RAM, `think:false`, the example refiner and router agents (`examples/agents`). Small sample (4 refiner requests, 3 router requests per model): take it as a starting point, not a benchmark.

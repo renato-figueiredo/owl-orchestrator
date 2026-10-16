@@ -30,8 +30,27 @@ export const localPequenoSchema = z.strictObject({
   ativo: z.boolean(),
   /** Installed model to use; empty = `OLLAMA_MODEL`, else the first installed one. */
   modelo: z.string().min(1).max(100).regex(/^[\w.:/@-]+$/).optional(),
+  /** How long the model keeps the GPU memory after a run (see `keepAliveFor`); absent = `auto`. */
+  memoria: z.enum(['auto', 'rapido', 'economico']).optional(),
 });
 export type LocalPequeno = z.infer<typeof localPequenoSchema>;
+
+export type LocalMemoria = NonNullable<LocalPequeno['memoria']>;
+
+/** Keep-alive after a run someone is waiting for: the next answer comes from a warm model. */
+export const KEEP_ALIVE_INTERACTIVE = '5m';
+/** Keep-alive after a background run (board): long enough to hand over to the next step, short enough to give the GPU memory back soon. */
+export const KEEP_ALIVE_BACKGROUND = '60s';
+
+/**
+ * How long the local model stays loaded after a run. `rapido`: always warm; `economico`: unload at once (every run pays
+ * the load time); `auto` (default): warm when a person is waiting, a short grace window for background work.
+ */
+export function keepAliveFor(modo: LocalMemoria | undefined, background: boolean): string | number {
+  if (modo === 'rapido') return KEEP_ALIVE_INTERACTIVE;
+  if (modo === 'economico') return 0;
+  return background ? KEEP_ALIVE_BACKGROUND : KEEP_ALIVE_INTERACTIVE;
+}
 
 export const routerConfigSchema = z.strictObject({
   tiers: z.strictObject({ pequeno: tierTargetSchema, medio: tierTargetSchema, forte: tierTargetSchema }),

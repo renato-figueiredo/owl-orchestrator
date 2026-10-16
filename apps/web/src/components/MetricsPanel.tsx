@@ -55,7 +55,7 @@ export function MetricsPanel({ projects, providers, initialProjectId, onClose }:
     try {
       const saved = await api.saveRouter({
         tiers: Object.fromEntries(TIERS.map((t) => [t.id, { provedor: text(`${t.id}-provedor`), ...(text(`${t.id}-modelo`) ? { modelo: text(`${t.id}-modelo`) } : {}) }])),
-        localPequeno: { ativo: f.get('localAtivo') === 'on', ...(text('localModelo') ? { modelo: text('localModelo') } : {}) },
+        localPequeno: { ativo: f.get('localAtivo') === 'on', ...(text('localModelo') ? { modelo: text('localModelo') } : {}), memoria: text('localMemoria') as 'auto' | 'rapido' | 'economico' },
         limiarConfianca: Number(text('limiar')) / 100,
         orcamentoDiaTokens: budget ? Number(budget) : null,
       });
@@ -168,6 +168,14 @@ export function MetricsPanel({ projects, providers, initialProjectId, onClose }:
                 Modelo instalado
                 <input name="localModelo" list="modelos-locais" defaultValue={router.localPequeno.modelo ?? ''} placeholder="o primeiro instalado" maxLength={100} className="mt-1 block w-full rounded border border-line bg-bg px-2 py-1" />
                 <datalist id="modelos-locais">{(local?.modelos ?? []).map((m) => <option key={m} value={m} />)}</datalist>
+              </label>
+              <label className="mt-2 block">
+                Memória da placa de vídeo
+                <select name="localMemoria" defaultValue={router.localPequeno.memoria ?? 'auto'} className="mt-1 block w-full rounded border border-line bg-bg px-2 py-1">
+                  <option value="auto">Automático: quente quando você espera a resposta, solta logo após trabalho em segundo plano</option>
+                  <option value="rapido">Sempre rápido: mantém o modelo carregado por 5 min</option>
+                  <option value="economico">Econômico: descarrega após cada uso (recarrega a cada chamada)</option>
+                </select>
               </label>
               <p className="mt-1 text-xs text-muted">
                 {local?.disponivel ? `Ollama no ar com ${local.modelos.length} modelo(s).` : 'Ollama fora do ar: o tier pequeno usa o provedor configurado acima.'}{' '}

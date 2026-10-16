@@ -1,4 +1,4 @@
-import { getAdapter, type ProviderAdapter, type RunEvent } from '@owl/core';
+import { getAdapter, keepAliveFor, type LocalMemoria, type ProviderAdapter, type RunEvent } from '@owl/core';
 import type { createRepos, Run, RunStatus } from '@owl/db';
 
 type Repos = ReturnType<typeof createRepos>;
@@ -101,6 +101,8 @@ export interface ExecutorOptions {
   attachments?: AttachmentProvider;
   /** Called for every finished run, after it is stored and before its terminal event is announced. Must not throw. */
   afterRun?: (outcome: StepOutcome & { input: SubmitInput }) => void;
+  /** The user's choice of how long the local model keeps the GPU memory (router settings); read at every run. */
+  localMemoria?: () => LocalMemoria | undefined;
 }
 
 type Listener = (event: RunEvent) => void;
@@ -132,6 +134,7 @@ export class Executor {
   private mcp: McpProvider | undefined;
   private attachments: AttachmentProvider | undefined;
   private afterRun: ExecutorOptions['afterRun'];
+  private localMemoria: ExecutorOptions['localMemoria'];
   private readonly entries = new Map<string, Entry>();
   private readonly queue: Entry[] = [];
   private readonly activeSessions = new Set<string>();
@@ -149,14 +152,24 @@ export class Executor {
     this.mcp = opts.mcp;
     this.attachments = opts.attachments;
     this.afterRun = opts.afterRun;
+    this.localMemoria = opts.localMemoria;
   }
 
   /** Wires memory and the per-run hook after construction (the memory service needs the executor itself). */
-  attach(parts: { memory?: MemoryProvider; mcp?: McpProvider; attachments?: AttachmentProvider; afterRun?: ExecutorOptions['afterRun'] }): void {
+  attach(parts: { memory?: MemoryProvider; mcp?: McpProvider; attachments?: AttachmentProvider; afterRun?: ExecutorOptions['afterRun']; localMemoria?: ExecutorOptions['localMemoria'] }): void {
     if (parts.memory) this.memory = parts.memory;
     if (parts.mcp) this.mcp = parts.mcp;
     if (parts.attachments) this.attachments = parts.attachments;
     if (parts.afterRun) this.afterRun = parts.afterRun;
+    if (parts.localMemoria) this.localMemoria = parts.localMemoria;
+  }
+
+  private safeMemoria(): LocalMemoria | undefined {
+    try {
+      return this.localMemoria?.();
+    } catch {
+      return undefined; // a broken setting must not stop a run
+    }
   }
 
   /** Stores the user message, creates the run and queues it. */
@@ -307,6 +320,8 @@ export class Executor {
           ...(mcp ? { mcpConfigPath: mcp.configPath } : {}),
           ...(input.noTools ? { noTools: true } : {}),
           ...(images.length ? { images } : {}),
+          // A run on a ticket is background work (nobody is waiting on this screen); a chat message or a refinement is interactive.
+          ...(input.provider === 'ollama' ? { keepAlive: keepAliveFor(this.safeMemoria(), Boolean(input.ticketId)) } : {}),
       };
       const consume = async (stream: AsyncIterable<RunEvent>) => {
       for await (const event of stream) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseAgentFile, serializeAgent } from './agents.js';
-import { classificationSchema, complexityOf, escalate, fromClassification, needsApproval, routeByRules, routerConfigSchema, DEFAULT_ROUTER, tierOf, withEscalation } from './router.js';
+import { classificationSchema, complexityOf, escalate, fromClassification, needsApproval, routeByRules, routerConfigSchema, DEFAULT_ROUTER, keepAliveFor, tierOf, withEscalation } from './router.js';
 
 describe('routeByRules (no model involved)', () => {
   it('short, simple requests are small', () => {
@@ -97,5 +97,23 @@ describe('agent file: roteamento', () => {
   });
   it('rejects other values', () => {
     expect(() => parseAgentFile(file('roteamento: sempre\n'))).toThrow(/roteamento/);
+  });
+});
+
+describe('keepAliveFor (how long the local model keeps the GPU memory)', () => {
+  it('auto is warm for interactive work and a short window for background work; absent means auto', () => {
+    expect(keepAliveFor('auto', false)).toBe('5m');
+    expect(keepAliveFor('auto', true)).toBe('60s');
+    expect(keepAliveFor(undefined, false)).toBe('5m');
+    expect(keepAliveFor(undefined, true)).toBe('60s');
+  });
+  it('rapido is always warm and economico always unloads', () => {
+    expect(keepAliveFor('rapido', true)).toBe('5m');
+    expect(keepAliveFor('economico', false)).toBe(0);
+  });
+  it('the setting accepts only the three modes', () => {
+    const ok = (memoria: unknown) => routerConfigSchema.safeParse({ ...DEFAULT_ROUTER, localPequeno: { ativo: true, memoria } }).success;
+    expect(ok('auto') && ok('rapido') && ok('economico')).toBe(true);
+    expect(ok('sempre')).toBe(false);
   });
 });

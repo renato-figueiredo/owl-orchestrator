@@ -38,6 +38,8 @@ export interface OllamaModel {
 }
 
 const SAFE_MODEL = /^[\w.:/@-]+$/;
+/** `60s`, `5m`, `1h`: what Ollama accepts for `keep_alive`, besides a plain number of seconds. */
+const KEEP_ALIVE = /^\d{1,6}(ms|s|m|h)$/;
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
 
 /** The server URL without a trailing slash; throws for anything but http(s), or for a remote host without `allowRemote`. */
@@ -138,6 +140,10 @@ export function createOllamaAdapter(opts: OllamaOptions = {}): OllamaAdapter {
       return;
     }
 
+    if (req.keepAlive !== undefined && !(typeof req.keepAlive === 'number' ? Number.isInteger(req.keepAlive) && req.keepAlive >= 0 : KEEP_ALIVE.test(req.keepAlive))) {
+      yield { type: 'error', message: `ollama: invalid keepAlive ${JSON.stringify(req.keepAlive)}` };
+      return;
+    }
     const messages = [...(req.systemAppend ? [{ role: 'system', content: req.systemAppend }] : []), { role: 'user', content: req.prompt }];
     // Own controller: it follows the caller's signal and also lets us cut a server that went silent.
     const ctl = new AbortController();
@@ -148,7 +154,7 @@ export function createOllamaAdapter(opts: OllamaOptions = {}): OllamaAdapter {
       doFetch(`${baseUrl}/api/chat`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ model, messages, stream: true, ...modelOptions, ...(withThink ? { think } : {}) }),
+        body: JSON.stringify({ model, messages, stream: true, ...modelOptions, ...(req.keepAlive !== undefined ? { keep_alive: req.keepAlive } : {}), ...(withThink ? { think } : {}) }),
         redirect: 'error',
         signal: ctl.signal,
       });

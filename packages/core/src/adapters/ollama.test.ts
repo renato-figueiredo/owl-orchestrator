@@ -60,6 +60,27 @@ describe('ollama adapter', () => {
     expect(bodies[2]).not.toHaveProperty('options');
   });
 
+  it('sends keep_alive when given, and refuses a malformed one', async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const url = await fake((_q, res, body) => {
+      bodies.push(JSON.parse(body));
+      res.end(lines({ message: { content: 'ok' }, done: true }));
+    });
+    const ad = createOllamaAdapter({ baseUrl: url });
+    const sig = new AbortController().signal;
+    await collect(ad.run({ ...req, keepAlive: '60s' }, sig));
+    await collect(ad.run({ ...req, keepAlive: 0 }, sig));
+    await collect(ad.run(req, sig));
+    expect(bodies[0]).toMatchObject({ keep_alive: '60s' });
+    expect(bodies[1]).toMatchObject({ keep_alive: 0 });
+    expect(bodies[2]).not.toHaveProperty('keep_alive');
+    for (const bad of ['forever', '-1', '5 m', -1, 1.5, '1;rm']) {
+      const ev = await collect(ad.run({ ...req, keepAlive: bad }, sig));
+      expect(ev.at(-1)).toMatchObject({ type: 'error', message: expect.stringContaining('keepAlive') });
+    }
+    expect(bodies).toHaveLength(3);
+  });
+
   it('does not show the reasoning text', async () => {
     const url = await fake((_q, res) => {
       res.end(lines({ message: { content: '', thinking: 'hmm' }, done: false }, { message: { content: 'ok' }, done: true }));

@@ -67,6 +67,13 @@ describe('RouterService.target with a local model', () => {
     expect(r.target('pequeno', { semFerramentas: true })).toEqual({ provedor: 'ollama', modelo: 'gemma4:e2b' });
   });
 
+  it('stores and returns the memory mode, and a bad stored mode falls back without losing the rest', async () => {
+    const { r } = await setup();
+    expect(r.save({ localPequeno: { ativo: true, memoria: 'economico' } }).localPequeno.memoria).toBe('economico');
+    expect(r.settings().localPequeno).toEqual({ ativo: true, memoria: 'economico' });
+    expect(() => r.save({ localPequeno: { ativo: true, memoria: 'sempre' as never } })).toThrow();
+  });
+
   it('keeps the configured target for steps with tools, other tiers, no local server and the switch off', async () => {
     const { r, st, local } = await setup();
     r.save({ localPequeno: { ativo: true } });

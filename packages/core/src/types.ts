@@ -24,6 +24,11 @@ export interface RunRequest {
   mcpConfigPath?: string;
   /** Absolute paths of image files the CLI should look at (Claude reads them with its Read tool, Codex gets `--image`). */
   images?: string[];
+  /**
+   * How long the model stays loaded after this run, for adapters that run a local model server (Ollama): a duration such
+   * as `60s` or `5m`, or `0` to unload at once. Ignored by the CLI adapters.
+   */
+  keepAlive?: string | number;
 }
 
 /**

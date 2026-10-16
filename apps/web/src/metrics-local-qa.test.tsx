@@ -61,6 +61,6 @@ describe('MetricsPanel local model (QA)', () => {
     await userEvent.clear(within(form).getByLabelText(/Modelo instalado/));
     await userEvent.click(within(form).getByRole('button', { name: 'Salvar roteador' }));
     await screen.findByText('Roteador salvo.');
-    expect(puts[0]!.localPequeno).toEqual({ ativo: true });
+    expect(puts[0]!.localPequeno).toEqual({ ativo: true, memoria: 'auto' });
   });
 });

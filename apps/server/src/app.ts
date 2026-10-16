@@ -150,6 +150,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   const board = new LocalBoard(repos);
   const worktrees = new WorktreeService({ repos, dir: deps.worktreesDir ?? mkdtempSync(join(tmpdir(), 'owl-worktrees-')) });
   const router = new RouterService({ repos, ...(deps.localModels ? { local: deps.localModels } : {}) });
+  executor.attach({ localMemoria: () => router.settings().localPequeno.memoria });
   const flow = new BoardFlow({
     repos,
     router,
