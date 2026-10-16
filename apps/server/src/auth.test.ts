@@ -70,3 +70,43 @@ describe('session auth', () => {
     expect((await app.inject({ method: 'GET', url: '/auth/status', headers: HOST })).json()).toEqual({ required: false, authenticated: true });
   });
 });
+
+describe('access keys', () => {
+  const pairCookie = async (app: ReturnType<typeof make>['app'], auth: SessionAuth) => {
+    const r = await app.inject({ method: 'POST', url: '/auth/pair', headers: HOST, payload: { code: auth.pairingCode() } });
+    return String(r.headers['set-cookie']).split(';')[0]!;
+  };
+
+  it('a paired browser creates a key once; it opens the API, survives a new app on the same data, and is revoked by id', async () => {
+    const { app, auth } = make();
+    const cookie = await pairCookie(app, auth);
+    const made = await app.inject({ method: 'POST', url: '/auth/keys', headers: { ...HOST, cookie }, payload: { nome: 'claude', dias: 7 } });
+    expect(made.statusCode).toBe(201);
+    const { key, id } = made.json() as { key: string; id: string };
+    expect(key).toMatch(/^owl_/);
+    const bearer = { ...HOST, authorization: `Bearer ${key}` };
+    expect((await app.inject({ method: 'GET', url: '/projects', headers: bearer })).statusCode).toBe(200);
+    const list = await app.inject({ method: 'GET', url: '/auth/keys', headers: { ...HOST, cookie } });
+    expect(JSON.stringify(list.json())).not.toContain(key);
+    expect((await app.inject({ method: 'GET', url: '/projects', headers: { ...HOST, authorization: 'Bearer owl_forjada0000000000000000' } })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'DELETE', url: `/auth/keys/${id}`, headers: { ...HOST, cookie } })).statusCode).toBe(204);
+    expect((await app.inject({ method: 'GET', url: '/projects', headers: bearer })).statusCode).toBe(401);
+  });
+
+  it('a key cannot decide gates, move tickets, edit agents or the budget, or manage keys; a key cannot create keys', async () => {
+    const { app, auth } = make();
+    const cookie = await pairCookie(app, auth);
+    const { key } = (await app.inject({ method: 'POST', url: '/auth/keys', headers: { ...HOST, cookie }, payload: { nome: 'k' } })).json() as { key: string };
+    const h = { ...HOST, authorization: `Bearer ${key}` };
+    for (const [method, url] of [
+      ['POST', '/approvals/x/decide'],
+      ['POST', '/tickets/x/status'],
+      ['PUT', '/agents/dev-back'],
+      ['PUT', '/router'],
+      ['POST', '/auth/keys'],
+      ['GET', '/auth/keys'],
+    ] as const) {
+      expect((await app.inject({ method, url, headers: h, payload: {} })).statusCode, `${method} ${url}`).toBe(403);
+    }
+  });
+});

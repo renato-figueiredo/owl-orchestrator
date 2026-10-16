@@ -163,6 +163,9 @@ export const api = {
   /** Opens a gate to merge the ticket branch into the base branch, or to discard it. Nothing happens until it is approved. */
   requestBranchAction: (ticketId: string, acao: 'merge' | 'descartar') =>
     call<unknown>('POST', `/tickets/${encodeURIComponent(ticketId)}/branch/${acao}`),
+  accessKeys: () => call<{ chaves: Array<{ id: string; nome: string; criadoEm: string; expiraEm: string }> }>('GET', '/auth/keys'),
+  createAccessKey: (nome: string, dias: number) => call<{ key: string; id: string; expiraEm: string }>('POST', '/auth/keys', { nome, dias }),
+  revokeAccessKey: (id: string) => call<unknown>('DELETE', `/auth/keys/${id}`),
   monitor: () => call<MonitorStatus>('GET', '/monitor'),
   monitorStop: () => call<MonitorStatus>('POST', '/monitor/stop'),
   monitorStart: () => call<MonitorStatus>('POST', '/monitor/start'),

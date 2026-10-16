@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z, ZodError } from 'zod';
-import { registerAuth, type SessionAuth } from './auth.js';
+import { AccessKeys, registerAuth, type SessionAuth } from './auth.js';
 import { BoardFlow } from './board-flow.js';
 import { registerBoardRoutes } from './board-routes.js';
 import type { LocalModels } from './local-models.js';
@@ -182,7 +182,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   }
 
   registerGuards(app, deps.allowedOrigins);
-  if (deps.auth) registerAuth(app, deps.auth);
+  if (deps.auth) registerAuth(app, deps.auth, new AccessKeys(repos));
   else app.get('/auth/status', async () => ({ required: false, authenticated: true }));
 
   const folder = (dir: string) => {
