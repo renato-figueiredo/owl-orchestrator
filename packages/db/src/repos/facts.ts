@@ -69,7 +69,7 @@ export function factsRepo(db: Db) {
     /**
      * Facts of exactly one scope: a project, or one conversation with no project (`projectId: null` plus its
      * `sessionId`). Unlike `list`, `projectId: null` means "no project", never "all", and without a `sessionId` it
-     * matches nothing but legacy facts that belong to no conversation. `desde` keeps only facts created STRICTLY after that time
+     * matches nothing but legacy facts that belong to no conversation. `desde` keeps only facts created or last pinned/edited STRICTLY after that time
      * (timestamps have one-second resolution: a fact made in the very second a run started counts as already seen).
      */
     listScope(scope: { projectId: string | null; sessionId?: string | null; apenasFixados?: boolean; desde?: string }): Fact[] {
@@ -79,7 +79,7 @@ export function factsRepo(db: Db) {
            WHERE agent_id IS NULL
              AND ((@projectId IS NULL AND project_id IS NULL AND session_id IS @sessionId) OR project_id = @projectId)
              AND (@apenasFixados = 0 OR fixado = 1)
-             AND (@desde IS NULL OR criado_em > @desde)
+             AND (@desde IS NULL OR COALESCE(atualizado_em, criado_em) > @desde)
            ORDER BY criado_em, rowid`,
         )
         .all({
@@ -105,12 +105,12 @@ export function factsRepo(db: Db) {
       return rows.map(toFact);
     },
     update(id: string, changes: { texto?: string; fixado?: boolean }): Fact | undefined {
-      if (changes.texto !== undefined) db.prepare('UPDATE facts SET texto = ? WHERE id = ?').run(changes.texto, id);
-      if (changes.fixado !== undefined) db.prepare('UPDATE facts SET fixado = ? WHERE id = ?').run(changes.fixado ? 1 : 0, id);
+      if (changes.texto !== undefined) db.prepare("UPDATE facts SET texto = ?, atualizado_em = datetime('now') WHERE id = ?").run(changes.texto, id);
+      if (changes.fixado !== undefined) db.prepare("UPDATE facts SET fixado = ?, atualizado_em = datetime('now') WHERE id = ?").run(changes.fixado ? 1 : 0, id);
       return get(id);
     },
     setPinned(id: string, fixado: boolean): void {
-      db.prepare('UPDATE facts SET fixado = ? WHERE id = ?').run(fixado ? 1 : 0, id);
+      db.prepare("UPDATE facts SET fixado = ?, atualizado_em = datetime('now') WHERE id = ?").run(fixado ? 1 : 0, id);
     },
     delete(id: string): void {
       db.prepare('DELETE FROM facts WHERE id = ?').run(id);

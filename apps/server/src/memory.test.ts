@@ -196,6 +196,23 @@ describe('with --resume only NEW pinned facts are sent', () => {
   }, 15_000);
 });
 
+describe('with --resume a fact pinned (or edited) later still reaches the conversation', () => {
+  it('a fact created unpinned before the last run and pinned after it is sent', async () => {
+    await setup();
+    const p = await project('A');
+    const old = (await pinnedFact(p, 'criado antes, fixado depois', false)).body.fact.id as string;
+    const sid = await session(p);
+    await say(sid, 'um');
+    await new Promise((r) => setTimeout(r, 1100));
+    await say(sid, 'dois');
+    expect(rec(1).stdin).toBe('dois');
+    await new Promise((r) => setTimeout(r, 1100));
+    await call('PATCH', `/facts/${old}`, { fixado: true });
+    await say(sid, 'três');
+    expect(prefixOf(2, 'três')).toContain('- criado antes, fixado depois');
+  }, 15_000);
+});
+
 describe('related snippets (full-text search)', () => {
   it('adds a snippet only when the request really matches an older message of the project', async () => {
     await setup();
@@ -467,5 +484,43 @@ describe('settings and facts API', () => {
     expect((await post('/facts', { texto: '' })).status).toBe(400);
     expect((await post('/facts', { texto: 'x'.repeat(501) })).status).toBe(400);
     expect((await post('/facts', { texto: 'x', projectId: 'nope' })).status).toBe(404);
+  });
+});
+
+describe('QA 07: lacunas', () => {
+  it('Claude -> Codex -> Claude: ao voltar, o Claude recebe o bloco (a sessão nativa foi trocada pelo Codex)', async () => {
+    await setup();
+    const sid = await session();
+    await say(sid, 'um');
+    await say(sid, 'dois', { provider: 'codex-cli' });
+    await say(sid, 'três de volta');
+    const argv = rec(2).argv.join(' ');
+    expect(argv).not.toContain('--resume');
+    expect(prefixOf(2, 'três de volta')).toContain('Usuário: dois');
+  });
+
+  it('o mesmo fato duas vezes na resposta do resumidor entra uma só vez', async () => {
+    await setup();
+    const sid = await session();
+    repos.messages.add({ sessionId: sid, papel: 'usuario', conteudo: 'a' });
+    await post(`/sessions/${sid}/summarize`);
+    repos.messages.add({ sessionId: sid, papel: 'usuario', conteudo: 'b' });
+    const r = await post(`/sessions/${sid}/summarize`); // mesmos fatos do cenário: já conhecidos
+    expect(r.body.fatosNovos).toBe(0);
+    expect(repos.facts.listScope({ projectId: null, sessionId: sid })).toHaveLength(2);
+  });
+
+  it('lote acima do teto de caracteres: o marcador só avança até o fim do lote e a próxima chamada pega o resto', async () => {
+    await setup();
+    const sid = await session();
+    const big = 'z'.repeat(40_000);
+    const m1 = repos.messages.add({ sessionId: sid, papel: 'usuario', conteudo: big });
+    repos.messages.add({ sessionId: sid, papel: 'assistente', conteudo: big });
+    const m3 = repos.messages.add({ sessionId: sid, papel: 'usuario', conteudo: 'resto final' });
+    await post(`/sessions/${sid}/summarize`);
+    expect(repos.sessions.get(sid)!.resumoAteMessageId).toBe(m1.id);
+    expect(rec(0).stdin).not.toContain('resto final');
+    await post(`/sessions/${sid}/summarize`);
+    expect(repos.sessions.get(sid)!.resumoAteMessageId).toBe(m3.id - 0);
   });
 });

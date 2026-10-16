@@ -363,6 +363,8 @@ export class BoardFlow {
       storeAs: false,
       noTools: true,
       after: (outcome) => {
+        // Cancelled by a person: stop here, do not open a gate nobody asked for.
+        if (outcome.status === 'cancelado') return;
         const parsed = outcome.status === 'ok' ? fromClassification(extractJson(outcome.result)) : undefined;
         const decision: RouteDecision = parsed ?? {
           complexidade: 'media',

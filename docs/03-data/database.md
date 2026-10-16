@@ -107,7 +107,8 @@ CREATE TABLE facts (
   agent_id TEXT REFERENCES agents(id) ON DELETE CASCADE,  -- NULL = do projeto
   texto TEXT NOT NULL, fixado INTEGER NOT NULL DEFAULT 0,
   origem_run_id TEXT REFERENCES runs(id) ON DELETE SET NULL,
-  criado_em TEXT NOT NULL DEFAULT (datetime('now'))
+  criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+  atualizado_em TEXT                       -- última fixação/edição (migração 0013)
 );
 
 CREATE TABLE blobs (                       -- arquivos deduplicados

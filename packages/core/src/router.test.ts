@@ -46,6 +46,8 @@ describe('routeByRules (no model involved)', () => {
 describe('classification (phase 2 output)', () => {
   it('accepts the documented shape', () => {
     expect(fromClassification({ complexidade: 'media', confianca: 0.8, motivo: 'alguns arquivos' })).toEqual({ complexidade: 'media', tier: 'medio', confianca: 0.8, motivo: 'alguns arquivos', origem: 'modelo' });
+    // a model that claims to be fully sure never skips the gate on its own
+    expect(fromClassification({ complexidade: 'baixa', confianca: 1, motivo: 'x' })?.confianca).toBe(0.95);
   });
   it.each([null, 'media', {}, { complexidade: 'média', confianca: 1 }, { complexidade: 'alta', confianca: 3 }, { complexidade: 'alta', confianca: -1 }, { complexidade: 'alta' }])('rejects %j', (v) => {
     expect(fromClassification(v)).toBeUndefined();

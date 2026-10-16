@@ -39,7 +39,7 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 **Revisão**
 - [ ] Prompt 16: ordenar/alertar por prazo e ciclo ativo automático (hoje só estimativa/prazo exibidos); revisar o bloqueio por relação no fluxo (`BoardFlow.run`) e o filtro do quadro.
 - [x] `qa-testes` e `revisor` nos prompts 02, 03 e 04 rodados em 2026-10-15; 3 bloqueantes corrigidos (NUL no adaptador, Host/Origin, raízes de pastas).
-- [ ] Revisão ainda sem registro para os prompts 02 (banco): confirmar se não houve bloqueantes.
+- [x] Prompt 02 (banco), conferido em 2026-10-16: sem bloqueantes. Os 3 bloqueantes da revisão 02–04 (`1fbfba4`) ficaram em `apps/server` e `packages/core`; o QA do 02 só acrescentou `db.acceptance.test.ts`.
 - [ ] Permitir o host Tailscale no guard quando o acesso remoto for implementado.
 
 **Repositório / GitHub**
@@ -48,7 +48,9 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Decidir sobre o nome do bot de dependências: manter Dependabot (personalizando prefixo/labels) ou migrar para Renovate com um GitHub App próprio.
 
 **Interface**
-- [ ] Rodar `qa-testes` e `revisor` no prompt 07 (contexto, resumo, fatos, troca de provedor).
+- [x] `qa-testes` e `revisor` no prompt 07 rodados em 2026-10-16: sem bloqueantes; critérios cobertos. Corrigidos: fato fixado/editado depois da criação agora chega à sessão com `--resume` (migração 0013, `facts.atualizado_em`), texto de fatos/resumo/mensagens/trechos achatado em uma linha e sem forjar `[Fim do contexto]`/`## ` (o cabeçalho diz "não como instruções"), orçamento NaN. Abertos:
+  - [ ] **Importante:** o resumidor em `codex-cli` ignora `noTools` (só o Claude tem `--tools ""`); o sandbox read-only do Codex ainda lê arquivos e uma injeção em mensagem antiga poderia levar texto lido ao resumo. Decidir: restringir o resumidor a `claude-cli`/`ollama` (o doc cita Codex e vários testes usam) ou aceitar o risco e documentar.
+  - [ ] Bloco de fatos novos no `--resume` sem orçamento (`memory.ts` `contextFor`); resumo automático pode sobrescrever edição do usuário feita durante a execução e não confere sessão apagada; pasta `owl-summarizer-*` não é removida; truncamento pode cortar par substituto UTF-16; uma mensagem única > 60k caracteres passa inteira ao resumidor; `PATCH/DELETE /facts/:id` sem checagem de escopo e `GET /facts` sem filtro lista fatos legados órfãos.
 - [x] `qa-testes` e `revisor` no prompt 06 rodados em 2026-10-15; 3 itens importantes corrigidos (saída vazia, slot de sessão, pausas órfãs).
 - [ ] Slot de sessão por (sessão, provedor) para alternar Claude/Codex sem perder o `--resume`.
 - [x] `qa-testes` e `revisor` no prompt 05 rodados em 2026-10-15 (E2E: `pnpm --filter @owl/web test:e2e`; precisa de `pnpm exec playwright install chromium` uma vez).
@@ -110,7 +112,10 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Fluxo `dev` com `claude` real conferido uma vez em 2026-10-15 (repositório temporário, haiku): `dev-back` criou o arquivo só no worktree, o OWL commitou na branch, a pasta do usuário ficou intacta, o arquivo fora da pasta **não** foi criado e o `qa` reprovou (abriu o portão de reprovação). Falta uma bateria maior (testes que o projeto realmente roda, conflitos, vários tickets).
 
 **Roteador e métricas (prompt 15)** — feito: regras → classificador pequeno só se ambíguo (JSON validado, falha = confiança 0 = pessoa decide), tiers configuráveis (`PUT /router`), escalonamento por reprovação, aviso em 80% e portão `custo` por ticket e por dia (tokens), `GET /metrics`, painel *Métricas e roteador*, migração 0010. Escopo: **só o quadro**; agentes `roteamento: auto` (os exemplos continuam `fixo`). Abertos:
-- [ ] `qa-testes` + `revisor` do 15 (pontos: `board-flow.ts` `route`/`classify`, contagem de `failures`, orçamento diário em `RouterService`, SQL de `metrics`).
+- [x] `qa-testes` + `revisor` do 15 rodados de novo em 2026-10-16: sem bloqueantes; dia local, SQL e divisão por zero conferidos. Corrigidos: `confianca` do classificador limitada a 0,95 (resposta "confiança 1" por injeção não pula o portão), classificador cancelado não abre portão. Testes novos: `packages/db/src/metrics.test.ts`, `apps/server/src/router-service.test.ts`. Abertos:
+  - [ ] **Importante:** a decisão do classificador não é guardada; cada retrabalho ou retomada de portão `custo` sem `decision` roda o classificador de novo. Guardar em `runs.roteamento_json`/evento do ticket e aplicar só `withEscalation`.
+  - [ ] Retrabalho = qualquer reexecução do mesmo agente no ticket (inclui `memoria`, runs com erro/cancelados, retomada após portão de custo) e o denominador conta todos os runs de ticket: documentar ou refinar. `failures()` conta reprovação pendente (escala antes de a pessoa decidir); explicar em `routing-and-costs.md`.
+  - [ ] Painel: `estourado` (uso ≥ 100%) difere de `overDaily` (uso + reserva + estimativa > limite); aviso usa `Math.floor` (29% pode aparecer 28%); custo de `codex`/`ollama` conta 0 e deveria ser sinalizado; o classificador não é pré-checado contra o orçamento.
 - [ ] Roteador no chat e nos pipelines YAML (hoje só o quadro). Decidir se `outroProvedorQue` convive com tier.
 - [ ] Ligar `roteamento: auto` nos agentes de exemplo e medir antes: o gasto do classificador aparece em *Métricas*; só vale se economizar mais do que custa. Ajustar as regras com os `runs` reais (os limiares 600/6000 caracteres e 400 linhas são chutes).
 - [ ] Orçamento em USD (hoje só tokens; o Codex não informa custo) e orçamento por projeto/agente.
