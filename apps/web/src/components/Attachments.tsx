@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
+import { IconButton } from '@owl/ui';
+import { X } from 'lucide-react';
 import { api, API } from '../lib/api';
 import type { Attachment } from '../lib/types';
 
@@ -90,16 +92,14 @@ export function PendingStrip({ items, onRemove }: { items: Pending[]; onRemove: 
     <ul aria-label="Imagens anexadas" className="mb-2 flex flex-wrap gap-2">
       {items.map((p) => (
         <li key={p.key} className="relative">
-          {p.preview ? <img src={p.preview} alt={p.nome} className={`h-16 w-16 rounded-lg border border-line object-cover ${p.status === 'failed' ? 'opacity-40' : ''}`} /> : <span className="grid h-16 w-16 place-items-center rounded-lg border border-line text-xs">{p.nome}</span>}
-          {p.status === 'uploading' && <span className="absolute inset-0 grid place-items-center rounded-lg bg-black/40 text-xs text-white">Enviando…</span>}
+          {p.preview ? <img src={p.preview} alt={p.nome} className={`h-16 w-16 rounded-md border border-line object-cover ${p.status === 'failed' ? 'opacity-40' : ''}`} /> : <span className="grid h-16 w-16 place-items-center rounded-md border border-line font-mono text-[11px]">{p.nome}</span>}
+          {p.status === 'uploading' && <span className="absolute inset-0 grid place-items-center rounded-md bg-bg/70 font-mono text-[11px] text-fg">Enviando…</span>}
           {p.status === 'failed' && (
-            <span role="alert" className="absolute inset-x-0 bottom-0 truncate rounded-b-lg bg-danger px-1 text-xs text-white" title={p.error}>
+            <span role="alert" className="absolute inset-x-0 bottom-0 truncate rounded-b-md bg-panel px-1 font-mono text-[10px] text-danger" title={p.error}>
               {p.error ?? 'Falhou'}
             </span>
           )}
-          <button type="button" aria-label={`Remover ${p.nome}`} onClick={() => onRemove(p.key)} className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-line bg-panel text-xs">
-            ×
-          </button>
+          <IconButton icon={X} label={`Remover ${p.nome}`} size={20} onClick={() => onRemove(p.key)} style={{ position: 'absolute', top: -6, right: -6, border: '1px solid var(--c-line)', background: 'var(--c-panel)' }} />
         </li>
       ))}
     </ul>
@@ -115,7 +115,7 @@ export function Thumbs({ anexos }: { anexos: Attachment[] }) {
         {anexos.map((a) => (
           <li key={a.hash}>
             <button type="button" aria-label={`Ampliar ${a.nome ?? 'imagem'}`} onClick={() => setOpen(a)}>
-              <img src={`${API}${a.url}`} alt={a.nome ?? 'imagem anexada'} loading="lazy" className="h-24 w-24 rounded-lg border border-line object-cover" />
+              <img src={`${API}${a.url}`} alt={a.nome ?? 'imagem anexada'} loading="lazy" className="h-24 w-24 rounded-md border border-line object-cover" />
             </button>
           </li>
         ))}
@@ -134,10 +134,10 @@ function Lightbox({ a, onClose }: { a: Attachment; onClose: () => void }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (
-    <div role="dialog" aria-modal="true" aria-label={a.nome ?? 'Imagem'} onClick={onClose} className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4">
-      <img src={`${API}${a.url}`} alt={a.nome ?? 'imagem anexada'} onClick={(e) => e.stopPropagation()} className="max-h-full max-w-full rounded-lg" />
-      <button ref={closeRef} type="button" aria-label="Fechar" onClick={onClose} className="absolute right-4 top-4 rounded-full bg-panel px-3 py-1 text-lg">
-        ×
+    <div role="dialog" aria-modal="true" aria-label={a.nome ?? 'Imagem'} onClick={onClose} className="fixed inset-0 z-50 grid place-items-center bg-bg/85 p-4">
+      <img src={`${API}${a.url}`} alt={a.nome ?? 'imagem anexada'} onClick={(e) => e.stopPropagation()} className="max-h-full max-w-full rounded-lg border border-line" />
+      <button ref={closeRef} type="button" aria-label="Fechar" onClick={onClose} className="absolute right-4 top-4 grid size-8 place-items-center rounded-md border border-line bg-panel text-muted hover:bg-raised hover:text-fg">
+        <X size={16} aria-hidden="true" />
       </button>
     </div>
   );

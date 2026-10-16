@@ -1,4 +1,4 @@
-import type { RelationType, Label, DayUsage, LocalStatus, Metrics, RouterSettings, AgentFact, AgentLibrary, AgentProject, ProjectView, Team, BoardData, TicketDetail, TicketStatus, BackupInfo, BackupSettings, BackupStatus, Fact, MemorySettings, PurgeResult, SweepReport, TrashSettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './types';
+import type { TicketApproval, RelationType, Label, DayUsage, LocalStatus, Metrics, RouterSettings, AgentFact, AgentLibrary, AgentProject, ProjectView, Team, BoardData, TicketDetail, TicketStatus, BackupInfo, BackupSettings, BackupStatus, Fact, MemorySettings, PurgeResult, SweepReport, TrashSettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -137,6 +137,9 @@ export const api = {
     call<unknown>('POST', `/projects/${encodeURIComponent(projectId)}/cycles`, input),
   deleteCycle: (id: string) => call<unknown>('DELETE', `/cycles/${encodeURIComponent(id)}`),
   assignCycle: (ticketId: string, cicloId: string | null) => call<unknown>('PUT', `/tickets/${encodeURIComponent(ticketId)}/cycle`, { cicloId }),
+  /** Pending ticket approvals (gates) of one project. */
+  projectApprovals: (projectId: string) =>
+    call<{ aprovacoes: TicketApproval[] }>('GET', `/projects/${encodeURIComponent(projectId)}/approvals`).then((r) => r.aprovacoes),
   decideApproval: (id: string, decisao: 'aprovado' | 'rejeitado', comentario?: string) =>
     call<unknown>('POST', `/approvals/${encodeURIComponent(id)}/decide`, { decisao, ...(comentario ? { comentario } : {}) }),
   projectView: (id: string) => call<ProjectView>('GET', `/projects/${encodeURIComponent(id)}`),
@@ -170,3 +173,10 @@ export const api = {
   },
   cancel: (runId: string) => call<{ status: string }>('POST', `/runs/${encodeURIComponent(runId)}/cancel`),
 };
+
+/** Pipelines of the library (names and step ids only; the file itself is not exposed by the API). */
+export const pipelinesApi = () =>
+  call<{ pipelines: Array<{ nome: string; etapas: string[]; origem: 'usuario' | 'exemplo' }>; problemas: Array<{ arquivo: string; origem: 'usuario' | 'exemplo'; erro: string }> }>('GET', '/pipelines');
+
+/** Whether the server asks browsers to pair and whether this one already is (for the "Pareamento" screen). */
+export const authStatusApi = () => call<{ required: boolean; authenticated: boolean }>('GET', '/auth/status');

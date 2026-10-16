@@ -1,0 +1,4 @@
+/* Hanken Grotesk (UI) + JetBrains Mono (dados). OFL. Servir localmente via @fontsource em produção. */
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* Ícones: Lucide (em código: lucide-react). Aqui via fonte para protótipos: <i class="icon-bot"></i> */
+@import url('https://unpkg.com/lucide-static@0.460.0/font/lucide.css');

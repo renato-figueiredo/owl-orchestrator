@@ -152,14 +152,11 @@ describe('project screen', () => {
 });
 
 describe('board: project selector and the ticket branch', () => {
-  it('offers the selector and the team screen in the header', async () => {
-    const onSwitch = vi.fn();
+  it('offers the team screen in the header (the project selector lives in the Vigia bar)', async () => {
     const onOpenProject = vi.fn();
     const user = userEvent.setup();
-    render(<Board project={projects[0]!} projects={projects} onSwitch={onSwitch} onOpenProject={onOpenProject} onClose={() => {}} pollMs={0} />);
-    await user.selectOptions(await screen.findByRole('combobox', { name: 'Projeto' }), 'p2');
-    expect(onSwitch).toHaveBeenCalledWith('p2');
-    await user.click(screen.getByRole('button', { name: 'Equipe e configurações' }));
+    render(<Board project={projects[0]!} projects={projects} onSwitch={() => {}} onOpenProject={onOpenProject} onClose={() => {}} pollMs={0} />);
+    await user.click(await screen.findByRole('button', { name: 'Equipe e configurações' }));
     expect(onOpenProject).toHaveBeenCalledWith('p1');
   });
 

@@ -13,6 +13,11 @@ in SQLite, and coordinates agents through a local Linear-style board. Always rea
 5. **Dangerous actions** (deleting user files, push, deploy, merge) require human approval.
 6. No "Claude" or "GPT" in product or package names (trademarks).
 
+## UI design rule (matriz)
+The Claude Design system in `design/claude-design/` is the master rule for every UI change, always (start at its `readme.md`;
+tokens in `tokens/`, components in `components/**/*.prompt.md`, screens in `OWL App.dc.html`). Tokens live in `apps/web/src/index.css`,
+shared components in `packages/ui`. Don't invent visuals the design doesn't have; when the design and the code disagree, the design wins.
+
 ## Stack
 TypeScript strict · Node LTS · pnpm workspaces · Fastify + SSE · better-sqlite3 + versioned SQL migrations ·
 Vite + React · zod · YAML/Markdown-frontmatter configs · sharp · vitest (+ Playwright later) ·
@@ -51,6 +56,7 @@ scripts/             repo tooling
 | Agents, teams, board | `docs/04-agents-and-board/agents-teams-board.md` |
 | Linear-style model | `docs/04-agents-and-board/linear-model-notes.md` |
 | Motion | `docs/05-ui/motion-and-animation.md` |
+| UI design system (master rule) | `design/claude-design/readme.md` |
 | Ollama (optional) / containers / references | `docs/06-research/` |
 | Remote access & backup | `docs/03-data/sync-and-access.md` |
 | Roadmap | `docs/roadmap.md` |

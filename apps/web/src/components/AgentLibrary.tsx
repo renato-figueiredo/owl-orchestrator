@@ -1,6 +1,9 @@
+import { Button, ProviderDot } from '@owl/ui';
+import { FileWarning, Plus, Save } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import type { AgentLibrary as Library, AgentSummary } from '../lib/types';
+import { Label, ScreenHeader, field } from './desk/ScreenHeader';
 
 const message = (e: unknown) => (e instanceof Error ? e.message : 'Algo deu errado');
 const NAME = /^[a-z0-9][a-z0-9-]*$/;
@@ -18,17 +21,18 @@ Você é ... Descreva aqui o papel, o que fazer e o que não fazer.
 
 type Editing = { nome: string; texto: string; origem: 'usuario' | 'exemplo' | 'novo' };
 
-interface Props {
-  onClose: () => void;
-}
+const originTag = (a: AgentSummary) => (a.origem === 'usuario' ? (a.sobrescreve ? 'sua cópia' : 'seu') : 'exemplo');
 
 /** The agent library: agents are files; this lists them, shows broken ones with the reason, and edits the user's copies. */
-export function AgentLibrary({ onClose }: Props) {
+/** `onClose` is still passed by the app but unused: the design has no "back" button on this screen. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function AgentLibrary(_props: { onClose?: () => void }) {
   const [lib, setLib] = useState<Library | null>(null);
+  const [sel, setSel] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [creating, setCreating] = useState(false);
-  const [duplicating, setDuplicating] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [duplicating, setDuplicating] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editorError, setEditorError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -51,12 +55,24 @@ export function AgentLibrary({ onClose }: Props) {
     }
   };
 
-  const edit = (a: AgentSummary) =>
-    void run(async () => {
-      const src = await api.agentSource(a.nome);
-      setEditorError(null);
-      setEditing({ nome: a.nome, texto: src.texto, origem: src.origem });
-    });
+  const open = useCallback(async (nome: string) => {
+    setSel(nome);
+    setDuplicating(false);
+    setConfirmDelete(false);
+    setEditorError(null);
+    try {
+      const src = await api.agentSource(nome);
+      setEditing({ nome, texto: src.texto, origem: src.origem });
+    } catch (e) {
+      setError(message(e));
+    }
+  }, []);
+
+  // The editor always shows an agent: the first one, until the user picks another.
+  const first = lib?.agents[0]?.nome;
+  useEffect(() => {
+    if (!sel && first) void open(first);
+  }, [sel, first, open]);
 
   const save = async () => {
     if (!editing) return;
@@ -64,8 +80,8 @@ export function AgentLibrary({ onClose }: Props) {
     setEditorError(null);
     try {
       await api.saveAgent(editing.nome, editing.texto);
-      setEditing(null);
       await load();
+      await open(editing.nome);
     } catch (e) {
       setEditorError(message(e)); // stays open: the text is not lost
     } finally {
@@ -81,6 +97,7 @@ export function AgentLibrary({ onClose }: Props) {
     setError(null);
     setCreating(false);
     setEditorError(null);
+    setSel(nome);
     setEditing({ nome, texto: template(nome), origem: 'novo' });
   };
 
@@ -89,142 +106,211 @@ export function AgentLibrary({ onClose }: Props) {
     const novo = String(new FormData(e.currentTarget).get('novo') ?? '').trim();
     void run(async () => {
       await api.duplicateAgent(from, novo);
-      setDuplicating(null);
+      setDuplicating(false);
+      await load();
+      await open(novo);
     });
   };
 
+  const agents = lib?.agents ?? [];
+  const current = agents.find((a) => a.nome === sel) ?? null;
+  const count = agents.length;
+
   return (
-    <section aria-label="Biblioteca de agentes" className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-      <header className="flex items-center gap-3 border-b border-line p-4">
-        <h1 className="text-lg font-semibold">Agentes</h1>
-        <span className="text-sm text-muted">Cada agente é um arquivo; a sua cópia vale mais do que o exemplo de mesmo nome.</span>
-        <button type="button" onClick={() => setCreating((v) => !v)} aria-expanded={creating} className="ml-auto rounded bg-accent px-3 py-1.5 text-sm font-medium text-accent-fg">
-          Novo agente
-        </button>
-        <button type="button" onClick={onClose} className="rounded border border-line px-3 py-1.5 text-sm hover:bg-raised">
-          Voltar às conversas
-        </button>
-      </header>
+    <main aria-label="Biblioteca de agentes" className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <ScreenHeader eyebrow={`BIBLIOTECA · ${count} ${count === 1 ? 'AGENTE' : 'AGENTES'}`} title="Agentes">
+          <span className="flex-1" />
+          <span className="max-w-xs text-xs text-muted [text-wrap:pretty]">Cada agente é um arquivo; a sua cópia vale mais do que o exemplo de mesmo nome.</span>
+          <Button variant="primary" icon={Plus} aria-expanded={creating} onClick={() => setCreating((v) => !v)}>
+            Novo agente
+          </Button>
+        </ScreenHeader>
 
-      <div className="space-y-4 p-4">
-        {error && (
-          <p role="alert" className="rounded border border-danger p-2 text-sm text-danger">
-            {error}
-          </p>
-        )}
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-6 py-4">
+          {error && (
+            <p role="alert" className="m-0 rounded-md border border-danger bg-danger-wash px-3 py-2.5 text-xs text-danger">
+              {error}
+            </p>
+          )}
 
-        {creating && (
-          <form onSubmit={submitNew} className="flex items-end gap-2 rounded border border-line bg-raised p-3 text-sm">
-            <label className="block">
-              Nome do arquivo
-              <input name="nome" required maxLength={64} placeholder="meu-agente" className="mt-1 block rounded border border-line bg-bg px-2 py-1" />
-            </label>
-            <button type="submit" className="rounded bg-accent px-3 py-1 font-medium text-accent-fg">
-              Criar
-            </button>
-          </form>
-        )}
+          {creating && (
+            <form onSubmit={submitNew} className="flex items-end gap-2 rounded-md border border-line bg-panel p-3 text-xs">
+              <label className="flex flex-col gap-1.5 font-medium">
+                Nome do arquivo
+                <input name="nome" required maxLength={64} placeholder="meu-agente" className={`${field} font-mono`} />
+              </label>
+              <Button type="submit" variant="primary">
+                Criar
+              </Button>
+            </form>
+          )}
 
-        {editing && (
-          <div className="rounded border border-line bg-raised p-3">
-            <h2 className="font-medium">
-              {editing.origem === 'novo' ? 'Novo agente' : `Editar ${editing.nome}`}
-              {editing.origem === 'exemplo' && <span className="ml-2 text-sm font-normal text-muted">Ao salvar, cria a sua cópia; o exemplo continua intacto.</span>}
-            </h2>
-            <label className="mt-2 block text-sm">
-              <span className="sr-only">Arquivo do agente {editing.nome}</span>
-              <textarea
-                value={editing.texto}
-                onChange={(e) => setEditing({ ...editing, texto: e.target.value })}
-                rows={16}
-                spellCheck={false}
-                className="w-full rounded border border-line bg-bg p-2 font-mono text-sm"
-              />
-            </label>
-            {editorError && (
-              <p role="alert" className="mt-2 text-sm text-danger">
-                {editorError}
-              </p>
-            )}
-            <div className="mt-2 flex gap-2">
-              <button type="button" disabled={busy} onClick={() => void save()} className="rounded bg-accent px-3 py-1 text-sm font-medium text-accent-fg">
-                Salvar
-              </button>
-              <button type="button" onClick={() => setEditing(null)} className="rounded border border-line px-3 py-1 text-sm hover:bg-bg">
-                Cancelar
-              </button>
-            </div>
-          </div>
-        )}
-
-        {lib && lib.problemas.length > 0 && (
-          <div role="alert" aria-label="Arquivos com problema" className="rounded border border-danger p-3 text-sm">
-            <h2 className="font-medium text-danger">{lib.problemas.length === 1 ? '1 arquivo não pôde ser lido' : `${lib.problemas.length} arquivos não puderam ser lidos`}</h2>
-            <ul className="mt-1 space-y-1">
+          {lib && lib.problemas.length > 0 && (
+            <div role="group" aria-label="Arquivos com problema" className="flex flex-col gap-2">
               {lib.problemas.map((p) => (
-                <li key={`${p.origem}:${p.arquivo}`}>
-                  <code>{p.arquivo}</code> <span className="text-muted">({p.origem === 'usuario' ? 'seu' : 'exemplo'})</span>: {p.erro}
-                </li>
+                <div key={`${p.origem}:${p.arquivo}`} role="alert" className="flex items-center gap-2.5 rounded-md border border-danger bg-danger-wash px-3 py-2.5 text-xs">
+                  <FileWarning size={14} aria-hidden="true" className="flex-none text-danger" />
+                  <code className="font-mono text-xs">{p.arquivo}</code>
+                  <span className="text-muted">
+                    ({p.origem === 'usuario' ? 'seu' : 'exemplo'}) não pôde ser lido: {p.erro}
+                  </span>
+                </div>
               ))}
-            </ul>
-          </div>
-        )}
+            </div>
+          )}
 
-        {lib?.agents.length === 0 && <p className="text-muted">Nenhum agente ainda.</p>}
-        <ul className="grid gap-3 md:grid-cols-2">
-          {lib?.agents.map((a) => (
-            <li key={a.nome} className="rounded border border-line bg-panel p-3">
-              <div className="flex items-center gap-2">
-                <h2 className="truncate font-medium">{a.nome}</h2>
-                <span className="rounded border border-line px-1.5 text-xs text-muted">{a.origem === 'usuario' ? (a.sobrescreve ? 'sua cópia' : 'seu') : 'exemplo'}</span>
-                <span className="ml-auto text-xs text-muted">
-                  {a.provedor}
-                  {a.modelo ? ` · ${a.modelo}` : ''}
-                </span>
-              </div>
-              {a.descricao && <p className="mt-1 text-sm">{a.descricao}</p>}
-              <p className="mt-1 text-xs text-muted">
-                {a.ferramentas.length ? `Ferramentas: ${a.ferramentas.join(', ')}` : 'Sem ferramentas'}
-                {a.skills.length > 0 && ` · Skills: ${a.skills.join(', ')}`}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2 text-sm">
-                <button type="button" disabled={busy} onClick={() => edit(a)} aria-label={`Editar ${a.nome}`} className="rounded border border-line px-2 py-0.5 hover:bg-raised">
-                  Editar
-                </button>
-                <button type="button" disabled={busy} onClick={() => setDuplicating(duplicating === a.nome ? null : a.nome)} aria-label={`Duplicar ${a.nome}`} className="rounded border border-line px-2 py-0.5 hover:bg-raised">
-                  Duplicar
-                </button>
-                {a.origem === 'usuario' &&
-                  (confirmDelete === a.nome ? (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void run(async () => { await api.deleteAgent(a.nome); setConfirmDelete(null); })}
-                      className="rounded bg-danger px-2 py-0.5 text-white"
-                    >
-                      {a.sobrescreve ? 'Confirmar: voltar ao exemplo' : 'Confirmar exclusão'}
-                    </button>
-                  ) : (
-                    <button type="button" disabled={busy} onClick={() => setConfirmDelete(a.nome)} aria-label={`Excluir ${a.nome}`} className="rounded border border-line px-2 py-0.5 text-danger hover:bg-raised">
-                      {a.sobrescreve ? 'Voltar ao exemplo' : 'Excluir'}
-                    </button>
-                  ))}
-              </div>
-              {duplicating === a.nome && (
-                <form onSubmit={(e) => submitDuplicate(e, a.nome)} className="mt-2 flex items-end gap-2 text-sm">
-                  <label>
-                    Nome da cópia
-                    <input name="novo" required maxLength={64} defaultValue={`${a.nome}-2`} className="mt-1 block rounded border border-line bg-bg px-2 py-1" />
-                  </label>
-                  <button type="submit" disabled={busy} className="rounded bg-accent px-3 py-1 font-medium text-accent-fg">
-                    Duplicar
+          {lib && count === 0 && <p className="m-0 text-muted">Nenhum agente ainda.</p>}
+          <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2.5 p-0">
+            {agents.map((a) => {
+              const on = a.nome === sel;
+              return (
+                <li key={a.nome}>
+                  <button
+                    type="button"
+                    onClick={() => void open(a.nome)}
+                    aria-label={`Editar ${a.nome}`}
+                    aria-pressed={on}
+                    className={`flex h-full w-full flex-col gap-2 rounded-md border p-3 text-left text-fg transition-colors duration-[120ms] hover:border-line-strong ${on ? 'border-line-strong bg-raised' : 'border-line bg-panel'}`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <ProviderDot provider={a.provedor} />
+                      <span className="truncate font-mono text-[13px] font-semibold">{a.nome}</span>
+                      <span className="rounded-sm border border-line px-1.5 text-[11px] text-muted">{originTag(a)}</span>
+                    </span>
+                    {a.descricao && <span className="text-[13px] leading-snug [text-wrap:pretty]">{a.descricao}</span>}
+                    <span className="font-mono text-[11px] text-muted">
+                      {a.provedor}
+                      {a.modelo ? ` · ${a.modelo}` : ''}
+                    </span>
+                    <span className="truncate font-mono text-[11px] text-muted">
+                      {a.ferramentas.length ? `Ferramentas: ${a.ferramentas.join(', ')}` : 'Sem ferramentas'}
+                      {a.skills.length > 0 && ` · Skills: ${a.skills.join(', ')}`}
+                    </span>
                   </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </div>
+
+      <aside aria-label="Editor de agente" className="flex min-h-0 flex-none flex-col border-t border-line bg-panel lg:w-[480px] lg:border-l lg:border-t-0">
+        {editing ? (
+          <>
+            <div className="flex flex-col gap-1.5 border-b border-line px-4 py-3.5">
+              <div className="flex items-center gap-2">
+                {current && <ProviderDot provider={current.provedor} />}
+                <h2 className="m-0 font-mono text-sm font-semibold">{editing.nome}</h2>
+                <span className="flex-1" />
+                <span className="font-mono text-[11px] text-muted">{editing.origem === 'novo' ? 'novo' : `agents/${editing.nome}.md`}</span>
+              </div>
+              <span className="text-xs text-muted">
+                {editing.origem === 'novo'
+                  ? 'Novo agente: ainda não salvo.'
+                  : editing.origem === 'exemplo'
+                    ? 'Ao salvar, cria a sua cópia; o exemplo continua intacto.'
+                    : current?.sobrescreve
+                      ? 'Sua cópia, no lugar do exemplo de mesmo nome.'
+                      : 'Arquivo seu.'}
+              </span>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-auto px-4 py-3.5">
+              {current && (
+                <>
+                  <dl className="m-0 grid grid-cols-3 gap-px overflow-hidden rounded-md border border-line bg-line">
+                    {[
+                      ['PAPEL', current.papel ?? '—'],
+                      ['ADAPTADOR', current.provedor],
+                      ['MODELO', current.modelo ?? 'padrão'],
+                    ].map(([k, v]) => (
+                      <div key={k} className="flex flex-col gap-0.5 bg-raised px-2.5 py-2">
+                        <dt className="owl-label text-[10px]">{k}</dt>
+                        <dd className="m-0 font-mono text-xs">{v}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <div className="flex flex-col gap-2">
+                    <Label>FERRAMENTAS · ESCOPO</Label>
+                    <ul aria-label="Ferramentas" className="m-0 flex list-none flex-wrap gap-1.5 p-0">
+                      {current.ferramentas.map((t) => (
+                        <li key={t} className="rounded-sm border border-line bg-raised px-[7px] py-[3px] font-mono text-[11px]">
+                          {t}
+                        </li>
+                      ))}
+                      {current.skills.map((s) => (
+                        <li key={s} className="rounded-sm border border-line bg-raised px-[7px] py-[3px] font-mono text-[11px]">
+                          skill: {s}
+                        </li>
+                      ))}
+                      {current.podeAprovar && <li className="rounded-sm border border-line bg-raised px-[7px] py-[3px] font-mono text-[11px]">pode aprovar</li>}
+                    </ul>
+                    {current.ferramentas.length === 0 && <span className="text-xs text-muted">Sem ferramentas: só responde texto.</span>}
+                    <span className="text-xs leading-normal text-muted">Escreve só no worktree do ticket. Push, merge, instalar e apagar sempre pedem aprovação.</span>
+                  </div>
+                </>
+              )}
+
+              <div className="flex min-h-0 flex-1 flex-col gap-2">
+                <Label>DEFINIÇÃO</Label>
+                <label className="flex min-h-0 flex-1 flex-col">
+                  <span className="sr-only">Arquivo do agente {editing.nome}</span>
+                  <textarea
+                    value={editing.texto}
+                    onChange={(e) => setEditing({ ...editing, texto: e.target.value })}
+                    rows={14}
+                    spellCheck={false}
+                    className="min-h-60 w-full flex-1 resize-y rounded-md border border-line bg-bg px-3 py-2.5 font-mono text-xs leading-[1.65] text-fg outline-none focus:border-accent"
+                  />
+                </label>
+              </div>
+
+              {editorError && (
+                <p role="alert" className="m-0 text-[13px] text-danger">
+                  {editorError}
+                </p>
+              )}
+
+              {duplicating && current && (
+                <form onSubmit={(e) => submitDuplicate(e, current.nome)} className="flex items-end gap-2 text-xs">
+                  <label className="flex flex-col gap-1.5 font-medium">
+                    Nome da cópia
+                    <input name="novo" required maxLength={64} defaultValue={`${current.nome}-2`} className={`${field} font-mono`} />
+                  </label>
+                  <Button type="submit" variant="primary" disabled={busy}>
+                    Criar cópia
+                  </Button>
                 </form>
               )}
-            </li>
-          ))}
-        </ul>
-      </div>
-    </section>
+            </div>
+
+            <div className="flex gap-2 border-t border-line px-4 py-3">
+              <Button variant="primary" icon={Save} disabled={busy} onClick={() => void save()}>
+                Salvar
+              </Button>
+              {current && (
+                <Button disabled={busy} aria-label={`Duplicar ${current.nome}`} aria-expanded={duplicating} onClick={() => setDuplicating((v) => !v)}>
+                  Duplicar
+                </Button>
+              )}
+              <span className="flex-1" />
+              {current?.origem === 'usuario' &&
+                (confirmDelete ? (
+                  <Button variant="danger" disabled={busy} style={{ color: 'var(--c-danger)', borderColor: 'var(--c-danger)', background: 'var(--c-danger-wash)' }} onClick={() => void run(async () => { await api.deleteAgent(current.nome); setConfirmDelete(false); setSel(null); setEditing(null); })}>
+                    {current.sobrescreve ? 'Confirmar: voltar ao exemplo' : 'Confirmar exclusão'}
+                  </Button>
+                ) : (
+                  <Button variant="danger" disabled={busy} aria-label={`Excluir ${current.nome}`} onClick={() => setConfirmDelete(true)}>
+                    {current.sobrescreve ? 'Voltar ao exemplo' : 'Excluir'}
+                  </Button>
+                ))}
+            </div>
+          </>
+        ) : (
+          <p className="m-0 p-4 text-[13px] text-muted">Escolha um agente para ver a definição.</p>
+        )}
+      </aside>
+    </main>
   );
 }

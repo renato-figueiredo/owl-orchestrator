@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="assets/owl/favicon.svg">
+<style>
+html,body{margin:0;background:var(--c-bg);color:var(--c-fg);font-family:var(--font-sans)}
+a{color:var(--c-accent);text-decoration:none}a:hover{color:var(--c-accent-hover);text-decoration:underline}
+*{font-variant-ligatures:none}
+</style>
+</helmet>
+<div style="background:var(--c-bg);color:var(--c-fg);font-size:16px;min-height:100vh">
+
+  <nav style="position:sticky;top:0;z-index:10;background:var(--c-chrome);border-bottom:1px solid var(--c-line)">
+    <div style="max-width:1200px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;gap:28px">
+      <a href="#topo" style="display:flex;align-items:center;gap:10px;color:var(--c-fg);text-decoration:none"><img src="assets/owl/mark.svg" alt="" style="width:28px;height:28px"><span style="font-family:var(--font-mono);font-weight:600;letter-spacing:.18em;font-size:14px">OWL</span></a>
+      <div style="display:flex;gap:22px;font-size:14px;flex:1;flex-wrap:wrap;overflow:hidden;height:20px">
+        <a href="#como" style="color:var(--c-muted)">Como funciona</a>
+        <a href="#download" style="color:var(--c-muted)">Download</a>
+        <a href="#ia" style="color:var(--c-muted)">IA local</a>
+        <a href="#servidores" style="color:var(--c-muted)">Servidores</a>
+        <a href="#precos" style="color:var(--c-muted)">Preços</a>
+        <a href="#" style="color:var(--c-muted)">Docs</a>
+      </div>
+      <a href="#" style="display:flex;align-items:center;gap:6px;color:var(--c-muted);font-size:14px;flex:none"><i class="icon-github"></i>4,2k</a>
+      <a href="#download" style="display:flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:6px;background:var(--c-accent);color:var(--c-accent-fg);font-weight:600;font-size:14px;text-decoration:none;flex:none" style-hover="background:var(--c-accent-hover)"><i class="icon-download"></i>Baixar</a>
+    </div>
+  </nav>
+
+  <header id="topo" data-screen-label="Hero" style="max-width:1200px;margin:0 auto;padding:88px 24px 40px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:26px">
+    <img src="assets/owl/anim-splash.svg" alt="" style="width:88px;height:88px">
+    <h1 style="margin:0;font-size:clamp(40px,6vw,68px);line-height:1.04;font-weight:600;letter-spacing:-.02em;max-width:16ch;text-wrap:balance">A coruja que vigia seus agentes de IA.</h1>
+    <p style="margin:0;font-size:clamp(17px,2vw,20px);line-height:1.55;color:var(--c-muted);max-width:56ch;text-wrap:pretty">Orquestre claude-cli, codex-cli e ollama no seu computador. Veja cada execução ao vivo, coordene tudo num quadro — e nenhum comando perigoso roda até você aprovar.</p>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center">
+      <a href="#download" style="display:flex;align-items:center;gap:10px;height:48px;padding:0 22px;border-radius:6px;background:var(--c-accent);color:var(--c-accent-fg);font-weight:600;text-decoration:none" style-hover="background:var(--c-accent-hover)"><i class="{{ osIcon }}"></i>Baixar para {{ osName }}</a>
+      <a href="#" style="display:flex;align-items:center;gap:10px;height:48px;padding:0 20px;border-radius:6px;border:1px solid var(--c-line-strong);color:var(--c-fg);font-weight:500;text-decoration:none" style-hover="background:var(--c-panel)"><i class="icon-github"></i>Código aberto no GitHub</a>
+    </div>
+    <span style="font-family:var(--font-mono);font-size:13px;color:var(--c-faint)">v0.9.2 · grátis para uso local · MIT</span>
+  </header>
+
+  <section aria-label="O app" style="max-width:1280px;margin:0 auto;padding:0 24px 96px">
+    <div ref="{{ frameRef }}" style="position:relative;width:100%;aspect-ratio:1440/860;border:1px solid var(--c-line-strong);border-radius:10px;overflow:hidden;background:var(--c-chrome)">
+      <iframe src="OWL App.dc.html" title="OWL — app" tabindex="-1" style="position:absolute;top:0;left:0;width:1440px;height:860px;border:0;transform-origin:0 0;transform:scale({{ scale }});pointer-events:none"></iframe>
+    </div>
+  </section>
+
+  <section style="border-top:1px solid var(--c-line);border-bottom:1px solid var(--c-line);background:var(--c-chrome)">
+    <div style="max-width:1200px;margin:0 auto;padding:28px 24px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:24px">
+      <div style="display:flex;gap:14px;align-items:baseline"><span style="font-family:var(--font-mono);font-size:15px;color:var(--c-accent)">127.0.0.1</span><span style="color:var(--c-muted);font-size:15px">Roda na sua máquina. Nada sobe sem você mandar.</span></div>
+      <div style="display:flex;gap:14px;align-items:baseline"><span style="font-family:var(--font-mono);font-size:15px;color:var(--c-accent)">SQLite</span><span style="color:var(--c-muted);font-size:15px">Todo run, custo e decisão num arquivo seu.</span></div>
+      <div style="display:flex;gap:14px;align-items:baseline"><span style="font-family:var(--font-mono);font-size:15px;color:var(--c-accent)">suas CLIs</span><span style="color:var(--c-muted);font-size:15px">Usa as assinaturas que você já paga.</span></div>
+    </div>
+  </section>
+
+  <section id="como" data-screen-label="Como funciona" style="max-width:1200px;margin:0 auto;padding:96px 24px;display:flex;flex-direction:column;gap:48px">
+    <div style="display:flex;flex-direction:column;gap:14px;max-width:640px">
+      <span style="font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;color:var(--c-muted)">COMO FUNCIONA</span>
+      <h2 style="margin:0;font-size:clamp(30px,4vw,44px);line-height:1.1;font-weight:600;text-wrap:balance">Você define o trabalho. Ela vigia. Você decide.</h2>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px">
+      <sc-for list="{{ how }}" as="s" hint-placeholder-count="3">
+        <div style="display:flex;flex-direction:column;gap:16px;padding:24px;border:1px solid {{ s.edge }};border-radius:10px;background:{{ s.bg }}">
+          <div style="display:flex;align-items:center;gap:14px"><img src="{{ s.img }}" alt="" style="width:56px;height:56px"><span style="font-family:var(--font-mono);font-size:13px;color:var(--c-muted)">{{ s.n }}</span></div>
+          <h3 style="margin:0;font-size:22px;font-weight:600">{{ s.t }}</h3>
+          <p style="margin:0;color:var(--c-muted);line-height:1.6;font-size:15px;text-wrap:pretty">{{ s.d }}</p>
+          <code style="margin-top:auto;font-family:var(--font-mono);font-size:13px;padding:10px 12px;border-radius:6px;background:var(--c-bg);color:var(--c-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.code }}</code>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section id="download" data-screen-label="Download" style="border-top:1px solid var(--c-line);background:var(--c-chrome)">
+    <div style="max-width:1200px;margin:0 auto;padding:96px 24px;display:flex;flex-direction:column;gap:40px">
+      <div style="display:flex;align-items:flex-end;gap:24px;flex-wrap:wrap">
+        <div style="display:flex;flex-direction:column;gap:14px;flex:1;min-width:280px">
+          <span style="font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;color:var(--c-muted)">DOWNLOAD · V0.9.2</span>
+          <h2 style="margin:0;font-size:clamp(30px,4vw,44px);line-height:1.1;font-weight:600">Na mesa e no bolso.</h2>
+          <p style="margin:0;color:var(--c-muted);font-size:16px;line-height:1.6;max-width:56ch">O app de mesa roda os agentes. O celular pareia por QR e serve para acompanhar e aprovar de longe.</p>
+        </div>
+        <code style="font-family:var(--font-mono);font-size:14px;padding:12px 16px;border-radius:6px;background:var(--c-bg);border:1px solid var(--c-line)"><span style="color:var(--c-muted)">$ </span>curl -fsSL owl.dev/install | sh</code>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px">
+        <sc-for list="{{ platforms }}" as="p" hint-placeholder-count="5">
+          <div style="display:flex;flex-direction:column;gap:14px;padding:22px;border:1px solid {{ p.edge }};border-radius:10px;background:var(--c-panel)">
+            <div style="display:flex;align-items:center;gap:12px">
+              <i class="{{ p.icon }}" style="font-size:22px"></i>
+              <span style="font-size:18px;font-weight:600;flex:1">{{ p.name }}</span>
+              <sc-if value="{{ p.mine }}"><span style="font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;color:var(--c-accent)">SEU SISTEMA</span></sc-if>
+            </div>
+            <span style="color:var(--c-muted);font-size:14px">{{ p.req }}</span>
+            <div style="display:flex;flex-direction:column;gap:6px;margin-top:auto">
+              <sc-for list="{{ p.files }}" as="f">
+                <a href="#" style="display:flex;align-items:center;gap:10px;height:40px;padding:0 12px;border-radius:6px;border:1px solid var(--c-line);background:{{ f.bg }};color:{{ f.color }};font-size:14px;font-weight:500;text-decoration:none" style-hover="border-color:var(--c-line-strong)"><i class="icon-download"></i><span style="flex:1">{{ f.t }}</span><span style="font-family:var(--font-mono);font-size:12px;opacity:.75">{{ f.size }}</span></a>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <span style="font-family:var(--font-mono);font-size:13px;color:var(--c-faint)">sha256 e assinaturas em github.com/renato-figueiredo/owl-orchestrator/releases · atualização automática no app</span>
+    </div>
+  </section>
+
+  <section id="ia" data-screen-label="IA local" style="max-width:1200px;margin:0 auto;padding:96px 24px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:48px;align-items:center">
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <span style="font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;color:var(--c-muted)">IA LOCAL · OWL PRO</span>
+      <h2 style="margin:0;font-size:clamp(30px,4vw,44px);line-height:1.1;font-weight:600;text-wrap:balance">Modelos abertos no seu hardware, sem configurar nada.</h2>
+      <p style="margin:0;color:var(--c-muted);font-size:16px;line-height:1.6;text-wrap:pretty">O Pro habilita a IA local gerenciada: o OWL detecta sua GPU, baixa o modelo certo, mantém atualizado e roteia tarefas leves para ele — rascunhos, revisão, resumo de logs — guardando as CLIs pagas para o que precisa delas.</p>
+      <div style="display:flex;flex-direction:column;gap:10px;font-size:15px">
+        <span style="display:flex;gap:10px"><span style="font-family:var(--font-mono);color:var(--c-ok)">✓</span>Zero token saindo da máquina</span>
+        <span style="display:flex;gap:10px"><span style="font-family:var(--font-mono);color:var(--c-ok)">✓</span>Roteamento por custo: local primeiro, CLI quando precisar</span>
+        <span style="display:flex;gap:10px"><span style="font-family:var(--font-mono);color:var(--c-ok)">✓</span>Funciona offline, no avião</span>
+      </div>
+    </div>
+    <div style="border:1px solid var(--c-line);border-radius:10px;background:var(--c-panel);overflow:hidden">
+      <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--c-line)">
+        <img src="assets/owl/anim-thinking.svg" alt="" style="width:32px;height:32px">
+        <div style="display:flex;flex-direction:column;gap:2px;flex:1"><span style="font-weight:600;font-size:14px">Sua máquina</span><span style="font-family:var(--font-mono);font-size:12px;color:var(--c-muted)">Apple M3 Pro · 36 GB unificada</span></div>
+        <span style="font-family:var(--font-mono);font-size:12px;color:var(--c-ok)">✓ compatível</span>
+      </div>
+      <sc-for list="{{ models }}" as="m" hint-placeholder-count="4">
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--c-line);font-size:14px">
+          <span style="width:6px;height:6px;border-radius:2px;background:var(--c-prov-ollama);flex:none"></span>
+          <span style="flex:1;font-family:var(--font-mono);font-size:13px">{{ m.name }}</span>
+          <span style="font-family:var(--font-mono);font-size:12px;color:var(--c-muted)">{{ m.mem }}</span>
+          <span style="font-family:var(--font-mono);font-size:12px;width:96px;text-align:right;color:{{ m.color }}">{{ m.fit }}</span>
+        </div>
+      </sc-for>
+      <div style="padding:12px 16px;font-size:13px;color:var(--c-muted)">Sem GPU que aguente? Rode num servidor OWL e use igual.</div>
+    </div>
+  </section>
+
+  <section id="servidores" data-screen-label="Servidores" style="border-top:1px solid var(--c-line);background:var(--c-chrome)">
+    <div style="max-width:1200px;margin:0 auto;padding:96px 24px;display:flex;flex-direction:column;gap:40px">
+      <div style="display:flex;flex-direction:column;gap:14px;max-width:680px">
+        <span style="font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;color:var(--c-muted)">OWL SERVIDORES</span>
+        <h2 style="margin:0;font-size:clamp(30px,4vw,44px);line-height:1.1;font-weight:600;text-wrap:balance">Uma GPU dedicada, pareada como se fosse sua.</h2>
+        <p style="margin:0;color:var(--c-muted);font-size:16px;line-height:1.6;text-wrap:pretty">Servidor só seu, com o OWL e os modelos já instalados. Pareia com o app por QR, aparece na Vigia como mais uma máquina. Desliga sozinho quando a fila esvazia.</p>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px">
+        <sc-for list="{{ servers }}" as="s" hint-placeholder-count="3">
+          <div style="display:flex;flex-direction:column;gap:18px;padding:24px;border:1px solid {{ s.edge }};border-radius:10px;background:var(--c-panel)">
+            <div style="display:flex;align-items:center;gap:10px"><span style="font-family:var(--font-mono);font-size:15px;font-weight:600;letter-spacing:.06em">{{ s.name }}</span><span style="flex:1"></span><sc-if value="{{ s.tag }}"><span style="font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;color:var(--c-accent)">{{ s.tag }}</span></sc-if></div>
+            <div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:36px;font-weight:600;font-variant-numeric:tabular-nums">{{ s.price }}</span><span style="color:var(--c-muted);font-size:14px">/mês</span></div>
+            <div style="display:flex;flex-direction:column;gap:8px;font-family:var(--font-mono);font-size:13px;color:var(--c-muted)">
+              <sc-for list="{{ s.specs }}" as="x"><span>{{ x }}</span></sc-for>
+            </div>
+            <span style="font-size:14px;line-height:1.5;color:var(--c-fg)">{{ s.fits }}</span>
+            <a href="#" style="margin-top:auto;display:flex;align-items:center;justify-content:center;gap:8px;height:44px;border-radius:6px;background:{{ s.btnBg }};color:{{ s.btnColor }};border:1px solid {{ s.btnEdge }};font-weight:600;font-size:14px;text-decoration:none">Contratar {{ s.name }}</a>
+          </div>
+        </sc-for>
+      </div>
+      <span style="font-size:13px;color:var(--c-faint)">Região São Paulo · cobrança por hora ligada, teto mensal · valores de referência.</span>
+    </div>
+  </section>
+
+  <section id="precos" data-screen-label="Preços" style="max-width:1200px;margin:0 auto;padding:96px 24px;display:flex;flex-direction:column;gap:40px">
+    <div style="display:flex;align-items:flex-end;gap:24px;flex-wrap:wrap">
+      <div style="display:flex;flex-direction:column;gap:14px;flex:1;min-width:280px">
+        <span style="font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;color:var(--c-muted)">PREÇOS</span>
+        <h2 style="margin:0;font-size:clamp(30px,4vw,44px);line-height:1.1;font-weight:600">Orquestrar é grátis. Para sempre.</h2>
+      </div>
+      <div role="radiogroup" aria-label="Ciclo de cobrança" style="display:flex;border:1px solid var(--c-line);border-radius:6px;overflow:hidden">
+        <button onClick="{{ setMonthly }}" aria-pressed="{{ monthly }}" style="height:36px;padding:0 14px;border:0;background:{{ mBg }};color:var(--c-fg);font:500 14px var(--font-sans);cursor:pointer">Mensal</button>
+        <button onClick="{{ setYearly }}" aria-pressed="{{ yearly }}" style="height:36px;padding:0 14px;border:0;border-left:1px solid var(--c-line);background:{{ yBg }};color:var(--c-fg);font:500 14px var(--font-sans);cursor:pointer">Anual <span style="font-family:var(--font-mono);font-size:12px;color:var(--c-ok)">−20%</span></button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px">
+      <sc-for list="{{ plans }}" as="p" hint-placeholder-count="3">
+        <div style="display:flex;flex-direction:column;gap:20px;padding:28px 24px;border:1px solid {{ p.edge }};border-radius:10px;background:{{ p.bg }}">
+          <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:20px;font-weight:600">{{ p.name }}</span><span style="color:var(--c-muted);font-size:14px">{{ p.who }}</span></div>
+          <div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:40px;font-weight:600;font-variant-numeric:tabular-nums">{{ p.price }}</span><span style="color:var(--c-muted);font-size:14px">{{ p.per }}</span></div>
+          <div style="display:flex;flex-direction:column;gap:10px;font-size:15px">
+            <sc-for list="{{ p.items }}" as="i"><span style="display:flex;gap:10px;line-height:1.45"><span style="font-family:var(--font-mono);color:var(--c-ok)">✓</span>{{ i }}</span></sc-for>
+          </div>
+          <a href="#" style="margin-top:auto;display:flex;align-items:center;justify-content:center;height:46px;border-radius:6px;background:{{ p.btnBg }};color:{{ p.btnColor }};border:1px solid {{ p.btnEdge }};font-weight:600;font-size:15px;text-decoration:none">{{ p.cta }}</a>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <footer style="border-top:1px solid var(--c-line);background:var(--c-chrome)">
+    <div style="max-width:1200px;margin:0 auto;padding:40px 24px;display:flex;gap:24px;align-items:center;flex-wrap:wrap">
+      <img src="assets/owl/anim-idle.svg" alt="" style="width:40px;height:40px">
+      <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:220px"><span style="font-family:var(--font-mono);font-weight:600;letter-spacing:.18em;font-size:14px">OWL</span><span style="font-size:13px;color:var(--c-muted)">Orchestrator for Work &amp; LLMs</span></div>
+      <div style="display:flex;gap:20px;font-size:14px;flex-wrap:wrap">
+        <a href="#" style="color:var(--c-muted)">Docs</a><a href="#" style="color:var(--c-muted)">Changelog</a><a href="#" style="color:var(--c-muted)">Segurança</a><a href="#" style="color:var(--c-muted)">Privacidade</a><a href="#" style="color:var(--c-muted)">Status</a>
+      </div>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { scale: 0.8, yearly: false };
+  frameRef = React.createRef();
+  componentDidMount() {
+    const el = this.frameRef.current;
+    if (!el) return;
+    this.ro = new ResizeObserver(() => this.setState({ scale: el.clientWidth / 1440 }));
+    this.ro.observe(el);
+  }
+  componentWillUnmount() { this.ro && this.ro.disconnect(); }
+  renderVals() {
+    const s = this.state;
+    const ua = (navigator.userAgent || '').toLowerCase();
+    const os = /mac/.test(ua) ? 'mac' : /win/.test(ua) ? 'win' : 'linux';
+    const OS = { mac: ['macOS', 'icon-apple'], win: ['Windows', 'icon-monitor'], linux: ['Linux', 'icon-terminal'] };
+    const primary = { bg: 'var(--c-accent)', color: 'var(--c-accent-fg)' }, ghost = { bg: 'transparent', color: 'var(--c-fg)' };
+    const P = [
+      ['mac', 'macOS', 'icon-apple', 'macOS 13 ou mais novo', [['Apple Silicon', '.dmg', '84 MB'], ['Intel', '.dmg', '91 MB']]],
+      ['win', 'Windows', 'icon-monitor', 'Windows 10/11 · x64 e ARM', [['Instalador', '.exe', '78 MB'], ['winget install owl', '', '']]],
+      ['linux', 'Linux', 'icon-terminal', 'Ubuntu 22.04+, Fedora 39+', [['AppImage', '', '96 MB'], ['.deb / .rpm', '', '74 MB']]],
+      ['ios', 'iPhone e iPad', 'icon-smartphone', 'Companheiro: Vigia, aprovações, notificações', [['App Store', '', '']]],
+      ['android', 'Android', 'icon-tablet-smartphone', 'Companheiro · Android 10+', [['Google Play', '', ''], ['.apk direto', '', '22 MB']]],
+    ];
+    const yr = s.yearly;
+    const PLANS = [
+      { name: 'Livre', who: 'Para quem já tem as CLIs.', price: 'R$ 0', per: 'para sempre', cta: 'Baixar', hi: false,
+        items: ['Projetos, quadro, aprovações e memória ilimitados', 'claude-cli, codex-cli e seu próprio ollama', 'Tudo local, código aberto (MIT)'] },
+      { name: 'Pro', who: 'IA local gerenciada + celular.', price: yr ? 'R$ 23' : 'R$ 29', per: yr ? '/mês, cobrado anual' : '/mês', cta: 'Assinar Pro', hi: true,
+        items: ['IA local habilitada: modelos instalados e roteados pelo OWL', 'App celular pareado, notificações de aprovação', 'Backup criptografado (age) para sua nuvem', 'Pareamento com 1 servidor OWL'] },
+      { name: 'Equipe', who: 'Projetos compartilhados.', price: yr ? 'R$ 55' : 'R$ 69', per: yr ? '/pessoa/mês, anual' : '/pessoa/mês', cta: 'Falar com a gente', hi: false,
+        items: ['Tudo do Pro', 'Fila de aprovações compartilhada com papéis', 'Agentes e pipelines da equipe', 'Servidores OWL em conta única'] },
+    ];
+    const SV = [
+      { name: 'CORUJA S', price: 'R$ 890', specs: ['1× GPU 24 GB', '8 vCPU · 32 GB RAM', '200 GB NVMe'], fits: 'Modelos de código até 14B, um agente por vez.', hi: false },
+      { name: 'CORUJA M', price: 'R$ 2.190', specs: ['1× GPU 48 GB', '16 vCPU · 64 GB RAM', '500 GB NVMe'], fits: 'Modelos 32B com folga, 3 agentes em paralelo.', hi: true, tag: 'MAIS USADO' },
+      { name: 'CORUJA L', price: 'R$ 9.800', specs: ['2× GPU 80 GB', '48 vCPU · 256 GB RAM', '2 TB NVMe'], fits: 'Modelos 70B+, equipe inteira na mesma fila.', hi: false },
+    ];
+    return {
+      frameRef: this.frameRef, scale: s.scale,
+      osName: OS[os][0], osIcon: OS[os][1],
+      how: [
+        { n: '01', img: 'assets/owl/anim-sync.svg', t: 'Aponte um projeto', d: 'Uma pasta do computador ou um repositório do GitHub. O OWL clona, lê o CLAUDE.md e monta o quadro.', code: 'owl add ~/code/api-pagamentos', edge: 'var(--c-line)', bg: 'var(--c-panel)' },
+        { n: '02', img: 'assets/owl/anim-watching.svg', t: 'Peça e acompanhe', d: 'Converse ou mova um ticket. Cada agente trabalha num worktree próprio; a Vigia mostra tudo que está vivo.', code: 'dev-front · OWL-142 · 01:12', edge: 'var(--c-line)', bg: 'var(--c-panel)' },
+        { n: '03', img: 'assets/owl/anim-waiting.svg', t: 'Aprove o que importa', d: 'Push, merge, deploy, exclusão: nada roda até você decidir. Reprovar exige motivo — o agente aprende e tenta de novo.', code: '$ git push origin owl/OWL-138', edge: 'var(--c-accent)', bg: 'var(--c-accent-wash)' },
+      ],
+      platforms: P.map(([id, name, icon, req, files]) => { const mine = id === os; return { name, icon, req, mine, edge: mine ? 'var(--c-accent)' : 'var(--c-line)',
+        files: files.map(([t, ext, size], i) => { const st = mine && i === 0 ? primary : ghost; return { t: t + (ext ? ' ' + ext : ''), size, bg: st.bg, color: st.color }; }) }; }),
+      models: [
+        { name: 'qwen2.5-coder 7B', mem: '5 GB', fit: '✓ rápido', color: 'var(--c-ok)' },
+        { name: 'qwen2.5-coder 32B', mem: '20 GB', fit: '✓ cabe', color: 'var(--c-ok)' },
+        { name: 'deepseek-coder-v2 16B', mem: '10 GB', fit: '✓ rápido', color: 'var(--c-ok)' },
+        { name: 'llama 3.3 70B', mem: '43 GB', fit: '✕ servidor', color: 'var(--c-muted)' },
+      ],
+      servers: SV.map(x => ({ ...x, tag: x.tag || '', edge: x.hi ? 'var(--c-accent)' : 'var(--c-line)', btnBg: x.hi ? 'var(--c-accent)' : 'transparent', btnColor: x.hi ? 'var(--c-accent-fg)' : 'var(--c-fg)', btnEdge: x.hi ? 'var(--c-accent)' : 'var(--c-line-strong)' })),
+      plans: PLANS.map(p => ({ ...p, edge: p.hi ? 'var(--c-accent)' : 'var(--c-line)', bg: p.hi ? 'var(--c-accent-wash)' : 'var(--c-panel)', btnBg: p.hi ? 'var(--c-accent)' : 'transparent', btnColor: p.hi ? 'var(--c-accent-fg)' : 'var(--c-fg)', btnEdge: p.hi ? 'var(--c-accent)' : 'var(--c-line-strong)' })),
+      monthly: !yr, yearly: yr, mBg: yr ? 'transparent' : 'var(--c-raised)', yBg: yr ? 'var(--c-raised)' : 'transparent',
+      setMonthly: () => this.setState({ yearly: false }), setYearly: () => this.setState({ yearly: true }),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -27,12 +27,12 @@ describe('Markdown (QA)', () => {
   it('renders GFM tables and inline code without a copy button', () => {
     render(<Markdown>{'| a | b |\n|---|---|\n| 1 | 2 |\n\nusa `x`'}</Markdown>);
     expect(screen.getByRole('table')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Copiar' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'copiar' })).toBeNull();
   });
 
   it('gives each code block its own copy button', () => {
     render(<Markdown>{'```\na\n```\n\n```\nb\n```'}</Markdown>);
-    expect(screen.getAllByRole('button', { name: 'Copiar' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'copiar' })).toHaveLength(2);
   });
 });
 

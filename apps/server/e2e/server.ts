@@ -24,7 +24,9 @@ registerAdapter(fake('claude-cli', 'text'));
 registerAdapter(fake('codex-cli', 'text'));
 registerAdapter(fake('fake-hang', 'hang'));
 // A summarizer that answers with valid JSON (the plain fake CLIs answer "ok", which is not a summary).
-registerAdapter(fake('fake-summarizer', 'summary-ok'));
+// The server only accepts tool-less summarizers (claude-cli, ollama) and claude-cli is the plain fake here, so the
+// summarizer fixture takes the id `ollama` (no real Ollama is involved in e2e).
+registerAdapter(fake('ollama', 'summary-ok'));
 
 // The Playwright config picks the folder so the tests can look inside it (files must really disappear).
 const dir = process.env.OWL_E2E_DIR ?? mkdtempSync(join(tmpdir(), 'owl-e2e-'));
@@ -35,6 +37,11 @@ const executor = new Executor({ repos });
 const attachmentsDir = join(dir, 'attachments');
 const cleanup = new CleanupService({ db, repos, dir: attachmentsDir, isBusy: (id) => executor.hasActive(id) });
 const app = buildApp({ repos, executor, cleanup, attachmentsDir, workspaceRoots: [tmpdir()], defaultCwd: dir, userLibraryDir: join(dir, 'library') });
+// Test-only: a purge keeps a blob seen in the last hour (see CleanupService.purge); this moves the clock for the e2e.
+app.post('/e2e/age-blobs', async () => {
+  db.prepare("UPDATE blobs SET visto_em = datetime('now', '-2 hours')").run();
+  return { ok: true };
+});
 const port = Number(process.env.OWL_PORT ?? 4318);
 await app.listen({ host: '127.0.0.1', port });
 console.log(`e2e server on ${port}, data in ${dir}`);

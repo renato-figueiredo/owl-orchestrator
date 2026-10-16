@@ -1,44 +1,54 @@
-import { applyFilters, FilterBar, LabelChip, NO_FILTER, OrganizePanel, type Filters } from './BoardExtras';
 import { DndContext, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { Button, Input, LayoutGroup, motion, Switch, TicketCard, useMotionPreference } from '@owl/ui';
+import { Plus, Settings, Target } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { LayoutGroup, ListAnimated, motion, Pulse, useMotionPreference } from '@owl/ui';
 import { api } from '../lib/api';
-import { fmtCost, fmtTokens } from '../lib/format';
+import { fmtDay, applyFilters, cycleName, FilterBar, FIELD, NO_FILTER, type Filters } from './BoardExtras';
 import { Logo } from './Logo';
-import { ProjectSwitcher } from './ProjectSwitcher';
-import { TICKET_STATUSES, type BoardData, type BranchInfo, type GateKind, type Project, type Ticket, type TicketApproval, type TicketDetail, type TicketStatus } from '../lib/types';
+import { GATE_KIND_LABEL } from './ApprovalGate';
+import { prioCode, TicketScreen } from './TicketScreen';
+import { TICKET_STATUSES, type BoardData, type Project, type Ticket, type TicketApproval, type TicketStatus } from '../lib/types';
 
 const message = (e: unknown) => (e instanceof Error ? e.message : 'Algo deu errado');
-
-const STATUS_LABEL: Record<TicketStatus, string> = {
-  backlog: 'Backlog',
-  pronto: 'Pronto',
-  em_andamento: 'Em andamento',
-  em_revisao: 'Em revisão',
-  aguardando_aprovacao: 'Aguardando aprovação',
-  concluido: 'Concluído',
-  bloqueado: 'Bloqueado',
-};
-const GATE_LABEL: Record<GateKind, string> = {
-  entrega: 'Entrega',
-  custo: 'Custo acima do teto',
-  destrutiva: 'Ação destrutiva',
-  reprovacao: 'Reprovação do revisor',
-  confianca: 'Baixa confiança do roteador',
-};
-const PRIORITY = ['', 'baixa', 'média', 'alta', 'urgente'];
-const EVENT_LABEL: Record<string, string> = { criado: 'criou', status: 'moveu', atribuido: 'atribuiu', comentario: 'comentou', aprovacao: 'aprovação', execucao: 'executou', roteamento: 'roteou', aviso: 'avisou', etiqueta: 'etiquetou', relacao: 'relacionou', ciclo: 'moveu de ciclo' };
 
 interface Props {
   project: Project;
   onClose: () => void;
-  /** With these, the header offers the project selector and a link to the team screen. */
+  /** Kept for the callers; the project selector lives in the Vigia bar now. */
   projects?: Project[];
   onSwitch?: (id: string) => void;
+  /** With this, the header offers a link to the team screen. */
   onOpenProject?: (id: string) => void;
   /** Reload interval in ms while the board is open (0 = never; tests). */
   pollMs?: number;
 }
+
+/**
+ * The board in three zones by who holds the ball. The app's seven statuses map onto them: `pronto`, `em_andamento`,
+ * `em_revisao` are with the agents (plus `backlog`, not started yet); `aguardando_aprovacao` (a gate waits for the human)
+ * and `bloqueado` (needs unblocking by the human) are with you; `concluido` is done.
+ */
+const ZONES: Array<{ key: string; label: string; cols: Array<{ status: TicketStatus; label: string }> }> = [
+  {
+    key: 'agentes',
+    label: 'Com os agentes',
+    cols: [
+      { status: 'backlog', label: 'Backlog' },
+      { status: 'pronto', label: 'Pronto' },
+      { status: 'em_andamento', label: 'Em andamento' },
+      { status: 'em_revisao', label: 'Revisão' },
+    ],
+  },
+  {
+    key: 'voce',
+    label: 'Com você',
+    cols: [
+      { status: 'aguardando_aprovacao', label: 'Aprovar' },
+      { status: 'bloqueado', label: 'Destravar' },
+    ],
+  },
+  { key: 'feito', label: 'Feito', cols: [{ status: 'concluido', label: 'Concluído' }] },
+];
 
 /** Where a card dropped on `over` goes: the column, and a float position between its neighbours (like Linear's sortOrder). */
 export function dropTarget(tickets: Ticket[], dragged: string, over: string): { status: TicketStatus; ordem: number } | null {
@@ -58,11 +68,12 @@ export function dropTarget(tickets: Ticket[], dragged: string, over: string): { 
   return { status: target.status, ordem: prev ? (prev.ordem + target.ordem) / 2 : target.ordem - 1 };
 }
 
-export function Board({ project, onClose, projects, onSwitch, onOpenProject, pollMs = 3000 }: Props) {
+export function Board({ project, onOpenProject, pollMs = 3000 }: Props) {
   const [data, setData] = useState<BoardData | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState<'ticket' | 'goal' | null>(null);
+  const [needsApproval, setNeedsApproval] = useState(true);
   const [busy, setBusy] = useState(false);
   const [filters, setFilters] = useState<Filters>(NO_FILTER);
   const dragging = useRef(false);
@@ -98,7 +109,11 @@ export function Board({ project, onClose, projects, onSwitch, onOpenProject, pol
     }
   };
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    // Space lifts a card; Enter is left to open it.
+    useSensor(KeyboardSensor, { keyboardCodes: { start: ['Space'], cancel: ['Escape'], end: ['Space', 'Enter'] } }),
+  );
   const onDragEnd = (ev: DragEndEvent) => {
     dragging.current = false;
     if (!data || !ev.over) return;
@@ -116,7 +131,19 @@ export function Board({ project, onClose, projects, onSwitch, onOpenProject, pol
     for (const list of m.values()) list.sort((a, b) => a.ordem - b.ordem);
     return m;
   }, [data, filters]);
-  const titles = useMemo(() => new Map((data?.tickets ?? []).map((t) => [t.id, t])), [data]);
+  const byId = useMemo(() => new Map((data?.tickets ?? []).map((t) => [t.id, t])), [data]);
+  const gates = useMemo(() => new Map<string, TicketApproval>((data?.aprovacoes ?? []).map((a) => [a.ticketId, a])), [data]);
+  const subtasks = useMemo(() => {
+    const m = new Map<string, { done: number; total: number }>();
+    for (const t of data?.tickets ?? []) {
+      if (!t.parentId) continue;
+      const s = m.get(t.parentId) ?? { done: 0, total: 0 };
+      s.total += 1;
+      if (t.status === 'concluido') s.done += 1;
+      m.set(t.parentId, s);
+    }
+    return m;
+  }, [data]);
 
   const submitTicket = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -130,7 +157,7 @@ export function Board({ project, onClose, projects, onSwitch, onOpenProject, pol
         ...(get('criterios') ? { criteriosAceite: get('criterios') } : {}),
         ...(get('responsavel') ? { responsavel: get('responsavel') } : {}),
         ...(budget > 0 ? { orcamentoTokens: Math.floor(budget) } : {}),
-        requerAprovacao: f.get('aprovacao') === 'on',
+        requerAprovacao: needsApproval,
         status: 'pronto',
       });
       setCreating(null);
@@ -146,149 +173,184 @@ export function Board({ project, onClose, projects, onSwitch, onOpenProject, pol
     });
   };
 
+  const cycle = data?.ciclos.find((c) => c.id === filters.ciclo);
+  const cycleDone = cycle && data ? data.tickets.filter((t) => t.cicloId === cycle.id && t.status === 'concluido').length : 0;
+  const cycleTotal = cycle && data ? data.tickets.filter((t) => t.cicloId === cycle.id).length : 0;
+
+  const errorBanner = error && (
+    <p role="alert" className="mx-6 mt-4 rounded-md border border-danger bg-danger-wash p-2.5 text-[13px] text-danger">
+      {error}
+    </p>
+  );
+
+  if (openId)
+    return (
+      <section aria-label={`Quadro de ${project.nome}`} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        {errorBanner}
+        <TicketScreen key={openId} ticketId={openId} busy={busy} onBack={() => setOpenId(null)} onOpen={setOpenId} act={act} version={data} />
+      </section>
+    );
+
   return (
-    <section aria-label={`Quadro de ${project.nome}`} className="flex min-w-0 flex-1 flex-col overflow-hidden">
-      <header className="flex flex-wrap items-center gap-3 border-b border-line p-4">
-        <h1 className="text-lg font-semibold">Quadro · {project.nome}</h1>
-        {projects && onSwitch && projects.length > 1 && <ProjectSwitcher projects={projects} value={project.id} onChange={onSwitch} />}
-        <span className="text-sm text-muted">Os agentes se falam por tickets e comentários.</span>
+    <section aria-label={`Quadro de ${project.nome}`} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <header className="flex flex-wrap items-end gap-4 border-b border-line px-6 pb-3.5 pt-5">
+        <div className="flex flex-col gap-1.5">
+          <div className="owl-label tabular-nums">
+            {cycle ? `${cycleName(cycle)} · ${fmtDay(cycle.inicio)} → ${fmtDay(cycle.fim)} · ${cycleDone}/${cycleTotal}` : project.nome}
+          </div>
+          <h1 className="m-0 text-2xl font-semibold leading-tight">Quadro</h1>
+        </div>
+        <span className="flex-1" />
         {onOpenProject && (
-          <button type="button" onClick={() => onOpenProject(project.id)} className="rounded border border-line px-3 py-1.5 text-sm hover:bg-raised">
+          <Button icon={Settings} onClick={() => onOpenProject(project.id)}>
             Equipe e configurações
-          </button>
+          </Button>
         )}
-        <button type="button" onClick={() => setCreating(creating === 'goal' ? null : 'goal')} aria-expanded={creating === 'goal'} className="ml-auto rounded bg-accent px-3 py-1.5 text-sm font-medium text-accent-fg">
+        <Button icon={Target} aria-expanded={creating === 'goal'} onClick={() => setCreating(creating === 'goal' ? null : 'goal')}>
           Novo objetivo
-        </button>
-        <button type="button" onClick={() => setCreating(creating === 'ticket' ? null : 'ticket')} aria-expanded={creating === 'ticket'} className="rounded border border-line px-3 py-1.5 text-sm hover:bg-raised">
+        </Button>
+        <Button icon={Plus} aria-expanded={creating === 'ticket'} onClick={() => setCreating(creating === 'ticket' ? null : 'ticket')}>
           Novo ticket
-        </button>
-        <button type="button" onClick={onClose} className="rounded border border-line px-3 py-1.5 text-sm hover:bg-raised">
-          Voltar às conversas
-        </button>
+        </Button>
       </header>
 
-      {error && (
-        <p role="alert" className="m-4 mb-0 rounded border border-danger p-2 text-sm text-danger">
-          {error}
-        </p>
-      )}
+      {errorBanner}
 
       {creating === 'goal' && (
-        <form onSubmit={submitGoal} aria-label="Novo objetivo" className="m-4 mb-0 space-y-2 rounded border border-line bg-raised p-3 text-sm">
-          <label className="block">
-            Objetivo
-            <textarea name="objetivo" required maxLength={20000} rows={3} placeholder="Ex.: Quero login com e-mail e senha" className="mt-1 block w-full rounded border border-line bg-bg px-2 py-1" />
-          </label>
-          <p className="text-muted">O product owner escreve o ticket, o tech lead o quebra em subtarefas e os desenvolvedores executam. Você aprova cada entrega.</p>
-          <button type="submit" disabled={busy} className="rounded bg-accent px-3 py-1.5 font-medium text-accent-fg disabled:opacity-50">
-            Começar
-          </button>
+        <form onSubmit={submitGoal} aria-label="Novo objetivo" className="mx-6 mt-4 flex flex-col gap-3 rounded-lg border border-line bg-panel p-4 text-[13px]" style={{ animation: 'owl-fade-in var(--dur) var(--ease-out)' }}>
+          <Input label="Objetivo" name="objetivo" multiline rows={3} required autoFocus placeholder="Ex.: Quero login com e-mail e senha" />
+          <p className="m-0 text-muted">O product owner escreve o ticket, o tech lead o quebra em subtarefas e os desenvolvedores executam. Você aprova cada entrega.</p>
+          <div>
+            <Button type="submit" variant="primary" disabled={busy}>
+              Começar
+            </Button>
+          </div>
         </form>
       )}
       {creating === 'ticket' && (
-        <form onSubmit={submitTicket} aria-label="Novo ticket" className="m-4 mb-0 grid gap-2 rounded border border-line bg-raised p-3 text-sm sm:grid-cols-2">
-          <label className="block sm:col-span-2">
-            Título
-            <input name="titulo" required maxLength={200} className="mt-1 block w-full rounded border border-line bg-bg px-2 py-1" />
-          </label>
-          <label className="block">
-            Descrição
-            <textarea name="descricao" rows={3} className="mt-1 block w-full rounded border border-line bg-bg px-2 py-1" />
-          </label>
-          <label className="block">
-            Critérios de aceite
-            <textarea name="criterios" rows={3} className="mt-1 block w-full rounded border border-line bg-bg px-2 py-1" />
-          </label>
-          <label className="block">
-            Agente responsável (nome do arquivo)
-            <input name="responsavel" placeholder="dev-back" className="mt-1 block w-full rounded border border-line bg-bg px-2 py-1" />
-          </label>
-          <label className="block">
+        <form onSubmit={submitTicket} aria-label="Novo ticket" className="mx-6 mt-4 grid gap-3 rounded-lg border border-line bg-panel p-4 text-[13px] sm:grid-cols-2" style={{ animation: 'owl-fade-in var(--dur) var(--ease-out)' }}>
+          <div className="sm:col-span-2">
+            <Input label="Título" name="titulo" required autoFocus />
+          </div>
+          <Input label="Descrição" name="descricao" multiline rows={3} />
+          <Input label="Critérios de aceite" name="criterios" multiline rows={3} />
+          <Input label="Agente responsável (nome do arquivo)" name="responsavel" placeholder="dev-back" mono />
+          <label className="flex flex-col gap-1.5 text-xs font-medium">
             Teto de tokens (opcional)
-            <input name="orcamento" type="number" min={1} className="mt-1 block w-full rounded border border-line bg-bg px-2 py-1" />
-          </label>
-          <label className="flex items-center gap-2 sm:col-span-2">
-            <input name="aprovacao" type="checkbox" defaultChecked /> Exigir minha aprovação na entrega
+            <input name="orcamento" type="number" min={1} className={`${FIELD} h-[var(--h-ctl)] font-mono`} />
           </label>
           <div className="sm:col-span-2">
-            <button type="submit" disabled={busy} className="rounded bg-accent px-3 py-1.5 font-medium text-accent-fg disabled:opacity-50">
+            <Switch checked={needsApproval} onChange={setNeedsApproval} label="Exigir minha aprovação na entrega" />
+          </div>
+          <div className="sm:col-span-2">
+            <Button type="submit" variant="primary" disabled={busy}>
               Criar ticket
-            </button>
+            </Button>
           </div>
         </form>
       )}
 
       {data && <FilterBar projectId={project.id} data={data} filters={filters} onChange={setFilters} busy={busy} act={act} />}
 
-      {data && data.aprovacoes.length > 0 && (
-        <section aria-label="Fila de aprovações" className="m-4 mb-0 space-y-2 rounded border border-accent p-3">
-          <h2 className="text-sm font-semibold">Aguardando você ({data.aprovacoes.length})</h2>
-          {data.aprovacoes.map((a) => (
-            <Gate key={a.id} approval={a} busy={busy} onOpen={() => setOpenId(a.ticketId)} onDecide={(d, c) => act(() => api.decideApproval(a.id, d, c))} />
-          ))}
-        </section>
-      )}
-
       <DndContext sensors={sensors} onDragStart={() => (dragging.current = true)} onDragCancel={() => (dragging.current = false)} onDragEnd={onDragEnd}>
-        <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4" role="list" aria-label="Colunas">
-          {!data && (
-            <p className="flex items-center gap-2 text-sm text-muted">
-              <Logo size={24} blink /> Carregando…
-            </p>
-          )}
-          {data && (
-            <LayoutGroup>
-              {TICKET_STATUSES.map((s) => (
-                <Column key={s} status={s} tickets={byStatus.get(s) ?? []} titles={titles} onOpen={setOpenId} />
-              ))}
-            </LayoutGroup>
-          )}
-        </div>
+        {!data && (
+          <p className="m-6 flex items-center gap-2 text-[13px] text-muted">
+            <Logo size={24} blink /> Carregando…
+          </p>
+        )}
+        {data && (
+          <LayoutGroup>
+            <div className="grid min-h-0 flex-1 grid-cols-1 content-start gap-4 overflow-auto px-5 py-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)_minmax(150px,170px)]">
+              {ZONES.map((z) => {
+                const count = z.cols.reduce((n, c) => n + (byStatus.get(c.status)?.length ?? 0), 0);
+                const mine = z.key === 'voce';
+                return (
+                  <section
+                    key={z.key}
+                    aria-label={z.label}
+                    className={`flex min-w-0 flex-col gap-3 rounded-lg border p-3 ${mine ? 'order-first border-accent bg-accent-wash xl:order-none' : 'border-line'}`}
+                  >
+                    <div className="flex items-baseline gap-2">
+                      <h2 className={`m-0 text-base font-semibold ${mine ? 'text-accent' : z.key === 'feito' ? 'text-ok' : ''}`}>{z.label}</h2>
+                      <span className="font-mono text-[11px] tabular-nums text-muted">{count}</span>
+                    </div>
+                    {z.key === 'feito' ? (
+                      <DoneColumn tickets={byStatus.get('concluido') ?? []} onOpen={setOpenId} />
+                    ) : (
+                      <div className="flex min-h-0 flex-1 gap-2.5">
+                        {z.cols.map((c) => (
+                          <Column
+                            key={c.status}
+                            status={c.status}
+                            label={c.label}
+                            tickets={byStatus.get(c.status) ?? []}
+                            byId={byId}
+                            gates={gates}
+                            subtasks={subtasks}
+                            onOpen={setOpenId}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {mine && count === 0 && <p className="m-0 text-[13px] text-muted">Nada esperando você</p>}
+                  </section>
+                );
+              })}
+            </div>
+          </LayoutGroup>
+        )}
       </DndContext>
-
-      {openId && (
-        <TicketPanel
-          key={openId}
-          ticketId={openId}
-          busy={busy}
-          onClose={() => setOpenId(null)}
-          onOpen={setOpenId}
-          act={act}
-          version={data}
-        />
-      )}
     </section>
   );
 }
 
-function Column({ status, tickets, titles, onOpen }: { status: TicketStatus; tickets: Ticket[]; titles: Map<string, Ticket>; onOpen: (id: string) => void }) {
+function Column({
+  status,
+  label,
+  tickets,
+  byId,
+  gates,
+  subtasks,
+  onOpen,
+}: {
+  status: TicketStatus;
+  label: string;
+  tickets: Ticket[];
+  byId: Map<string, Ticket>;
+  gates: Map<string, TicketApproval>;
+  subtasks: Map<string, { done: number; total: number }>;
+  onOpen: (id: string) => void;
+}) {
   const { setNodeRef, isOver } = useDroppable({ id: `col:${status}` });
   return (
-    <div
-      ref={setNodeRef}
-      role="listitem"
-      aria-label={STATUS_LABEL[status]}
-      className={`flex w-64 shrink-0 flex-col rounded border bg-panel ${isOver ? 'border-accent' : 'border-line'}`}
-    >
-      <h2 className="flex items-center justify-between border-b border-line px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted">
-        {STATUS_LABEL[status]}
-        <span aria-label={`${tickets.length} tickets`}>{tickets.length}</span>
-      </h2>
-      <ul className="min-h-16 flex-1 space-y-2 overflow-y-auto p-2">
+    <div ref={setNodeRef} role="group" aria-label={label} className={`flex min-w-0 flex-1 flex-col gap-2 rounded-md ${isOver ? 'outline outline-1 outline-offset-2 outline-accent' : ''}`}>
+      <h3 className="m-0 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted">
+        {label} <span aria-label={`${tickets.length} tickets`} className="font-mono font-normal tabular-nums">{tickets.length}</span>
+      </h3>
+      <ul className="m-0 flex min-h-16 flex-1 list-none flex-col gap-2 p-0">
         {tickets.map((t) => (
-          <Card key={t.id} ticket={t} parent={t.parentId ? titles.get(t.parentId) : undefined} onOpen={() => onOpen(t.id)} />
+          <Card key={t.id} ticket={t} parent={t.parentId ? byId.get(t.parentId) : undefined} gate={gates.get(t.id)} sub={subtasks.get(t.id)} onOpen={() => onOpen(t.id)} />
         ))}
       </ul>
     </div>
   );
 }
 
-function Card({ ticket: t, parent, onOpen }: { ticket: Ticket; parent: Ticket | undefined; onOpen: () => void }) {
+function Card({ ticket: t, parent, gate, sub, onOpen }: { ticket: Ticket; parent: Ticket | undefined; gate: TicketApproval | undefined; sub: { done: number; total: number } | undefined; onOpen: () => void }) {
   const drag = useDraggable({ id: t.id });
   const drop = useDroppable({ id: t.id });
   const { reduced } = useMotionPreference();
   const style = drag.transform ? { transform: `translate3d(${drag.transform.x}px, ${drag.transform.y}px, 0)` } : undefined;
+  const prio = prioCode(t.prioridade);
+  const meta = [
+    sub ? `${sub.done}/${sub.total} sub` : '',
+    parent ? `↳ ${parent.identificador}` : '',
+    t.estimativa != null ? `${t.estimativa} pt` : '',
+    t.prazo ? `até ${t.prazo.split('-').reverse().join('/')}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const { onKeyDown: dragKeyDown, ...listeners } = drag.listeners ?? {};
   // The <li> carries Motion's shared-layout travel between columns (layoutId); the inner box carries dnd-kit's drag
   // transform, so the two never fight over the same `transform`. Reduced motion: the card just appears in place.
   return (
@@ -296,271 +358,52 @@ function Card({ ticket: t, parent, onOpen }: { ticket: Ticket; parent: Ticket | 
       {...(reduced ? { layout: false } : { layoutId: t.id, layout: 'position' as const })}
       transition={{ type: 'spring', stiffness: 500, damping: 40, mass: 0.8 }}
     >
-    <div
-      ref={(n) => {
-        drag.setNodeRef(n);
-        drop.setNodeRef(n);
-      }}
-      style={style}
-      className={`rounded border bg-raised text-sm ${drop.isOver ? 'border-accent' : 'border-line'} ${drag.isDragging ? 'relative z-10 opacity-80 shadow-lg' : ''}`}
-    >
-      <button type="button" onClick={onOpen} {...drag.attributes} {...drag.listeners} aria-label={`${t.identificador}: ${t.titulo}`} className="block w-full cursor-grab p-2 text-left">
-        <span className="flex items-center justify-between text-xs text-muted">
-          <span>{t.identificador}</span>
-          {t.prioridade > 0 && <span>{PRIORITY[t.prioridade]}</span>}
-        </span>
-        <span className="mt-0.5 block font-medium">{t.titulo}</span>
-        {(t.etiquetas?.length ?? 0) > 0 && (
-          <span className="mt-1 flex flex-wrap gap-1">
-            {t.etiquetas!.map((l) => (
-              <LabelChip key={l.id} label={l} />
-            ))}
-          </span>
-        )}
-        {(t.bloqueadoPor?.length ?? 0) > 0 && <span className="mt-1 block text-xs text-danger">⛔ bloqueado por {t.bloqueadoPor!.join(', ')}</span>}
-        <span className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted">
-          {t.estimativa != null && <span>{t.estimativa} pt</span>}
-          {t.prazo && <span>até {t.prazo.split('-').reverse().join('/')}</span>}
-          {parent && <span>↳ {parent.identificador}</span>}
-          {t.responsavel && <span>@{t.responsavel}</span>}
-          {t.uso && t.uso.runs > 0 && <span>{fmtTokens(t.uso.tokensIn + t.uso.tokensOut)} tokens</span>}
-        </span>
-      </button>
-    </div>
+      <div
+        ref={(n) => {
+          drag.setNodeRef(n);
+          drop.setNodeRef(n);
+        }}
+        style={style}
+        aria-roledescription="item arrastável"
+        aria-describedby={drag.attributes['aria-describedby']}
+        {...listeners}
+        onKeyDown={(e) => {
+          dragKeyDown?.(e);
+          if (e.key === 'Enter') onOpen();
+        }}
+        className={`touch-none rounded-md ${drop.isOver ? 'outline outline-1 outline-offset-2 outline-accent' : ''} ${drag.isDragging ? 'relative z-10 opacity-80' : ''}`}
+      >
+        <TicketCard
+          id={t.identificador}
+          title={t.titulo}
+          {...(prio ? { priority: prio } : {})}
+          labels={(t.etiquetas ?? []).map((l) => l.nome)}
+          agent={t.responsavel}
+          running={t.status === 'em_andamento'}
+          {...(meta ? { subtasks: meta } : {})}
+          {...(gate ? { gate: gate.tipo ? GATE_KIND_LABEL[gate.tipo] : 'Aprovação' } : {})}
+          {...((t.bloqueadoPor?.length ?? 0) > 0 ? { blockedBy: t.bloqueadoPor!.join(', ') } : {})}
+          onClick={onOpen}
+        />
+      </div>
     </motion.li>
   );
 }
 
-/** One approval: what is being asked, a comment box and the two buttons. Rejecting needs a comment (the agent reads it). */
-function Gate({ approval: a, busy, onDecide, onOpen }: { approval: TicketApproval; busy: boolean; onDecide: (d: 'aprovado' | 'rejeitado', comentario?: string) => Promise<unknown>; onOpen?: () => void }) {
-  const [text, setText] = useState('');
+/** The done zone: a compact list, and the place to drop a card to finish it. */
+function DoneColumn({ tickets, onOpen }: { tickets: Ticket[]; onOpen: (id: string) => void }) {
+  const { setNodeRef, isOver } = useDroppable({ id: 'col:concluido' });
   return (
-    <Pulse className="rounded border border-line bg-raised p-2 text-sm">
-      <p className="flex flex-wrap items-baseline gap-2">
-        {a.ticketIdentificador && (
-          <button type="button" onClick={onOpen} className="font-medium underline">
-            {a.ticketIdentificador} {a.ticketTitulo}
-          </button>
-        )}
-        <span className="rounded bg-user px-1.5 py-0.5 text-xs">{a.tipo ? GATE_LABEL[a.tipo] : 'Aprovação'}</span>
-      </p>
-      <p className="mt-1">{a.motivo}</p>
-      <label className="mt-2 block">
-        <span className="sr-only">Comentário da decisão</span>
-        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} placeholder="Comentário (obrigatório para rejeitar; o agente lê)" className="block w-full rounded border border-line bg-bg px-2 py-1" />
-      </label>
-      <div className="mt-2 flex gap-2">
-        <button type="button" disabled={busy} onClick={() => void onDecide('aprovado', text.trim() || undefined).then(() => setText(''))} className="rounded bg-ok px-3 py-1 font-medium text-accent-fg disabled:opacity-50">
-          {a.tipo === 'reprovacao' ? 'Confirmar e refazer' : 'Aprovar'}
+    <div ref={setNodeRef} role="group" aria-label="Concluído" className={`flex min-h-16 flex-1 flex-col gap-1 rounded-md font-mono text-[11px] text-muted ${isOver ? 'outline outline-1 outline-offset-2 outline-accent' : ''}`}>
+      {tickets.length === 0 && <span className="font-sans text-[13px]">Nada concluído ainda.</span>}
+      {tickets.map((t) => (
+        <button key={t.id} type="button" onClick={() => onOpen(t.id)} aria-label={`${t.identificador}: ${t.titulo}`} title={t.titulo} className="flex gap-1.5 bg-transparent py-[3px] text-left text-muted hover:text-fg">
+          <span aria-hidden="true" className="text-ok">
+            ✓
+          </span>
+          {t.identificador}
         </button>
-        <button type="button" disabled={busy || !text.trim()} onClick={() => void onDecide('rejeitado', text.trim()).then(() => setText(''))} className="rounded border border-danger px-3 py-1 text-danger disabled:opacity-50">
-          {a.tipo === 'reprovacao' ? 'Refazer do meu jeito' : 'Rejeitar'}
-        </button>
-      </div>
-      {a.tipo === 'reprovacao' && <p className="mt-1 text-xs text-muted">Nos dois casos o autor refaz; o comentário (obrigatório no segundo) vira a instrução.</p>}
-    </Pulse>
-  );
-}
-
-function TicketPanel({ ticketId, busy, onClose, onOpen, act, version }: { ticketId: string; busy: boolean; onClose: () => void; onOpen: (id: string) => void; act: (fn: () => Promise<unknown>) => Promise<void>; version: BoardData | null }) {
-  const [d, setD] = useState<TicketDetail | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [comment, setComment] = useState('');
-  const [agent, setAgent] = useState('');
-
-  // Reloads whenever the board reloads (new comments from the agents arrive with it).
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .ticket(ticketId)
-      .then((x) => !cancelled && (setD(x), setErr(null)))
-      .catch((e) => !cancelled && setErr(message(e)));
-    return () => {
-      cancelled = true;
-    };
-  }, [ticketId, version]);
-
-  if (!d) return <aside aria-label="Ticket" className="border-t border-line p-4 text-sm">{err ?? 'Carregando…'}</aside>;
-  const t = d.ticket;
-  const pending = d.aprovacoes.filter((a) => a.status === 'pendente');
-  const running = d.runs.some((r) => r.status === 'rodando');
-
-  return (
-    <aside aria-label={`Ticket ${t.identificador}`} className="max-h-[55%] overflow-y-auto border-t border-line bg-panel p-4 text-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-base font-semibold">
-          {t.identificador} · {t.titulo}
-        </h2>
-        <span className="rounded bg-user px-2 py-0.5 text-xs">{STATUS_LABEL[t.status]}</span>
-        {running && <span className="text-xs text-muted">agente trabalhando…</span>}
-        <button type="button" onClick={onClose} className="ml-auto rounded border border-line px-2 py-1 hover:bg-raised">
-          Fechar
-        </button>
-      </div>
-      {err && <p role="alert" className="mt-2 text-danger">{err}</p>}
-      {d.parent && (
-        <p className="mt-1 text-muted">
-          Parte de{' '}
-          <button type="button" className="underline" onClick={() => onOpen(d.parent!.id)}>
-            {d.parent.identificador} {d.parent.titulo}
-          </button>
-        </p>
-      )}
-
-      {pending.length > 0 && (
-        <div className="mt-3 space-y-2">
-          {pending.map((a) => (
-            <Gate key={a.id} approval={a} busy={busy} onDecide={(dec, c) => act(() => api.decideApproval(a.id, dec, c))} />
-          ))}
-        </div>
-      )}
-
-      <div className="mt-3 grid gap-4 lg:grid-cols-2">
-        <div className="space-y-3">
-          {t.descricao && <Text title="Descrição" text={t.descricao} />}
-          {t.criteriosAceite && <Text title="Critérios de aceite" text={t.criteriosAceite} />}
-          {t.resumo && <Text title="Resumo" text={t.resumo} />}
-          {d.children.length > 0 && (
-            <div>
-              <h3 className="font-semibold">Subtarefas</h3>
-              <ul className="mt-1 space-y-1">
-                {d.children.map((c) => (
-                  <li key={c.id}>
-                    <button type="button" className="underline" onClick={() => onOpen(c.id)}>
-                      {c.identificador} {c.titulo}
-                    </button>{' '}
-                    <span className="text-muted">· {STATUS_LABEL[c.status]}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <OrganizePanel detail={d} board={version} busy={busy} act={act} onOpen={onOpen} />
-
-          {d.branch?.branch && <BranchPanel ticketId={t.id} branch={d.branch} busy={busy} pending={pending.length > 0} running={running} act={act} />}
-
-          <div>
-            <h3 className="font-semibold">Execução</h3>
-            <p className="text-muted" aria-label="Custo do ticket">
-              {d.uso.runs} execução(ões) · {fmtTokens(d.uso.tokensIn + d.uso.tokensOut)} tokens · {fmtCost(d.uso.custoEstimado)}
-              {t.orcamentoTokens ? ` · teto ${fmtTokens(t.orcamentoTokens)} tokens` : ''}
-            </p>
-            {d.runs.length > 0 && (
-              <table className="mt-1 w-full text-left text-xs">
-                <thead className="text-muted">
-                  <tr><th>Agente</th><th>Provedor</th><th>Estado</th><th>Tokens</th><th>Custo</th></tr>
-                </thead>
-                <tbody>
-                  {d.runs.map((r) => (
-                    <tr key={r.id} title={r.erro ?? undefined}>
-                      <td>{r.agente ?? '–'}</td>
-                      <td>{r.provedor}</td>
-                      <td>{r.status}</td>
-                      <td>{fmtTokens((r.tokensIn ?? 0) + (r.tokensOut ?? 0))}</td>
-                      <td>{fmtCost(r.custoEstimado)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            <div className="mt-2 flex items-center gap-2">
-              <label className="sr-only" htmlFor="run-agent">Agente a executar</label>
-              <input id="run-agent" value={agent} onChange={(e) => setAgent(e.target.value)} placeholder={t.responsavel ?? 'nome do agente'} className="rounded border border-line bg-bg px-2 py-1" />
-              <button type="button" disabled={busy || running || pending.length > 0 || !(agent.trim() || t.responsavel)} onClick={() => void act(() => api.runTicket(t.id, agent.trim() || undefined))} className="rounded border border-line px-3 py-1 hover:bg-raised disabled:opacity-50">
-                Executar agente
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <div>
-            <h3 className="font-semibold">Comentários</h3>
-            <ListAnimated className="mt-1 space-y-2">
-              {d.comments.length === 0 && <li className="text-muted">Nenhum comentário.</li>}
-              {d.comments.map((c) => (
-                <li key={c.id} className="rounded border border-line bg-raised p-2">
-                  <p className="text-xs text-muted">
-                    {c.autor}
-                    {c.autorTipo === 'agente' ? ' (agente)' : ''} · {c.criadoEm}
-                  </p>
-                  <p className="whitespace-pre-wrap break-words">{c.texto}</p>
-                </li>
-              ))}
-            </ListAnimated>
-            <form
-              className="mt-2 flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const texto = comment.trim();
-                if (texto) void act(() => api.commentTicket(t.id, texto)).then(() => setComment(''));
-              }}
-            >
-              <label className="sr-only" htmlFor="new-comment">Novo comentário</label>
-              <input id="new-comment" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comentar como você" className="min-w-0 flex-1 rounded border border-line bg-bg px-2 py-1" />
-              <button type="submit" disabled={busy || !comment.trim()} className="rounded bg-accent px-3 py-1 font-medium text-accent-fg disabled:opacity-50">
-                Comentar
-              </button>
-            </form>
-          </div>
-
-          <div>
-            <h3 className="font-semibold">Histórico</h3>
-            <ol className="mt-1 space-y-0.5 text-xs" aria-label="Histórico">
-              {d.events.map((e) => (
-                <li key={e.id}>
-                  <span className="text-muted">{e.criadoEm}</span> <strong>{e.autor}</strong> {EVENT_LABEL[e.tipo] ?? e.tipo}
-                  {e.de || e.para ? ` ${e.de ? `${STATUS_LABEL[e.de as TicketStatus] ?? e.de} → ` : ''}${STATUS_LABEL[e.para as TicketStatus] ?? e.para ?? ''}` : ''}
-                  {e.detalhe ? ` — ${e.detalhe}` : ''}
-                </li>
-              ))}
-            </ol>
-          </div>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-const BRANCH_STATE: Record<NonNullable<BranchInfo['estado']>, string> = {
-  ativo: 'worktree aberto',
-  removido: 'trabalho guardado na branch',
-  mesclado: 'mesclada',
-  descartado: 'descartada',
-};
-
-/** The ticket's isolated work: branch, whether the folder is still open, and the two actions that need your approval. */
-function BranchPanel({ ticketId, branch, busy, pending, running, act }: { ticketId: string; branch: BranchInfo; busy: boolean; pending: boolean; running: boolean; act: (fn: () => Promise<unknown>) => Promise<void> }) {
-  const open = branch.estado === 'ativo' || branch.estado === 'removido';
-  return (
-    <div aria-label="Branch do ticket">
-      <h3 className="font-semibold">Trabalho isolado</h3>
-      <p className="text-muted">
-        <code>{branch.branch}</code> · {branch.estado ? BRANCH_STATE[branch.estado] : ''}
-        {branch.commitsAdiante != null ? ` · ${branch.commitsAdiante} commit(s) à frente de ${branch.base ?? 'a base'}` : ''}
-        {branch.alterado ? ' · há alterações ainda sem commit' : ''}
-      </p>
-      {open && (
-        <div className="mt-1 flex gap-2">
-          <button type="button" disabled={busy || running || pending || !branch.commitsAdiante} onClick={() => void act(() => api.requestBranchAction(ticketId, 'merge'))} className="rounded border border-line px-3 py-1 hover:bg-raised disabled:opacity-50">
-            Pedir mesclagem em {branch.base ?? 'a base'}
-          </button>
-          <button type="button" disabled={busy || running || pending} onClick={() => void act(() => api.requestBranchAction(ticketId, 'descartar'))} className="rounded border border-danger px-3 py-1 text-danger hover:bg-raised disabled:opacity-50">
-            Descartar trabalho
-          </button>
-        </div>
-      )}
-      {open && <p className="mt-1 text-xs text-muted">Nada entra na sua branch sem a sua aprovação na fila acima.</p>}
-    </div>
-  );
-}
-
-function Text({ title, text }: { title: string; text: string }) {
-  return (
-    <div>
-      <h3 className="font-semibold">{title}</h3>
-      <p className="whitespace-pre-wrap break-words">{text}</p>
+      ))}
     </div>
   );
 }

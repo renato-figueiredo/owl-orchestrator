@@ -42,6 +42,7 @@ beforeEach(() => {
   server = { sessions: [], messages: [], runs: [], calls: [] };
   FakeEventSource.all = [];
   vi.stubGlobal('EventSource', FakeEventSource);
+  vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('min-width: 1280px'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string, init?: RequestInit) => {
@@ -112,7 +113,7 @@ describe('chat', () => {
     es.emit({ type: 'text', delta: 'mundo' });
     expect(await screen.findByText('Olá, mundo')).toBeInTheDocument();
     expect(screen.getByText('Read')).toBeInTheDocument(); // tool timeline in the run panel
-    expect(screen.getByRole('button', { name: 'Cancelar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Cancelar/ })).toBeInTheDocument();
 
     finishRun('Olá, mundo');
     es.emit({ type: 'usage', inputTokens: 1200, outputTokens: 34, costUsd: 0.0012 });
@@ -122,7 +123,7 @@ describe('chat', () => {
     expect(es.closed).toBe(true);
     // exactly one copy of the reply (live bubble replaced by the stored message)
     await waitFor(() => expect(screen.getAllByText('Olá, mundo')).toHaveLength(1));
-    expect(screen.getByTestId('session-total')).toHaveTextContent('1.200 ent · 34 saí');
+    expect(screen.getByTestId('session-total')).toHaveTextContent('1,2k ent · 34 saí');
   });
 
   it('persists across reload: reopening a session shows its history and follows a run still going', async () => {
@@ -153,7 +154,7 @@ describe('chat', () => {
     es.emit({ type: 'start', runId: 'run1', provider: 'claude-cli' });
     es.emit({ type: 'text', delta: 'parcial' });
 
-    await user.click(await screen.findByRole('button', { name: 'Cancelar' }));
+    await user.click(await screen.findByRole('button', { name: /^Cancelar/ }));
     expect(server.calls.some((c) => c.method === 'POST' && c.path === '/runs/run1/cancel')).toBe(true);
 
     es.emit({ type: 'cancelled' });
@@ -193,9 +194,9 @@ describe('chat', () => {
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     render(<App />);
     await user.click(await screen.findByRole('button', { name: 'Codigo' }));
-    await user.click(await screen.findByRole('button', { name: 'Copiar' }));
+    await user.click(await screen.findByRole('button', { name: /copiar/i }));
     expect(writeText).toHaveBeenCalledWith('const a = 1;');
-    expect(await screen.findByRole('button', { name: 'Copiado' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /copiado/i })).toBeInTheDocument();
   });
 
   it('never renders raw HTML from the model', async () => {
@@ -205,13 +206,13 @@ describe('chat', () => {
     const { container } = render(<App />);
     await user.click(await screen.findByRole('button', { name: 'Html' }));
     await screen.findByRole('log');
-    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('img:not([src^="/brand/"])')).toBeNull();
     expect(container.querySelector('script')).toBeNull();
   });
 });
 
 describe('sessions list and keyboard', () => {
-  it('arrow keys move through sessions and Enter opens one', async () => {
+  it('arrow keys move through the conversations of the open project and Enter opens one', async () => {
     server.sessions = [
       { id: 's1', projectId: null, titulo: 'Primeira', criadoEm: '' },
       { id: 's2', projectId: null, titulo: 'Segunda', criadoEm: '' },
@@ -220,46 +221,47 @@ describe('sessions list and keyboard', () => {
     const user = userEvent.setup();
     render(<App />);
     const first = await screen.findByRole('button', { name: 'Primeira' });
+    expect(screen.queryByRole('button', { name: 'Do projeto' })).toBeNull(); // belongs to another project
     first.focus();
     await user.keyboard('{ArrowDown}');
     expect(screen.getByRole('button', { name: 'Segunda' })).toHaveFocus();
-    // DOM order: project group first ("Do projeto"), then the loose ones; the list stops at the top.
-    await user.keyboard('{ArrowUp}{ArrowUp}{ArrowUp}');
-    expect(screen.getByRole('button', { name: 'Do projeto' })).toHaveFocus();
-    await user.keyboard('{ArrowDown}{Enter}');
+    await user.keyboard('{ArrowUp}{ArrowUp}'); // stops at the top
     expect(first).toHaveFocus();
+    await user.keyboard('{Enter}');
     expect(first).toHaveAttribute('aria-current', 'true');
   });
 
-  it('groups sessions by project', async () => {
+  it('lists the conversations of the open project and switches project from the Vigia bar', async () => {
     server.sessions = [
       { id: 's1', projectId: null, titulo: 'Solta', criadoEm: '' },
       { id: 's2', projectId: 'p1', titulo: 'Do projeto', criadoEm: '' },
     ];
-    render(<App />);
-    const nav = await screen.findByRole('navigation', { name: 'Projetos e conversas' });
-    await within(nav).findByText('Do projeto');
-    const heads = within(nav).getAllByRole('heading').map((h) => h.textContent);
-    expect(heads).toEqual(['Alfa', 'Sem projeto']);
-  });
-
-  it('creates a project and starts a conversation inside it', async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByRole('button', { name: 'Nova conversa em Alfa' }));
+    const list = await screen.findByRole('complementary', { name: 'Conversas' });
+    await within(list).findByText('Solta');
+    expect(within(list).getByRole('heading')).toHaveTextContent('Sem projeto');
+    expect(within(list).queryByText('Do projeto')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Trocar de projeto' }));
+    await user.click(await screen.findByRole('option', { name: /Alfa/ }));
+    expect(await within(list).findByText('Do projeto')).toBeInTheDocument();
+    expect(within(list).getByRole('heading')).toHaveTextContent('Alfa');
+  });
+
+  it('starts a conversation inside the open project', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Alfa' });
+    await user.click(await screen.findByRole('button', { name: 'Nova conversa' }));
     await waitFor(() => expect(server.calls.find((c) => c.method === 'POST' && c.path === '/sessions')?.body).toEqual({ projectId: 'p1' }));
   });
 
-  it('reports a rejected folder when creating a project', async () => {
+  it('opens the approvals queue with ⌘A and shows how many things wait for you', async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByRole('button', { name: 'Projeto +' }));
-    await screen.findByRole('button', { name: 'Nova conversa em Alfa' }); // initial load finished
-    vi.mocked(fetch).mockImplementation(async () => json({ error: { code: 'folder_not_allowed', message: 'Folder is outside the allowed workspace roots' } }, 403));
-    await user.type(screen.getByLabelText('Nome'), 'X');
-    await user.type(screen.getByLabelText('Pasta do projeto'), '/etc');
-    await user.click(screen.getByRole('button', { name: 'Criar projeto' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('outside the allowed workspace roots');
+    expect(await screen.findByRole('button', { name: /Nada esperando você/ })).toBeInTheDocument();
+    await user.keyboard('{Meta>}a{/Meta}');
+    expect(await screen.findByRole('main', { name: /Aprovações/ })).toBeInTheDocument();
   });
 });
 

@@ -1,18 +1,25 @@
-/** Owl mark (brand/logo-mark.svg). `blink` animates the eyes for empty/loading states (off with reduced motion). */
-export function Logo({ size = 28, blink = false }: { size?: number; blink?: boolean }) {
+/** Owl mark v2 (design/claude-design/assets/owl/mark.svg): face disc, amber irises, faceted beak. `blink` animates the eyes. */
+export function Logo({ size = 24, blink = false }: { size?: number; blink?: boolean }) {
   return (
     <svg width={size} height={size} viewBox="0 0 96 96" role="img" aria-label="OWL" className={blink ? 'owl-blink' : undefined}>
-      <rect width="96" height="96" rx="22" fill="#1B1B3A" />
-      <path d="M14 20 L30 42 L48 26 L66 42 L82 20" fill="none" stroke="#F5B942" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
-      <g className="owl-eyes">
-        <circle cx="32" cy="58" r="14" fill="#F4F1EA" />
-        <circle cx="64" cy="58" r="14" fill="#F4F1EA" />
-        <circle cx="35" cy="58" r="6.5" fill="#1B1B3A" />
-        <circle cx="37" cy="55.5" r="2" fill="#F4F1EA" />
-        <circle cx="67" cy="58" r="6.5" fill="#1B1B3A" />
-        <circle cx="69" cy="55.5" r="2" fill="#F4F1EA" />
+      <rect width="96" height="96" rx="24" fill="#010736" />
+      <g fill="#0B1645">
+        <circle cx="33" cy="55" r="21" />
+        <circle cx="63" cy="55" r="21" />
       </g>
-      <path d="M42 66 L54 66 L48 80 Z" fill="#F5B942" stroke="#F5B942" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M14 15 L31 38 L48 27 L65 38 L82 15" fill="none" stroke="#F5B055" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
+      <g className="owl-eyes">
+        <circle cx="33" cy="56" r="14" fill="#FBF0CF" />
+        <circle cx="34.5" cy="56" r="9" fill="#F5B055" />
+        <circle cx="34.5" cy="56" r="5.5" fill="#010736" />
+        <circle cx="36.8" cy="53.4" r="2" fill="#FBF0CF" />
+        <circle cx="63" cy="56" r="14" fill="#FBF0CF" />
+        <circle cx="64.5" cy="56" r="9" fill="#F5B055" />
+        <circle cx="64.5" cy="56" r="5.5" fill="#010736" />
+        <circle cx="66.8" cy="53.4" r="2" fill="#FBF0CF" />
+      </g>
+      <path d="M48 63 L54 70.5 L48 80 L42 70.5 Z" fill="#F5B055" />
+      <path d="M48 63 L54 70.5 L48 80 Z" fill="#D4631F" />
     </svg>
   );
 }

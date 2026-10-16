@@ -55,10 +55,11 @@ describe('MetricsPanel', () => {
     await screen.findByText('Filtro por data');
     expect(calls.find((c) => c.path.startsWith('/metrics'))!.path).toBe('/metrics?projectId=p1');
     const totals = within(screen.getByLabelText('Totais'));
-    expect(totals.getByText('Execuções').nextElementSibling).toHaveTextContent('8');
-    expect(totals.getByText('Taxa de sucesso').nextElementSibling).toHaveTextContent('75%');
-    expect(totals.getByText('Retrabalho').nextElementSibling).toHaveTextContent('25%');
-    expect(totals.getByText('Gasto do roteador').nextElementSibling).toHaveTextContent('300');
+    expect(totals.getByText('Runs').nextElementSibling).toHaveTextContent('8');
+    expect(totals.getByText('Runs').parentElement).toHaveTextContent('2 do roteador · 300 tokens');
+    expect(totals.getByText('Taxa de falha').nextElementSibling).toHaveTextContent('25%'); // 2 failed of 8
+    expect(totals.getByText('Taxa de falha').parentElement).toHaveTextContent('25% retrabalho');
+    expect(totals.getByText('Tokens').nextElementSibling).toHaveTextContent('3k');
     expect(within(screen.getByLabelText('Por agente')).getByText('analista')).toBeInTheDocument();
     expect(within(screen.getByLabelText('Por modelo')).getByText('claude-cli · haiku')).toBeInTheDocument();
   });
@@ -72,10 +73,11 @@ describe('MetricsPanel', () => {
     await waitFor(() => expect(calls.at(-1)!.path).toMatch(/^\/metrics\?desde=\d{4}-\d{2}-\d{2}&ate=\d{4}-\d{2}-\d{2}$/));
   });
 
-  it('shows the daily budget with its state only when there is a limit', async () => {
+  it('shows the daily budget with its state; without a limit it says so', async () => {
     open();
     await screen.findByText('Filtro por data');
-    expect(screen.queryByLabelText('Orçamento do dia')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Orçamento do dia')).toHaveTextContent('sem limite');
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     cleanup();
     dia = { limite: 10_000, usado: 8500, percentual: 0.85, aviso: true, estourado: false };
     open();
