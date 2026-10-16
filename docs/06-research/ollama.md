@@ -37,8 +37,19 @@ One 16 GB-VRAM AMD GPU, 32 GB RAM, `think:false`, the example refiner and router
 | `ministral-3:3b` | ~123 tok/s | **Not recommended**: invents requirements the user never asked for | Right classes, but returned the key `confiança` (accented), which the parser rejects |
 | `qwen2.5-coder:7b` | ~90 tok/s | **Not recommended**: often returns only the objective, drops the other sections | **Not recommended**: rated a multi-tenant migration "media" instead of "alta" |
 
+Second round (same cases): 
+
+| Model | Speed per call | Refiner | Router |
+|---|---|---|---|
+| `gemma4:e4b` | ~0.5-1.3 s | Good, asks about gaps | 3/3 |
+| `qwen3:8b` | ~0.5-1.7 s | Good | 3/3 |
+| `qwen3.5:9b` | ~1.4-6.8 s | Most detailed | 3/3 |
+| `gemma4:12b` | ~3-12 s (~18 tok/s) | Good | 3/3, but too slow for a shared PC |
+| `qwen3:4b` | 9-34 s | **Not recommended**: ignores `think:false`; 2,700-3,800 tokens of reasoning end up in the reply | Same: no JSON, only reasoning text |
+
 Pitfalls found:
 - A model larger than the VRAM (the 18 GB one) hangs or crawls with the default mmap loading (~3 tok/s prompt processing, requests over 5 minutes). Set `OLLAMA_USE_MMAP=0`.
+- Some models (seen with `qwen3:4b`) ignore `think:false` and put the reasoning in the reply; the adapter does not filter it, so check a new model before using it.
 - Pick the model per role: a small fast one for classification and monitoring, a larger one for rewriting prompts.
 - A loaded model keeps its VRAM until the server's keep-alive expires (5 minutes by default).
 
