@@ -123,7 +123,18 @@ Projeto **OWL**. Marque `[x]` ao concluir. Cada item aponta para o prompt corres
 - [ ] Detectar o erro real de limite do Codex quando acontecer (hoje só há a mensagem de modelo inválido) para oferecer troca para haiku/Ollama.
 - [ ] Imagens no `claude-cli` (hoje devolve `error`): fazer junto do prompt 08.
 - [x] Adaptador Ollama (prompt 18): HTTP em stream, `isAvailable`/`listModels`, thinking desligado por padrão, URL só local, tier `pequeno` usa Ollama quando no ar e sem ferramentas. Verificado com o `qwen2.5-coder:7b` real (classificação JSON em ~2,7 s, cancelamento ok).
-- [x] Prompt 18: qa+revisor feitos em 2026-10-15; corrigidos: redirect bloqueado, local desligado por padrão, fallback em tempo de execução, teto de resposta e timeout de inatividade. Sobras do revisor: `pick()` pode escolher modelo de embedding e troca o modelo escolhido sem avisar; tokens do Ollama contam no orçamento diário/ticket (decidir); `GET/PUT /router` sondam o Ollama a cada chamada (sem deduplicar); unificar `SAFE_MODEL` com os schemas; `think:false` some após o retry sem `think`; normalizar `localhost`.
+- [x] Prompt 18: qa+revisor feitos em 2026-10-15 e corrigidos (0dcd01e): redirect bloqueado, local desligado por padrão, fallback em tempo de execução, teto de resposta e timeout de inatividade.
+- [ ] **Prompt 18, para avaliar (revisor, importante):**
+  - [ ] `LocalModels.pick()` (`apps/server/src/local-models.ts`) cai em `modelos[0]` sem filtrar modelos de embedding (`nomic-embed-text`, `bge-*`), que respondem 400 em `/api/chat`; e se o modelo escolhido na tela não está instalado, usa outro sem avisar. Opções: filtrar por `/api/show` (capabilities) e devolver `motivo` na UI/evento quando o modelo configurado não existe.
+  - [ ] Os tokens do Ollama entram em `dayUsage`/`tokensSince` e no teto por ticket, mas o local é grátis e o orçamento foi pensado para a cota de assinatura: pode bloquear passos pagos à toa. Decidir: excluir runs `ollama` da soma (e documentar em `routing-and-costs.md`) ou manter de propósito.
+  - [ ] `GET/PUT /router` sondam o Ollama a cada chamada (2 timeouts de 1,5 s no pior caso, ~3 s) e refreshes concorrentes não são deduplicados nem ordenados (`LocalModels.refresh`). Opções: deduplicar a promessa em andamento e/ou reaproveitar o snapshot recente.
+- [ ] **Prompt 18, sugestões (revisor):**
+  - [ ] Unificar `SAFE_MODEL` (`ollama.ts`, aceita `..` e `/` inicial) com o regex do schema do router e o do `PUT /router` (`router-routes.ts`, aceita `[]`) numa constante só.
+  - [ ] Depois do retry sem `think` (400), o `think:false` deixa de ser enviado: um modelo que rejeita o campo mas pensa por padrão vai pensar. Comentar no código e validar com modelos reais.
+  - [ ] Normalizar `localhost` para `127.0.0.1` (hoje depende de DNS/hosts); aceitar outros 127.x se for preciso.
+  - [ ] Mensagens de erro repassam até 2000 caracteres do corpo do servidor e a URL; reduzir.
+  - [ ] `LocalStatus` no front (`apps/web/src/lib/types.ts`) sem `motivo` nem o modelo efetivo (necessário para o `pick()` avisar).
+  - [ ] Teste de integração opt-in (`OLLAMA_LIVE=1`) para a afirmação "Verified" de `docs/06-research/ollama.md`, que hoje vem de teste manual.
 - [ ] Prompt 18 abertos: validar Gemma 4 e2b / Ministral 3B / Gemma 4 26B lado a lado (velocidade, qualidade no refinador e no monitor; só o qwen2.5-coder está instalado); ver se o thinking desses modelos vem ligado e se `think:false` é aceito; refinador de prompt e memória (`memoria` usa ferramentas) ainda não usam o Ollama; imagens e ferramentas não existem no adaptador; agente `monitor` local com `outroProvedorQue` ainda não desenhado.
 
 **Revisão do M0 (2026-10-15) — pendências**
