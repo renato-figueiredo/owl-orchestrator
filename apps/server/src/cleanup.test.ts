@@ -55,6 +55,7 @@ function chat(...hashes: string[]): string {
   const s = repos.sessions.create({ titulo: 'x' });
   const m = repos.messages.add({ sessionId: s.id, papel: 'usuario', conteudo: 'olha' });
   for (const h of hashes) repos.attachments.add({ messageId: m.id, blobHash: h });
+  for (const h of hashes) db.prepare("UPDATE blobs SET visto_em = datetime('now', '-2 hours') WHERE hash = ?").run(h); // uploaded long ago: a purge may take it
   return s.id;
 }
 const age = (days: number) => db.prepare("UPDATE sessions SET deleted_at = datetime('now', ?) WHERE deleted_at IS NOT NULL").run(`-${days} days`);
@@ -186,6 +187,19 @@ describe('sweep', () => {
     db.prepare("UPDATE blobs SET visto_em = datetime('now', '-2 hours') WHERE hash = ?").run(h);
     expect(await upload('#444')).toBe(h);
     expect(cleanup.sweep().orphanBlobs).toBe(0);
+  });
+
+  it('a purge keeps a blob that was just re-uploaded (dedupe) and the sweep takes it once it is old again', async () => {
+    const h = await upload('#666');
+    const id = chat(h); // attached long ago
+    await json('DELETE', `/sessions/${id}`);
+    expect(await upload('#666')).toBe(h); // the same print pasted again, not attached yet
+    expect((await json('DELETE', `/trash/${id}`)).body.result.blobsRemoved).toBe(0);
+    expect(existsSync(fileOf(h))).toBe(true);
+    expect(repos.blobs.get(h)).toBeDefined(); // the new message can still attach it
+    db.prepare("UPDATE blobs SET visto_em = datetime('now', '-2 hours') WHERE hash = ?").run(h);
+    expect(cleanup.sweep().orphanBlobs).toBe(1);
+    expect(existsSync(fileOf(h))).toBe(false);
   });
 
   it('removes stray files and stale temp files, never touches anything else, ignores symlinks', async () => {

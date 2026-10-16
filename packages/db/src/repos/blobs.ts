@@ -82,14 +82,16 @@ export function blobsRepo(db: Db) {
     },
     /**
      * Deletes the row only if nothing references it, in one statement (no check-then-delete gap). Returns the stored
-     * path when the row went away, so the caller can remove the file afterwards.
+     * path when the row went away, so the caller can remove the file afterwards. With `graceSeconds`, a blob seen more
+     * recently than that stays (an upload that deduplicated onto it may be about to attach it); the sweep takes it later.
      */
-    deleteIfOrphan(hash: string): string | undefined {
+    deleteIfOrphan(hash: string, graceSeconds = 0): string | undefined {
       const row = db
         .prepare(
-          `DELETE FROM blobs WHERE hash = ? AND hash NOT IN (SELECT blob_hash FROM attachments) RETURNING caminho`,
+          `DELETE FROM blobs WHERE hash = ? AND hash NOT IN (SELECT blob_hash FROM attachments)
+             AND strftime('%s', 'now') - strftime('%s', COALESCE(visto_em, criado_em)) >= ? RETURNING caminho`,
         )
-        .get(hash) as { caminho: string } | undefined;
+        .get(hash, graceSeconds) as { caminho: string } | undefined;
       return row?.caminho;
     },
     /** Every stored path, to find files on disk that no row points to. */

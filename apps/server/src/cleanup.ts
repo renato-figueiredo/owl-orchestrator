@@ -75,8 +75,11 @@ export class CleanupService {
     return next;
   }
 
-  /** Permanent delete of ONE trashed conversation: transaction, then the files no one else uses. */
-  purge(sessionId: string): PurgeResult {
+  /**
+   * Permanent delete of ONE trashed conversation: transaction, then the files no one else uses. A blob an upload
+   * re-produced (dedupe) in the last `graceSeconds` is left for the sweep, so a fresh paste of the same image survives.
+   */
+  purge(sessionId: string, graceSeconds = SWEEP_GRACE_SECONDS): PurgeResult {
     const { repos } = this.deps;
     const session = repos.sessions.get(sessionId);
     if (!session) throw new Error(`Session not found: ${sessionId}`);
@@ -84,7 +87,7 @@ export class CleanupService {
     if (this.busy(sessionId)) throw new SessionBusyError();
     const hashes = repos.attachments.blobHashesOfSession(sessionId); // must be read before the cascade removes them
     repos.sessions.purge(sessionId);
-    const blobsRemoved = this.collect(hashes);
+    const blobsRemoved = this.collect(hashes, graceSeconds);
     this.compact();
     return {
       sessionId,
@@ -151,10 +154,10 @@ export class CleanupService {
   }
 
   /** Row first (only if still unreferenced), file after. Returns how many blobs went away. */
-  private collect(hashes: string[]): number {
+  private collect(hashes: string[], graceSeconds = 0): number {
     let n = 0;
     for (const hash of hashes) {
-      const caminho = this.deps.repos.blobs.deleteIfOrphan(hash);
+      const caminho = this.deps.repos.blobs.deleteIfOrphan(hash, graceSeconds);
       if (caminho === undefined) continue; // still used by another conversation
       n++;
       const file = resolve(this.dir, caminho);

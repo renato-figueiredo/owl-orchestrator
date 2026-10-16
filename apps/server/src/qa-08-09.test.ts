@@ -57,6 +57,7 @@ function chat(content: string, ...hashes: string[]): string {
   const s = repos.sessions.create({ titulo: 'x' });
   const m = repos.messages.add({ sessionId: s.id, papel: 'usuario', conteudo: content });
   for (const h of hashes) repos.attachments.add({ messageId: m.id, blobHash: h });
+  for (const h of hashes) db.prepare("UPDATE blobs SET visto_em = datetime('now', '-2 hours') WHERE hash = ?").run(h); // uploaded long ago: a purge may take it
   return s.id;
 }
 const ftsHits = (term: string) => (db.prepare('SELECT COUNT(*) AS n FROM messages_fts WHERE messages_fts MATCH ?').get(term) as { n: number }).n;
