@@ -449,6 +449,25 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     return reply.status(202).send({ runId: run.id });
   });
 
+  /** Every run in progress, with the agent, the ticket and the project it belongs to (for the Vigia bar). */
+  app.get('/runs/live', async () => ({
+    runs: repos.runs.running().map((r) => {
+      const ticket = r.ticketId ? repos.tickets.get(r.ticketId) : undefined;
+      const session = r.sessionId ? repos.sessions.get(r.sessionId) : undefined;
+      return {
+        id: r.id,
+        provedor: r.provedor,
+        modelo: r.modelo,
+        etapa: r.etapa,
+        inicio: r.inicio,
+        agente: (r.agentId ? repos.agents.byId(r.agentId)?.nome : undefined) ?? null,
+        ticket: ticket ? { id: ticket.id, identificador: ticket.identificador, titulo: ticket.titulo } : null,
+        sessionId: r.sessionId ?? null,
+        projectId: ticket?.projectId ?? session?.projectId ?? null,
+      };
+    }),
+  }));
+
   app.get('/runs/:id/stream', async (req, reply) => {
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const run = repos.runs.get(id);

@@ -18,7 +18,7 @@ import { PipelinesScreen } from './screens/PipelinesScreen';
 import { ProjectsHome } from './screens/ProjectsHome';
 import { StorageScreen } from './screens/StorageScreen';
 import { api, type SendInput } from './lib/api';
-import type { Fact, MemorySettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './lib/types';
+import type { LiveRunInfo, Fact, MemorySettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './lib/types';
 import { useRunStream } from './lib/useRunStream';
 import { useTheme } from './lib/useTheme';
 
@@ -267,11 +267,45 @@ function Workspace() {
     return () => window.removeEventListener('keydown', onKey);
   }, [projects]);
 
+  // Every run in progress on the server (tickets run on their own, outside the open conversation).
+  const [serverLive, setServerLive] = useState<LiveRunInfo[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      api
+        .liveRuns()
+        .then((r) => !cancelled && setServerLive(r))
+        .catch(() => undefined); // the bar is a hint; a failure must not disturb the screen
+    void load();
+    const t = setInterval(() => void load(), 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, []);
+  const toLive = (r: LiveRunInfo): LiveRun => ({
+    id: r.id,
+    agent: r.agente ?? r.etapa ?? 'agente',
+    provider: r.provedor || null,
+    label: r.ticket?.identificador ?? sessions.find((x) => x.id === r.sessionId)?.titulo ?? 'conversa',
+    // SQLite stores UTC without a zone mark
+    startedAt: Date.parse(`${r.inicio.replace(' ', 'T')}Z`) || Date.now(),
+    status: 'running',
+    onOpen: () => {
+      if (r.projectId) setBoardProjectId(r.projectId);
+      if (r.ticket) setView('board');
+      else {
+        if (r.sessionId) setSelectedId(r.sessionId);
+        setView('chat');
+      }
+    },
+  });
   const activeRun = detail?.runs.find((r) => r.id === activeRunId) ?? null;
-  const live: LiveRun[] =
-    activeRun && liveStream && (liveStream.phase === 'running' || liveStream.phase === 'connecting')
+  const ownLive: LiveRun[] =
+    activeRun && liveStream && (liveStream.phase === 'running' || liveStream.phase === 'connecting') && !serverLive.some((r) => r.id === activeRun.id)
       ? [{ id: activeRun.id, agent: activeRun.etapa ?? 'agente', provider: activeRun.provedor || null, label: selectedSession?.titulo ?? 'Nova conversa', startedAt: Date.parse(activeRun.inicio) || Date.now(), status: 'running', onOpen: () => setView('chat') }]
       : [];
+  const live: LiveRun[] = [...serverLive.map(toLive), ...ownLive];
 
   return (
     <div className="relative flex h-full flex-col">

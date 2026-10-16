@@ -1,4 +1,4 @@
-import type { TicketApproval, RelationType, Label, DayUsage, LocalStatus, Metrics, RouterSettings, AgentFact, AgentLibrary, AgentProject, ProjectView, Team, BoardData, TicketDetail, TicketStatus, BackupInfo, BackupSettings, BackupStatus, Fact, MemorySettings, PurgeResult, SweepReport, TrashSettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './types';
+import type { LiveRunInfo, TicketApproval, RelationType, Label, DayUsage, LocalStatus, Metrics, RouterSettings, AgentFact, AgentLibrary, AgentProject, ProjectView, Team, BoardData, TicketDetail, TicketStatus, BackupInfo, BackupSettings, BackupStatus, Fact, MemorySettings, PurgeResult, SweepReport, TrashSettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -171,6 +171,8 @@ export const api = {
     const q = new URLSearchParams(Object.entries(f).filter(([, v]) => v) as Array<[string, string]>).toString();
     return call<{ metrics: Metrics; dia: DayUsage }>('GET', `/metrics${q ? `?${q}` : ''}`);
   },
+  /** Every run in progress (any conversation or ticket), for the Vigia bar. */
+  liveRuns: () => call<{ runs: LiveRunInfo[] }>('GET', '/runs/live').then((r) => r.runs),
   cancel: (runId: string) => call<{ status: string }>('POST', `/runs/${encodeURIComponent(runId)}/cancel`),
 };
 

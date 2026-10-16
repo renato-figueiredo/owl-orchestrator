@@ -54,6 +54,10 @@ export function runsRepo(db: Db) {
   };
   return {
     get,
+    /** Runs going on right now, oldest first (the Vigia bar shows them whatever conversation or ticket they belong to). */
+    running(): Run[] {
+      return (db.prepare(`SELECT ${COLS} FROM runs WHERE status = 'rodando' ORDER BY inicio`).all() as RunRow[]).map(toRun);
+    },
     /**
      * Marks runs still 'rodando' as failed. Call at startup, before serving: their process died with the server, and
      * a stuck run would make the conversation impossible to trash or delete.

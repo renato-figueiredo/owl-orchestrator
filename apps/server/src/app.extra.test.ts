@@ -341,3 +341,18 @@ describe('bind address', () => {
     expect((await fetch(`${url}/health`)).status).toBe(200);
   });
 });
+
+describe('GET /runs/live', () => {
+  it('lists the runs in progress with agent, ticket and project, and drops finished ones', async () => {
+    const project = repos.projects.create({ nome: 'Alfa', pasta: dir });
+    const session = repos.sessions.create({ projectId: project.id });
+    const live = repos.runs.start({ provedor: 'claude-cli', sessionId: session.id, modelo: 'sonnet' });
+    const done = repos.runs.start({ provedor: 'ollama', sessionId: session.id });
+    repos.runs.finish(done.id, { status: 'ok' });
+    const res = await app.inject({ method: 'GET', url: '/runs/live' });
+    expect(res.statusCode).toBe(200);
+    const runs = res.json().runs as Array<{ id: string; provedor: string; projectId: string | null; ticket: unknown }>;
+    expect(runs.map((r) => r.id)).toEqual([live.id]);
+    expect(runs[0]).toMatchObject({ provedor: 'claude-cli', projectId: project.id, ticket: null });
+  });
+});

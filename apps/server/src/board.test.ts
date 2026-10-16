@@ -8,7 +8,7 @@ import { createRepos, migrate, openDb } from '@owl/db';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from './app.js';
-import { extractJson, parseMemoryOutput, parseVerdict } from './board-flow.js';
+import { PO_GOAL_TASK, extractJson, parseMemoryOutput, parsePoMarkdown, parseVerdict } from './board-flow.js';
 import { Executor } from './executor.js';
 
 let dir: string;
@@ -291,6 +291,17 @@ describe('API rules', () => {
 });
 
 describe('parsers', () => {
+  it('asks the product owner for JSON, the only format afterPo reads first', () => {
+    expect(PO_GOAL_TASK).toContain('"criterios_aceite"');
+  });
+
+  it('parsePoMarkdown reads a title, a description and numbered criteria; vague answers stay unreadable', () => {
+    const md = '# TEC-1: Inventário do sistema\n\nTexto.\n\n## Descrição\nEntregar um inventário.\n\n## Critérios de aceite\n1. Existe um documento.\n2. Lista as 9 tabelas.\n\n## Fora do escopo\n- Código novo\n';
+    expect(parsePoMarkdown(md)).toEqual({ titulo: 'Inventário do sistema', descricao: 'Entregar um inventário.', criterios_aceite: ['Existe um documento.', 'Lista as 9 tabelas.'] });
+    expect(parsePoMarkdown('só uma conversa sem estrutura')).toBeUndefined();
+    expect(parsePoMarkdown('# Título\n\nsem critérios')).toBeUndefined();
+  });
+
   it('extractJson takes the last fenced block or the outermost object', () => {
     expect(extractJson('texto ```json\n{"a":1}\n``` mais ```json\n{"b":2}\n```')).toEqual({ b: 2 });
     expect(extractJson('aqui: {"a": {"b": 1}} fim')).toEqual({ a: { b: 1 } });

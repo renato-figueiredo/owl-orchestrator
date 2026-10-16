@@ -376,3 +376,16 @@ export interface Metrics {
   porAgente: MetricsRow[];
   porModelo: MetricsRow[];
 }
+
+/** A run in progress as `GET /runs/live` reports it. */
+export interface LiveRunInfo {
+  id: string;
+  provedor: string;
+  modelo: string | null;
+  etapa: string | null;
+  inicio: string;
+  agente: string | null;
+  ticket: { id: string; identificador: string; titulo: string } | null;
+  sessionId: string | null;
+  projectId: string | null;
+}

@@ -50,6 +50,30 @@ const routeDecisionSchema = z.object({
 });
 
 /** The last fenced ```json block, else the outermost {...} of the text. Undefined when neither parses. */
+/** What the product owner is asked for when a goal arrives; the reply is read by `afterPo`, so the format is part of the request. */
+export const PO_GOAL_TASK =
+  'Transforme este objetivo em um ticket claro, com critérios de aceite verificáveis. Responda SOMENTE com um bloco json: {"titulo":"...","descricao":"...","criterios_aceite":["...","..."]}. Perguntas e o que fica de fora entram dentro da descrição.';
+
+const section = (text: string, name: RegExp): string | undefined => {
+  const m = text.match(new RegExp(`^#{2,3}\\s*${name.source}[^\\n]*\\n([\\s\\S]*?)(?=^#{1,3}\\s|$(?![\\s\\S]))`, 'im'));
+  return m?.[1]?.trim() || undefined;
+};
+
+/**
+ * Fallback when the product owner answered in Markdown instead of JSON: a `# Título` heading, a "Descrição" section and a
+ * "Critérios de aceite" list. Returns undefined when there is no title or no criteria, so a vague answer still stops for a person.
+ */
+export function parsePoMarkdown(text: string): z.infer<typeof poOutput> | undefined {
+  const h1 = text.match(/^#\s+(.+)$/m)?.[1]?.replace(/^[A-Z][A-Z0-9]*-\d+\s*[:\-–]\s*/, '').trim();
+  const items = section(text, /crit[ée]rios de aceite/)
+    ?.split('\n')
+    .map((l) => l.match(/^\s*(?:\d+[.)]|[-*])\s+(.+)$/)?.[1]?.trim())
+    .filter((x): x is string => !!x);
+  if (!h1 || !items?.length) return undefined;
+  const descricao = section(text, /descri[çc][ãa]o/);
+  return { titulo: h1.slice(0, 200), ...(descricao ? { descricao: descricao.slice(0, 20_000) } : {}), criterios_aceite: items };
+}
+
 export function extractJson(text: string): unknown {
   const fences = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map((m) => m[1] ?? '');
   const candidates = [...fences.reverse()];
@@ -143,7 +167,7 @@ export class BoardFlow {
   /** Creates the goal ticket and hands it to the product owner. */
   startGoal(project: Project, objetivo: string): { ticket: Ticket; run: Run | undefined } {
     const ticket = this.deps.board.createTicket({ projectId: project.id, titulo: objetivo.slice(0, 200), descricao: objetivo, status: 'backlog' }, HUMAN);
-    return { ticket, run: this.run(ticket.id, this.names.po, 'Transforme este objetivo em um ticket claro, com critérios de aceite verificáveis.') };
+    return { ticket, run: this.run(ticket.id, this.names.po, PO_GOAL_TASK) };
   }
 
   /**
@@ -539,8 +563,8 @@ export class BoardFlow {
   private afterPo(ticket: Ticket, text: string, who: Actor): void {
     const { repos, board } = this.deps;
     const parsed = poOutput.safeParse(extractJson(text));
-    if (!parsed.success) return this.unreadable(ticket, who, 'o product owner não devolveu o ticket no formato esperado (JSON com titulo, descricao e criterios_aceite)');
-    const o = parsed.data;
+    const o = parsed.success ? parsed.data : parsePoMarkdown(text);
+    if (!o) return this.unreadable(ticket, who, 'o product owner não devolveu o ticket no formato esperado (JSON com titulo, descricao e criterios_aceite)');
     repos.tickets.update(ticket.id, { titulo: o.titulo, descricao: o.descricao ?? ticket.descricao, criteriosAceite: bullets(o.criterios_aceite) ?? null });
     board.updateStatus(ticket.id, 'pronto', who);
     this.run(ticket.id, this.names.techlead, `Quebre este ticket em até ${MAX_SUBTASKS} subtarefas pequenas, cada uma com o agente que deve executar ("dev-front", "dev-back"...). Responda SOMENTE com um bloco json: {"subtarefas":[{"titulo":"...","descricao":"...","criterios_aceite":["..."],"agente":"dev-back"}]}`);

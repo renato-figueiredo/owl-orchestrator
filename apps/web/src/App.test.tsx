@@ -33,6 +33,7 @@ interface Server {
   messages: Message[];
   runs: Run[];
   calls: Array<{ method: string; path: string; body?: unknown }>;
+  live?: unknown[];
 }
 let server: Server;
 
@@ -50,6 +51,7 @@ beforeEach(() => {
       const method = init?.method ?? 'GET';
       const body = init?.body ? JSON.parse(String(init.body)) : undefined;
       server.calls.push({ method, path, body });
+      if (path === '/runs/live') return json({ runs: server.live ?? [] });
       if (path === '/providers') return json({ providers: [{ id: 'claude-cli', available: true }, { id: 'codex-cli', available: false }] });
       if (path === '/projects' && method === 'GET') return json({ projects: [{ id: 'p1', nome: 'Alfa', pasta: '/x' }] });
       if (path === '/sessions' && method === 'GET') return json({ sessions: server.sessions });
@@ -254,6 +256,13 @@ describe('sessions list and keyboard', () => {
     await screen.findByRole('heading', { name: 'Alfa' });
     await user.click(await screen.findByRole('button', { name: 'Nova conversa' }));
     await waitFor(() => expect(server.calls.find((c) => c.method === 'POST' && c.path === '/sessions')?.body).toEqual({ projectId: 'p1' }));
+  });
+
+  it('shows in the Vigia bar a run started by a ticket, outside any open conversation', async () => {
+    server.live = [{ id: 'r9', provedor: 'claude-cli', modelo: 'sonnet', etapa: 'quadro:po', inicio: '2026-10-16 19:06:16', agente: 'po', ticket: { id: 't1', identificador: 'TEC-1', titulo: 'x' }, sessionId: 'sx', projectId: 'p1' }];
+    render(<App />);
+    const chip = await screen.findByRole('button', { name: /po\s*TEC-1/ });
+    expect(chip).toBeInTheDocument();
   });
 
   it('opens the approvals queue with ⌘A and shows how many things wait for you', async () => {
