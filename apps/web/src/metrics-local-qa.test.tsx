@@ -45,20 +45,22 @@ describe('MetricsPanel local model (QA)', () => {
     const form = await screen.findByRole('form', { name: 'Roteador' });
     expect(await within(form).findByText(/Ollama fora do ar/)).toBeInTheDocument();
   });
-  it('lists installed models as suggestions and keeps the saved model in the field', async () => {
+  it('lists installed models in a select and keeps the saved model in the field', async () => {
     stub({ disponivel: true, modelos: ['a:1', 'b:2'] });
-    const { container } = open();
+    open();
     const form = await screen.findByRole('form', { name: 'Roteador' });
     await within(form).findByText(/Ollama no ar com 2 modelo/);
-    expect(Array.from(container.querySelectorAll('#modelos-locais option')).map((o) => (o as HTMLOptionElement).value)).toEqual(['a:1', 'b:2']);
-    expect(within(form).getByLabelText(/Modelo instalado/)).toHaveValue('gemma4:e2b');
+    const select = within(form).getByLabelText(/Modelo instalado/);
+    // the empty option, the installed models, and the saved model even when it is not installed (never changed silently)
+    expect(Array.from(select.querySelectorAll('option')).map((o) => o.value)).toEqual(['', 'a:1', 'b:2', 'gemma4:e2b']);
+    expect(select).toHaveValue('gemma4:e2b');
   });
-  it('omits `modelo` when the field is cleared', async () => {
+  it('omits `modelo` when the empty option is chosen', async () => {
     const puts: Array<Record<string, any>> = []; // eslint-disable-line @typescript-eslint/no-explicit-any
     stub({ disponivel: true, modelos: ['a:1'] }, puts);
     open();
     const form = await screen.findByRole('form', { name: 'Roteador' });
-    await userEvent.clear(within(form).getByLabelText(/Modelo instalado/));
+    await userEvent.selectOptions(within(form).getByLabelText(/Modelo instalado/), '');
     await userEvent.click(within(form).getByRole('button', { name: 'Salvar roteador' }));
     await screen.findByText('Roteador salvo.');
     expect(puts[0]!.localPequeno).toEqual({ ativo: true, memoria: 'auto' });

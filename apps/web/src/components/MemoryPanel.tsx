@@ -1,3 +1,5 @@
+import { ModelSelect } from './ModelSelect';
+import { useLocalModels } from '../lib/useLocalModels';
 import { Button, IconButton, ListAnimated } from '@owl/ui';
 import { Check, Pencil, Pin, PinOff, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -173,6 +175,7 @@ function AddFact({ busy, onAdd }: { busy: boolean; onAdd: Props['onAddFact'] }) 
 /** Memory limits (messages kept, when to summarize, budget, summarizer). */
 export function SettingsForm({ settings, providers, busy, onSave }: { settings: MemorySettings; providers: ProviderInfo[]; busy: boolean; onSave: Props['onSaveSettings'] }) {
   const [s, setS] = useState(settings);
+  const localModels = useLocalModels();
   useEffect(() => setS(settings), [settings]);
   const num = (key: 'ultimasN' | 'resumirACada' | 'orcamentoTokens', label: string, min: number, max: number) => (
     <label className="flex items-center justify-between gap-2">
@@ -220,7 +223,7 @@ export function SettingsForm({ settings, providers, busy, onSave }: { settings: 
         </label>
         <label className="flex items-center justify-between gap-2">
           Modelo do resumidor
-          <input value={s.resumidor.model ?? ''} onChange={(e) => setS({ ...s, resumidor: { ...s.resumidor, model: e.target.value } })} placeholder="padrão" className="h-7 w-24 rounded-md border border-line bg-raised px-1.5 font-mono text-xs focus:border-accent" />
+          <ModelSelect provider={s.resumidor.provider} local={localModels} value={s.resumidor.model ?? ''} onChange={(v) => setS({ ...s, resumidor: { ...s.resumidor, model: v } })} label="Modelo do resumidor" className="h-7 w-32 rounded-md border border-line bg-raised px-1.5 font-mono text-xs" emptyLabel="padrão" />
         </label>
         <Button type="submit" variant="primary" disabled={busy}>
           Salvar configurações

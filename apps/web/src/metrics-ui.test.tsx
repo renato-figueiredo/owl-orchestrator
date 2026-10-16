@@ -94,8 +94,7 @@ describe('MetricsPanel', () => {
   it('saves the tiers, the confidence threshold and the daily budget', async () => {
     open();
     const form = await screen.findByRole('form', { name: 'Roteador' });
-    await userEvent.clear(within(form).getByLabelText('Modelo do tier Forte'));
-    await userEvent.type(within(form).getByLabelText('Modelo do tier Forte'), 'opus-novo');
+    await userEvent.selectOptions(within(form).getByLabelText('Modelo do tier Forte'), 'opus'); // a list, never free text
     await userEvent.clear(within(form).getByLabelText(/Confiança mínima/));
     await userEvent.type(within(form).getByLabelText(/Confiança mínima/), '70');
     await userEvent.type(within(form).getByLabelText(/Orçamento diário/), '50.000');
@@ -103,14 +102,14 @@ describe('MetricsPanel', () => {
     await screen.findByText('Roteador salvo.');
     const put = calls.find((c) => c.method === 'PUT')!;
     expect(put.path).toBe('/router');
-    expect(put.body).toMatchObject({ limiarConfianca: 0.7, orcamentoDiaTokens: 50_000, tiers: { forte: { provedor: 'claude-cli', modelo: 'opus-novo' }, pequeno: { modelo: 'haiku' } } });
+    expect(put.body).toMatchObject({ limiarConfianca: 0.7, orcamentoDiaTokens: 50_000, tiers: { forte: { provedor: 'claude-cli', modelo: 'opus' }, pequeno: { modelo: 'haiku' } } });
   });
 
   it('shows the local model status and saves its switch and model', async () => {
     open();
     const form = await screen.findByRole('form', { name: 'Roteador' });
     expect(await within(form).findByText(/Ollama no ar com 1 modelo/)).toBeInTheDocument();
-    await userEvent.type(within(form).getByLabelText(/Modelo instalado/), 'gemma4:e2b');
+    await userEvent.selectOptions(within(form).getByLabelText(/Modelo instalado/), 'gemma4:e2b');
     await userEvent.click(within(form).getByRole('button', { name: 'Salvar roteador' }));
     await screen.findByText('Roteador salvo.');
     expect(calls.find((c) => c.method === 'PUT')!.body).toMatchObject({ localPequeno: { ativo: true, modelo: 'gemma4:e2b' } });

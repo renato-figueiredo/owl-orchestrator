@@ -1,3 +1,5 @@
+import { ModelSelect } from './ModelSelect';
+import { useLocalModels } from '../lib/useLocalModels';
 import { AgentTag, Button, FadeIn, IconButton, StreamCaret, Switch } from '@owl/ui';
 import { ArrowUp, Paperclip, RotateCcw, Square } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
@@ -39,7 +41,6 @@ interface Props {
   loading?: boolean | undefined;
 }
 
-const MODELS = ['haiku', 'sonnet', 'opus'];
 
 const selectCls = 'h-6 rounded-md border border-line bg-transparent px-1.5 font-mono text-[11px] text-muted hover:border-line-strong hover:text-fg';
 
@@ -88,6 +89,7 @@ export function Chat({ hasSession, messages, stream, providers, busy, error, onS
   const [text, setText] = useState('');
   const [provider, setProvider] = useState('claude-cli');
   const [model, setModel] = useState('');
+  const localModels = useLocalModels();
   const [improve, setImprove] = useState(false);
   const [reviewFirst, setReviewFirst] = useState(false);
   const [refinerIdx, setRefinerIdx] = useState(0);
@@ -390,12 +392,7 @@ export function Chat({ hasSession, messages, stream, providers, busy, error, onS
                 </option>
               ))}
             </select>
-            <input list="owl-models" aria-label="Modelo" value={model} onChange={(e) => setModel(e.target.value)} placeholder="modelo" className={`${selectCls} w-24 placeholder:text-faint`} />
-            <datalist id="owl-models">
-              {MODELS.map((m) => (
-                <option key={m} value={m} />
-              ))}
-            </datalist>
+            <ModelSelect provider={provider} local={localModels} value={model} onChange={setModel} label="Modelo" className={selectCls} />
             <span className="flex-1" />
             <span aria-hidden="true" className="font-mono text-[11px] text-muted">
               ⌘↵

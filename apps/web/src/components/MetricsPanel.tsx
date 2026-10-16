@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { fmtCompact, fmtUsd } from '../lib/format';
 import type { DayUsage, LocalStatus, Metrics, MetricsRow, Project, ProviderInfo, RouterSettings, Tier } from '../lib/types';
 import { ScreenHeader, field } from './desk/ScreenHeader';
+import { ModelSelect } from './ModelSelect';
 
 const message = (e: unknown) => (e instanceof Error ? e.message : 'Algo deu errado');
 const TIERS: Array<{ id: Tier; label: string; hint: string }> = [
@@ -48,6 +49,7 @@ export function MetricsPanel({ projects, providers, initialProjectId }: Props) {
   const [data, setData] = useState<{ metrics: Metrics; dia: DayUsage } | null>(null);
   const [router, setRouter] = useState<RouterSettings | null>(null);
   const [local, setLocal] = useState<LocalStatus | null>(null);
+  const [localModelo, setLocalModelo] = useState('');
   const [localAtivo, setLocalAtivo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -68,6 +70,7 @@ export function MetricsPanel({ projects, providers, initialProjectId }: Props) {
         setRouter(r.router);
         setLocal(r.local ?? null);
         setLocalAtivo(r.router.localPequeno.ativo);
+        setLocalModelo(r.router.localPequeno.modelo ?? '');
       })
       .catch((e) => setError(message(e)));
   }, []);
@@ -94,6 +97,7 @@ export function MetricsPanel({ projects, providers, initialProjectId }: Props) {
       });
       setRouter(saved.router);
       setLocal(saved.local ?? null);
+      setLocalModelo(saved.router.localPequeno.modelo ?? '');
       setNotice('Roteador salvo.');
       await load();
     } catch (err) {
@@ -200,30 +204,7 @@ export function MetricsPanel({ projects, providers, initialProjectId }: Props) {
               </thead>
               <tbody>
                 {TIERS.map((t) => (
-                  <tr key={t.id} className="border-t border-line">
-                    <td className="py-2 pr-3">
-                      {t.label}
-                      <span className="block text-xs text-muted">{t.hint}</span>
-                    </td>
-                    <td className="pr-3">
-                      <label className="sr-only" htmlFor={`${t.id}-provedor`}>
-                        Provedor do tier {t.label}
-                      </label>
-                      <select id={`${t.id}-provedor`} name={`${t.id}-provedor`} defaultValue={router.tiers[t.id].provedor} className={`${field} font-mono`}>
-                        {[...new Set([router.tiers[t.id].provedor, ...providers.map((p) => p.id)])].map((id) => (
-                          <option key={id} value={id}>
-                            {id}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <label className="sr-only" htmlFor={`${t.id}-modelo`}>
-                        Modelo do tier {t.label}
-                      </label>
-                      <input id={`${t.id}-modelo`} name={`${t.id}-modelo`} defaultValue={router.tiers[t.id].modelo ?? ''} placeholder="padrão do provedor" maxLength={100} className={`${field} font-mono`} />
-                    </td>
-                  </tr>
+                  <TierRow key={t.id} tier={t} provedor={router.tiers[t.id].provedor} modelo={router.tiers[t.id].modelo ?? ''} providers={providers} local={local?.modelos ?? []} />
                 ))}
               </tbody>
             </table>
@@ -233,12 +214,7 @@ export function MetricsPanel({ projects, providers, initialProjectId }: Props) {
               <Switch checked={localAtivo} onChange={setLocalAtivo} label="Usar no tier pequeno quando estiver no ar" />
               <label className="flex flex-col gap-1.5 text-xs text-muted">
                 Modelo instalado
-                <input name="localModelo" list="modelos-locais" defaultValue={router.localPequeno.modelo ?? ''} placeholder="o primeiro instalado" maxLength={100} className={`${field} font-mono`} />
-                <datalist id="modelos-locais">
-                  {(local?.modelos ?? []).map((x) => (
-                    <option key={x} value={x} />
-                  ))}
-                </datalist>
+                <ModelSelect provider="ollama" local={local?.modelos ?? []} value={localModelo} onChange={setLocalModelo} name="localModelo" className={`${field} font-mono`} emptyLabel="o primeiro instalado" />
               </label>
               <label className="flex flex-col gap-1.5 text-xs text-muted">
                 Memória da placa de vídeo
@@ -388,5 +364,46 @@ function ByModel({ rows }: { rows: MetricsRow[] }) {
         );
       })}
     </section>
+  );
+}
+
+/** One router tier: provider and model are both picked from lists; the model list follows the provider. */
+function TierRow({ tier, provedor, modelo, providers, local }: { tier: { id: Tier; label: string; hint: string }; provedor: string; modelo: string; providers: ProviderInfo[]; local: string[] }) {
+  const [prov, setProv] = useState(provedor);
+  const [model, setModel] = useState(modelo);
+  return (
+    <tr className="border-t border-line">
+      <td className="py-2 pr-3">
+        {tier.label}
+        <span className="block text-xs text-muted">{tier.hint}</span>
+      </td>
+      <td className="pr-3">
+        <label className="sr-only" htmlFor={`${tier.id}-provedor`}>
+          Provedor do tier {tier.label}
+        </label>
+        <select
+          id={`${tier.id}-provedor`}
+          name={`${tier.id}-provedor`}
+          value={prov}
+          onChange={(e) => {
+            setProv(e.target.value);
+            setModel(''); // a model of the old provider means nothing for the new one
+          }}
+          className={`${field} font-mono`}
+        >
+          {[...new Set([provedor, ...providers.map((p) => p.id)])].map((id) => (
+            <option key={id} value={id}>
+              {id}
+            </option>
+          ))}
+        </select>
+      </td>
+      <td>
+        <label className="sr-only" htmlFor={`${tier.id}-modelo`}>
+          Modelo do tier {tier.label}
+        </label>
+        <ModelSelect id={`${tier.id}-modelo`} name={`${tier.id}-modelo`} provider={prov} local={local} value={model} onChange={setModel} className={`${field} font-mono`} />
+      </td>
+    </tr>
   );
 }
