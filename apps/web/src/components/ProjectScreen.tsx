@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Button } from '@owl/ui';
 import { api } from '../lib/api';
 import type { AgentFact, AgentSummary, Project, ProjectView, Team } from '../lib/types';
+import { Label, ScreenHeader, field } from './desk/ScreenHeader';
 import { ProjectSwitcher } from './ProjectSwitcher';
 
 const message = (e: unknown) => (e instanceof Error ? e.message : 'Algo deu errado');
@@ -89,70 +91,66 @@ export function ProjectScreen({ projects, projectId, onSwitch, onClose, onChange
   };
 
   if (!view) {
-    return <section aria-label="Projeto" className="flex-1 p-4 text-sm">{error ?? 'Carregando…'}</section>;
+    return <main aria-label="Projeto" className="flex-1 p-6 text-sm text-muted">{error ?? 'Carregando…'}</main>;
   }
   const p = view.project;
 
   return (
-    <section aria-label={`Projeto ${p.nome}`} className="min-w-0 flex-1 overflow-y-auto">
-      <header className="flex flex-wrap items-center gap-3 border-b border-line p-4">
-        <h1 className="text-lg font-semibold">Projeto · {p.nome}</h1>
+    <main aria-label={`Projeto ${p.nome}`} className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <ScreenHeader eyebrow={`PROJETO · ${p.pasta}`} title={`Projeto · ${p.nome}`}>
         <ProjectSwitcher projects={projects} value={projectId} onChange={onSwitch} />
-        <button type="button" onClick={() => onOpenBoard(projectId)} className="ml-auto rounded border border-line px-3 py-1.5 text-sm hover:bg-raised">
-          Abrir quadro
-        </button>
-        <button type="button" onClick={onClose} className="rounded border border-line px-3 py-1.5 text-sm hover:bg-raised">
-          Voltar às conversas
-        </button>
-      </header>
+        <span className="flex-1" />
+        <Button onClick={() => onOpenBoard(projectId)}>Abrir quadro</Button>
+      </ScreenHeader>
 
-      <div className="space-y-6 p-4 text-sm">
-        {error && <p role="alert" className="rounded border border-danger p-2 text-danger">{error}</p>}
-        {notice && <p role="status" className="rounded border border-line p-2 text-muted">{notice}</p>}
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto px-6 py-5 text-[13px]">
+        {error && <p role="alert" className="m-0 rounded-md border border-danger bg-danger-wash px-3 py-2.5 text-xs text-danger">{error}</p>}
+        {notice && <p role="status" className="m-0 rounded-md border border-line bg-panel px-3 py-2.5 text-xs text-muted">{notice}</p>}
 
-        <form onSubmit={saveSettings} aria-label="Configurações do projeto" className="grid gap-3 rounded border border-line bg-raised p-3 sm:grid-cols-2">
-          <h2 className="font-semibold sm:col-span-2">Configurações</h2>
-          <label className="block">
+        <form onSubmit={saveSettings} aria-label="Configurações do projeto" className="grid gap-3.5 rounded-lg border border-line bg-panel p-4 sm:grid-cols-2">
+          <h2 className="m-0 text-[15px] font-semibold sm:col-span-2">Configurações</h2>
+          <label className="flex flex-col gap-1.5 text-xs text-muted">
             Nome
-            <input name="nome" required defaultValue={p.nome} maxLength={200} className="mt-1 block w-full rounded border border-line bg-bg px-2 py-1" />
+            <input name="nome" required defaultValue={p.nome} maxLength={200} className={`${field} h-9 bg-bg`} />
           </label>
-          <div>
-            <p className="text-muted">Pasta</p>
-            <p className="mt-1 break-all font-mono text-xs">{p.pasta}</p>
-            <p className="mt-1 text-xs text-muted">
+          <div className="flex flex-col gap-1.5 text-xs text-muted">
+            <p className="m-0">Pasta</p>
+            <p className="m-0 break-all font-mono text-xs text-fg">{p.pasta}</p>
+            <p className="m-0">
+              <span aria-hidden="true" className="font-mono">{view.git ? '✓ ' : '⊘ '}</span>
               {view.git ? `Repositório git · branch atual: ${view.branchAtual ?? 'HEAD solto'}` : 'Não é um repositório git: agentes que escrevem não podem trabalhar aqui (rode "git init").'}
             </p>
           </div>
-          <label className="block sm:col-span-2">
+          <label className="flex flex-col gap-1.5 text-xs text-muted sm:col-span-2">
             Instruções do projeto (vão no prompt de todas as execuções)
-            <textarea name="instrucoes" rows={3} defaultValue={view.instrucoes ?? ''} className="mt-1 block w-full rounded border border-line bg-bg px-2 py-1" />
+            <textarea name="instrucoes" rows={3} defaultValue={view.instrucoes ?? ''} className="resize-y rounded-md border border-line bg-bg px-2.5 py-2 text-[13px] leading-normal text-fg outline-none focus:border-accent" />
           </label>
-          <label className="block">
+          <label className="flex flex-col gap-1.5 text-xs text-muted">
             Branch base dos tickets
-            <input name="branch" defaultValue={p.branchBase ?? ''} placeholder={view.branchAtual ?? 'main'} className="mt-1 block w-full rounded border border-line bg-bg px-2 py-1" />
-            <span className="text-xs text-muted">Vazio = a branch em uso na pasta. É nela que as mesclagens aprovadas entram.</span>
+            <input name="branch" defaultValue={p.branchBase ?? ''} placeholder={view.branchAtual ?? 'main'} className={`${field} h-9 bg-bg font-mono`} />
+            <span>Vazio = a branch em uso na pasta. É nela que as mesclagens aprovadas entram.</span>
           </label>
-          <label className="block">
+          <label className="flex flex-col gap-1.5 text-xs text-muted">
             Execuções simultâneas neste projeto
-            <input name="limite" type="number" min={1} max={16} defaultValue={p.maxConcorrencia ?? ''} placeholder={String(view.concorrencia.padraoDoServidor)} className="mt-1 block w-full rounded border border-line bg-bg px-2 py-1" />
-            <span className="text-xs text-muted">
+            <input name="limite" type="number" min={1} max={16} defaultValue={p.maxConcorrencia ?? ''} placeholder={String(view.concorrencia.padraoDoServidor)} className={`${field} h-9 bg-bg font-mono`} />
+            <span>
               Vazio = padrão do servidor ({view.concorrencia.padraoDoServidor}). O limite global é {view.concorrencia.global} (OWL_CONCURRENCY) e vale para todos os projetos. Agora: {view.concorrencia.emExecucao} em execução.
             </span>
           </label>
           <div className="flex gap-2 sm:col-span-2">
-            <button type="submit" className="rounded bg-accent px-3 py-1.5 font-medium text-accent-fg">Salvar</button>
-            <button type="button" onClick={removeProject} className="ml-auto rounded border border-danger px-3 py-1.5 text-danger">
-              Remover projeto…
-            </button>
+            <Button type="submit" variant="primary">Salvar</Button>
+            <span className="flex-1" />
+            <Button variant="danger" onClick={removeProject}>Remover projeto…</Button>
           </div>
         </form>
 
-        <section aria-label="Equipes" className="space-y-3">
-          <h2 className="font-semibold">Equipes</h2>
-          <p className="text-muted">
+        <section aria-label="Equipes" className="flex flex-col gap-3">
+          <Label>EQUIPES · QUEM PODE PEGAR TICKETS DAQUI</Label>
+          <h2 className="sr-only">Equipes</h2>
+          <p className="m-0 max-w-3xl text-xs leading-normal text-muted">
             Enquanto o projeto não tem ninguém em equipe nenhuma, qualquer agente da biblioteca pode trabalhar nos tickets. Com ao menos um membro, só os membros trabalham. O papel na equipe vale só neste projeto.
           </p>
-          {view.equipes.length === 0 && <p className="text-muted">Nenhuma equipe ainda.</p>}
+          {view.equipes.length === 0 && <p className="m-0 text-muted">Nenhuma equipe ainda.</p>}
           {view.equipes.map((t) => (
             <TeamCard
               key={t.id}
@@ -168,14 +166,14 @@ export function ProjectScreen({ projects, projectId, onSwitch, onClose, onChange
           ))}
           <form onSubmit={submitTeam} aria-label="Nova equipe" className="flex gap-2">
             <label className="sr-only" htmlFor="new-team">Nome da equipe</label>
-            <input id="new-team" name="equipe" required maxLength={100} placeholder="Nome da nova equipe" className="rounded border border-line bg-bg px-2 py-1" />
-            <button type="submit" className="rounded border border-line px-3 py-1 hover:bg-raised">Criar equipe</button>
+            <input id="new-team" name="equipe" required maxLength={100} placeholder="Nome da nova equipe" className={field} />
+            <Button type="submit">Criar equipe</Button>
           </form>
         </section>
 
         {memoryOf && <AgentMemory key={memoryOf.agente} projectId={projectId} projectName={p.nome} agente={memoryOf.agente} onClose={() => setMemoryOf(null)} />}
       </div>
-    </section>
+    </main>
   );
 }
 
@@ -194,17 +192,18 @@ function TeamCard(props: {
   const [pick, setPick] = useState('');
   const free = agents.filter((a) => !team.membros.some((m) => m.agente === a.nome));
   return (
-    <div aria-label={`Equipe ${team.nome}`} className="rounded border border-line p-3">
+    <div aria-label={`Equipe ${team.nome}`} className="rounded-lg border border-line bg-panel p-4">
       <div className="flex flex-wrap items-center gap-2">
         <label className="sr-only" htmlFor={`team-${team.id}`}>Nome da equipe</label>
-        <input id={`team-${team.id}`} value={name} onChange={(e) => setName(e.target.value)} onBlur={() => name.trim() && name.trim() !== team.nome && void props.onRename(name.trim())} className="rounded border border-line bg-bg px-2 py-1 font-medium" />
-        <button type="button" onClick={() => void props.onDelete()} className="ml-auto rounded border border-line px-2 py-1 text-xs hover:bg-raised">
+        <input id={`team-${team.id}`} value={name} onChange={(e) => setName(e.target.value)} onBlur={() => name.trim() && name.trim() !== team.nome && void props.onRename(name.trim())} className={`${field} font-medium`} />
+        <span className="flex-1" />
+        <Button size="sm" variant="danger" onClick={() => void props.onDelete()}>
           Apagar equipe
-        </button>
+        </Button>
       </div>
       <table className="mt-2 w-full text-left">
-        <thead className="text-xs text-muted">
-          <tr><th>Agente</th><th>Papel nesta equipe</th><th /></tr>
+        <thead>
+          <tr className="owl-label text-[10px]"><th className="py-1 font-normal">Agente</th><th className="font-normal">Papel nesta equipe</th><th /></tr>
         </thead>
         <tbody>
           {team.membros.length === 0 && (
@@ -213,10 +212,10 @@ function TeamCard(props: {
           {team.membros.map((m) => {
             const own = agents.find((a) => a.nome === m.agente);
             return (
-              <tr key={m.agentId}>
-                <td className="py-1">
+              <tr key={m.agentId} className="border-t border-line">
+                <td className="py-1.5 font-mono text-xs">
                   {m.agente}
-                  {own?.papel && <span className="text-xs text-muted"> · papel do agente: {own.papel}</span>}
+                  {own?.papel && <span className="font-sans text-xs text-muted"> · papel do agente: {own.papel}</span>}
                 </td>
                 <td>
                   <label className="sr-only" htmlFor={`role-${team.id}-${m.agente}`}>Papel de {m.agente}</label>
@@ -225,14 +224,14 @@ function TeamCard(props: {
                     defaultValue={m.papel ?? ''}
                     placeholder={own?.papel ?? 'papel'}
                     onBlur={(e) => (e.target.value.trim() || null) !== m.papel && void props.onRole(m.agente, e.target.value.trim() || null)}
-                    className="w-40 rounded border border-line bg-bg px-2 py-1"
+                    className={`${field} w-40`}
                   />
                 </td>
                 <td className="text-right">
-                  <button type="button" onClick={() => props.onMemory(m.agente)} className="rounded px-2 py-1 text-xs underline">
+                  <button type="button" onClick={() => props.onMemory(m.agente)} className="rounded-md px-2 py-1 text-xs text-muted hover:text-fg">
                     Memória
                   </button>
-                  <button type="button" onClick={() => void props.onRemove(m.agente)} aria-label={`Remover ${m.agente}`} className="rounded px-2 py-1 text-xs text-danger">
+                  <button type="button" onClick={() => void props.onRemove(m.agente)} aria-label={`Remover ${m.agente}`} className="rounded-md px-2 py-1 text-xs text-muted hover:text-danger">
                     Remover
                   </button>
                 </td>
@@ -249,7 +248,7 @@ function TeamCard(props: {
         }}
       >
         <label className="sr-only" htmlFor={`add-${team.id}`}>Adicionar agente</label>
-        <select id={`add-${team.id}`} value={pick} onChange={(e) => setPick(e.target.value)} className="rounded border border-line bg-bg px-2 py-1">
+        <select id={`add-${team.id}`} value={pick} onChange={(e) => setPick(e.target.value)} className={field}>
           <option value="">Adicionar agente…</option>
           {free.map((a) => (
             <option key={a.nome} value={a.nome}>
@@ -258,7 +257,7 @@ function TeamCard(props: {
             </option>
           ))}
         </select>
-        <button type="submit" disabled={!pick} className="rounded border border-line px-3 py-1 hover:bg-raised disabled:opacity-50">Adicionar</button>
+        <Button type="submit" disabled={!pick}>Adicionar</Button>
       </form>
     </div>
   );
@@ -276,12 +275,13 @@ function AgentMemory({ projectId, projectName, agente, onClose }: { projectId: s
     void fn().catch((e) => setError(message(e))).finally(() => void load());
   };
   return (
-    <section aria-label={`Memória de ${agente}`} className="rounded border border-line p-3">
+    <section aria-label={`Memória de ${agente}`} className="rounded-lg border border-line bg-panel p-4">
       <div className="flex items-center gap-2">
-        <h2 className="font-semibold">Memória de {agente} em {projectName}</h2>
-        <button type="button" onClick={onClose} className="ml-auto rounded border border-line px-2 py-1 text-xs hover:bg-raised">Fechar</button>
+        <h2 className="m-0 text-[15px] font-semibold">Memória de {agente} em {projectName}</h2>
+        <span className="flex-1" />
+        <Button size="sm" onClick={onClose}>Fechar</Button>
       </div>
-      <p className="text-muted">Só este agente, só neste projeto. Fatos fixados entram no prompt dele quando trabalha num ticket daqui.</p>
+      <p className="mb-0 mt-2 text-xs text-muted">Só este agente, só neste projeto. Fatos fixados entram no prompt dele quando trabalha num ticket daqui.</p>
       {error && <p role="alert" className="text-danger">{error}</p>}
       <ul className="mt-2 space-y-1">
         {facts?.length === 0 && <li className="text-muted">Nada guardado.</li>}
@@ -291,7 +291,7 @@ function AgentMemory({ projectId, projectName, agente, onClose }: { projectId: s
               <input type="checkbox" checked={f.fixado} onChange={(e) => run(() => api.updateFact(f.id, { fixado: e.target.checked }))} aria-label={`Fixar: ${f.texto}`} />
               <span>{f.texto}</span>
             </label>
-            <button type="button" onClick={() => run(() => api.deleteFact(f.id))} aria-label={`Apagar: ${f.texto}`} className="rounded px-2 text-xs text-danger">
+            <button type="button" onClick={() => run(() => api.deleteFact(f.id))} aria-label={`Apagar: ${f.texto}`} className="rounded-md px-2 text-xs text-muted hover:text-danger">
               Apagar
             </button>
           </li>
@@ -306,8 +306,8 @@ function AgentMemory({ projectId, projectName, agente, onClose }: { projectId: s
         }}
       >
         <label className="sr-only" htmlFor="new-agent-fact">Novo fato</label>
-        <input id="new-agent-fact" value={text} onChange={(e) => setText(e.target.value)} maxLength={500} placeholder="Algo que este agente deve lembrar neste projeto" className="min-w-0 flex-1 rounded border border-line bg-bg px-2 py-1" />
-        <button type="submit" disabled={!text.trim()} className="rounded bg-accent px-3 py-1 font-medium text-accent-fg disabled:opacity-50">Guardar</button>
+        <input id="new-agent-fact" value={text} onChange={(e) => setText(e.target.value)} maxLength={500} placeholder="Algo que este agente deve lembrar neste projeto" className={`${field} min-w-0 flex-1`} />
+        <Button type="submit" variant="primary" disabled={!text.trim()}>Guardar</Button>
       </form>
     </section>
   );

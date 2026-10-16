@@ -18,12 +18,12 @@ const storedBlobs = (): string[] => {
   }
 };
 
-test('improve prompt + screenshot → stream → trash → delete for good → files are gone', async ({ page }) => {
+test('refine prompt + screenshot → stream → trash → delete for good → files are gone', async ({ page, request }) => {
   expect(storedBlobs()).toHaveLength(0);
 
   await page.goto('/');
   await page.getByRole('button', { name: 'Nova conversa', exact: true }).first().click();
-  await page.getByLabel('Melhorar prompt').check();
+  await page.getByRole('button', { name: 'Refinar prompt' }).click();
   await page.getByLabel('Refinador').selectOption({ label: 'haiku' });
 
   // attach a screenshot through the real file input
@@ -38,7 +38,9 @@ test('improve prompt + screenshot → stream → trash → delete for good → f
   const history = page.getByLabel('Histórico de execuções');
   await expect(history.getByText('executar', { exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole('button', { name: 'Enviar' })).toBeVisible({ timeout: 15_000 });
-  await expect(history.getByText('ok', { exact: true })).toHaveCount(2);
+  const steps = history.getByRole('listitem');
+  await expect(steps.filter({ hasText: 'melhorar' })).toContainText('concluído');
+  await expect(steps.filter({ hasText: 'executar' })).toContainText('concluído');
   await expect(page.getByRole('log').getByRole('button', { name: 'Ampliar print-erro.png' })).toBeVisible();
   expect(storedBlobs()).toHaveLength(1);
 
@@ -48,15 +50,20 @@ test('improve prompt + screenshot → stream → trash → delete for good → f
   await expect(page.getByRole('button', { name: title, exact: true })).toHaveCount(0);
   expect(storedBlobs()).toHaveLength(1);
 
+  // a purge keeps a blob seen in the last hour (a fresh paste of the same image may be about to attach it);
+  // the e2e server moves the clock so the permanent delete is allowed to take the file
+  expect((await request.post('/api/e2e/age-blobs')).ok()).toBeTruthy();
+
   // deleting for good asks for confirmation, then removes the row and the file
-  await page.locator('summary', { hasText: 'Lixeira' }).click();
+  await page.getByRole('button', { name: 'Lixeira e armazenamento' }).click();
   await page.getByRole('button', { name: 'Excluir de vez' }).click();
   await page.getByRole('button', { name: 'Confirmar: excluir para sempre' }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Conversa excluída' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Lixeira' }).getByRole('status').filter({ hasText: 'Conversa excluída' })).toBeVisible();
   await expect(page.getByText('A lixeira está vazia.')).toBeVisible();
   expect(storedBlobs()).toHaveLength(0);
 
   // and it does not come back after a reload
   await page.reload();
+  await page.getByRole('button', { name: 'Conversas', exact: true }).click();
   await expect(page.getByRole('button', { name: title, exact: true })).toHaveCount(0);
 });

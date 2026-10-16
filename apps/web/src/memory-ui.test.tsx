@@ -40,7 +40,8 @@ beforeEach(() => {
       const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined;
       calls.push({ method, path, ...(body ? { body } : {}) });
       if (path === '/providers') return json({ providers: [{ id: 'claude-cli', available: true }, { id: 'codex-cli', available: true }] });
-      if (path === '/projects') return json({ projects: [{ id: 'p1', nome: 'Alfa', pasta: '/x' }] });
+      // The open project hides conversations of other projects: only list Alfa when the conversation belongs to it.
+      if (path === '/projects') return json({ projects: session.projectId ? [{ id: 'p1', nome: 'Alfa', pasta: '/x' }] : [] });
       if (path === '/refiner') return json({ provedor: 'codex-cli', modelo: null, fallback: [] });
       if (path === '/settings' && method === 'GET') return json({ memory: settings });
       if (path === '/settings' && method === 'PUT') return json({ memory: { ...settings, ...(body?.memory as object) } });
@@ -74,7 +75,7 @@ const index = (path: string) => calls.findIndex((c) => c.path === path);
 async function open() {
   const user = userEvent.setup();
   render(<App />);
-  await user.click(await screen.findByRole('button', { name: 'Conversa' }));
+  await user.click(await within(await screen.findByRole('region', { name: 'Lista de conversas' })).findByRole('button', { name: 'Conversa' }));
   await screen.findByLabelText('Mensagem');
   return user;
 }
@@ -199,7 +200,7 @@ describe('memory tab', () => {
     expect(await screen.findByText('Usar pnpm')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Fatos sem projeto' })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('checkbox', { name: 'Fixar: Usar pnpm' }));
+    await user.click(screen.getByRole('button', { name: 'Fixar: Usar pnpm' }));
     await waitFor(() => expect(calls.find((c) => c.method === 'PATCH' && c.path === '/facts/f1')?.body).toEqual({ fixado: true }));
 
     await user.click(screen.getByRole('button', { name: 'Editar fato: Usar pnpm' }));

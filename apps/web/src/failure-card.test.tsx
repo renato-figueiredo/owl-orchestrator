@@ -19,3 +19,20 @@ describe('FailureCard for a step that is not the refiner', () => {
     expect(onDiscard).toHaveBeenCalled();
   });
 });
+
+describe('FailureCard for the refiner', () => {
+  it('follows the design: cause, suggestion, the raw error in mono and the actions (the first alternative is the primary one)', async () => {
+    const onRetry = vi.fn();
+    const onSkip = vi.fn();
+    render(<FailureCard motivo="Falha ao melhorar o prompt: timeout after 120000ms" refiner={refiner} onSkip={onSkip} onRetry={onRetry} onDiscard={vi.fn()} disabled={false} />);
+    const alert = screen.getByRole('alert', { name: 'Falha ao melhorar o prompt' });
+    expect(alert).toHaveTextContent('Causa');
+    expect(alert).toHaveTextContent('Sugestão');
+    expect(alert).toHaveTextContent('timeout after 120000ms');
+    expect(alert).not.toHaveTextContent('Falha ao melhorar o prompt:'); // the prefix is stripped from the raw error
+    await userEvent.click(screen.getByRole('button', { name: 'Tentar com haiku' }));
+    expect(onRetry).toHaveBeenCalledWith({ provider: 'claude-cli', model: 'haiku' });
+    await userEvent.click(screen.getByRole('button', { name: 'Executar sem melhorar' }));
+    expect(onSkip).toHaveBeenCalled();
+  });
+});

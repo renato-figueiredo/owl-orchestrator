@@ -1,3 +1,5 @@
+import { Button, Input } from '@owl/ui';
+import { Filter, Link2, Lock, Tag, X } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import type { BoardData, Cycle, Label, RelationType, Ticket, TicketDetail } from '../lib/types';
@@ -8,19 +10,17 @@ const REL_LABEL: Record<RelationType, string> = { bloqueia: 'bloqueia', relacion
 const REL_BACK: Record<RelationType, string> = { bloqueia: 'bloqueado por', relacionado: 'relacionado a', duplicado: 'duplicado de' };
 
 export const cycleName = (c: Cycle) => `Ciclo ${c.numero}${c.nome ? ` · ${c.nome}` : ''}`;
-const fmtDay = (d: string) => d.split('-').reverse().join('/');
+export const fmtDay = (d: string) => d.split('-').reverse().join('/');
 
-/** Black or white text, whichever reads on the label color. */
-const inkFor = (hex: string) => {
-  const n = parseInt(hex.slice(1), 16);
-  const lum = 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
-  return lum > 150 ? '#111111' : '#ffffff';
-};
+/** Shared look of selects, number and date fields (the text fields use `Input` from @owl/ui). */
+export const FIELD = 'h-8 rounded-md border border-line bg-raised px-2 text-[13px] text-fg hover:border-line-strong';
+const SMALL_LABEL = 'flex flex-col gap-1.5 text-xs font-medium';
 
+/** A label as the design writes it: `#nome`, mono. The swatch carries the colour the user chose. */
 export function LabelChip({ label }: { label: Label }) {
   return (
-    <span className="rounded px-1.5 py-0.5 text-[11px] leading-none" style={{ background: label.cor, color: inkFor(label.cor) }}>
-      {label.nome}
+    <span className="inline-flex items-center gap-1 font-mono text-[11px] text-muted">
+      <span aria-hidden="true" className="inline-block size-2 rounded-sm" style={{ background: label.cor }} />#{label.nome}
     </span>
   );
 }
@@ -67,11 +67,12 @@ export function FilterBar({ projectId, data, filters, onChange, busy, act }: { p
   };
 
   return (
-    <div className="mx-4 mt-3 space-y-2 text-sm">
+    <div className="space-y-3 border-b border-line px-6 py-3 text-[13px]">
       <div className="flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-1">
+        <Filter size={16} className="text-muted" aria-hidden="true" />
+        <label className="flex items-center gap-2 text-muted">
           Etiqueta
-          <select value={filters.etiqueta} onChange={(e) => onChange({ ...filters, etiqueta: e.target.value })} className="rounded border border-line bg-bg px-2 py-1">
+          <select value={filters.etiqueta} onChange={(e) => onChange({ ...filters, etiqueta: e.target.value })} className={`${FIELD} text-fg`}>
             <option value="">todas</option>
             {data.etiquetas.map((l) => (
               <option key={l.id} value={l.id}>
@@ -80,9 +81,9 @@ export function FilterBar({ projectId, data, filters, onChange, busy, act }: { p
             ))}
           </select>
         </label>
-        <label className="flex items-center gap-1">
+        <label className="flex items-center gap-2 text-muted">
           Ciclo
-          <select value={filters.ciclo} onChange={(e) => onChange({ ...filters, ciclo: e.target.value })} className="rounded border border-line bg-bg px-2 py-1">
+          <select value={filters.ciclo} onChange={(e) => onChange({ ...filters, ciclo: e.target.value })} className={`${FIELD} text-fg`}>
             <option value="">todos</option>
             <option value="none">sem ciclo</option>
             {data.ciclos.map((c) => (
@@ -93,75 +94,70 @@ export function FilterBar({ projectId, data, filters, onChange, busy, act }: { p
           </select>
         </label>
         {cycle && (
-          <span className="text-muted" aria-label="Progresso do ciclo">
+          <span className="font-mono text-[11px] tabular-nums text-muted" aria-label="Progresso do ciclo">
             {fmtDay(cycle.inicio)} a {fmtDay(cycle.fim)} · {done.length}/{inCycle.length} tickets · {pointsDone}/{points} pontos
           </span>
         )}
-        <button type="button" onClick={() => setManaging(!managing)} aria-expanded={managing} className="ml-auto rounded border border-line px-3 py-1 hover:bg-raised">
+        <span className="flex-1" />
+        <Button size="sm" icon={Tag} aria-expanded={managing} onClick={() => setManaging(!managing)}>
           Etiquetas e ciclos
-        </button>
+        </Button>
       </div>
 
       {managing && (
-        <div className="grid gap-3 rounded border border-line bg-raised p-3 md:grid-cols-2">
-          <div className="space-y-2">
-            <h3 className="font-semibold">Etiquetas</h3>
-            <ul className="flex flex-wrap gap-2">
+        <div className="grid gap-6 rounded-lg border border-line bg-panel p-4 md:grid-cols-2" style={{ animation: 'owl-fade-in var(--dur) var(--ease-out)' }}>
+          <div className="space-y-3">
+            <h3 className="owl-label m-0 font-medium">Etiquetas</h3>
+            <ul className="m-0 flex list-none flex-wrap gap-3 p-0">
               {data.etiquetas.length === 0 && <li className="text-muted">Nenhuma ainda.</li>}
               {data.etiquetas.map((l) => (
                 <li key={l.id} className="flex items-center gap-1">
                   <LabelChip label={l} />
-                  <button type="button" disabled={busy} aria-label={`Apagar etiqueta ${l.nome}`} onClick={() => void act(() => api.deleteLabel(l.id))} className="text-muted hover:text-danger">
-                    ×
+                  <button type="button" disabled={busy} aria-label={`Apagar etiqueta ${l.nome}`} onClick={() => void act(() => api.deleteLabel(l.id))} className="grid size-6 place-items-center rounded-sm text-muted hover:bg-danger-wash hover:text-danger">
+                    <X size={12} aria-hidden="true" />
                   </button>
                 </li>
               ))}
             </ul>
             <form onSubmit={newLabel} aria-label="Nova etiqueta" className="flex items-end gap-2">
-              <label>
-                Nome
-                <input name="nome" required maxLength={40} className="mt-1 block w-36 rounded border border-line bg-bg px-2 py-1" />
-              </label>
-              <label>
+              <Input label="Nome" name="nome" required />
+              <label className={SMALL_LABEL}>
                 Cor
-                <input name="cor" type="color" defaultValue="#8b8b99" className="mt-1 block h-8 w-12 rounded border border-line bg-bg" />
+                <input name="cor" type="color" defaultValue="#8b8b99" className={`${FIELD} w-12 p-1`} />
               </label>
-              <button type="submit" disabled={busy} className="rounded border border-line px-3 py-1 hover:bg-bg disabled:opacity-50">
+              <Button type="submit" disabled={busy}>
                 Criar etiqueta
-              </button>
+              </Button>
             </form>
           </div>
-          <div className="space-y-2">
-            <h3 className="font-semibold">Ciclos</h3>
-            <ul className="space-y-1">
+          <div className="space-y-3">
+            <h3 className="owl-label m-0 font-medium">Ciclos</h3>
+            <ul className="m-0 list-none space-y-1 p-0">
               {data.ciclos.length === 0 && <li className="text-muted">Nenhum ainda.</li>}
               {data.ciclos.map((c) => (
                 <li key={c.id} className="flex items-center gap-2">
                   <span>
-                    {cycleName(c)} <span className="text-muted">· {fmtDay(c.inicio)} a {fmtDay(c.fim)}</span>
+                    {cycleName(c)} <span className="font-mono text-[11px] text-muted">· {fmtDay(c.inicio)} a {fmtDay(c.fim)}</span>
                   </span>
-                  <button type="button" disabled={busy} aria-label={`Apagar ${cycleName(c)}`} onClick={() => void act(() => api.deleteCycle(c.id))} className="text-muted hover:text-danger">
-                    ×
+                  <button type="button" disabled={busy} aria-label={`Apagar ${cycleName(c)}`} onClick={() => void act(() => api.deleteCycle(c.id))} className="grid size-6 place-items-center rounded-sm text-muted hover:bg-danger-wash hover:text-danger">
+                    <X size={12} aria-hidden="true" />
                   </button>
                 </li>
               ))}
             </ul>
             <form onSubmit={newCycle} aria-label="Novo ciclo" className="flex flex-wrap items-end gap-2">
-              <label>
-                Nome (opcional)
-                <input name="nome" maxLength={80} className="mt-1 block w-32 rounded border border-line bg-bg px-2 py-1" />
-              </label>
-              <label>
+              <Input label="Nome (opcional)" name="nome" />
+              <label className={SMALL_LABEL}>
                 Início
-                <input name="inicio" type="date" required className="mt-1 block rounded border border-line bg-bg px-2 py-1" />
+                <input name="inicio" type="date" required className={FIELD} />
               </label>
-              <label>
+              <label className={SMALL_LABEL}>
                 Fim
-                <input name="fim" type="date" required className="mt-1 block rounded border border-line bg-bg px-2 py-1" />
+                <input name="fim" type="date" required className={FIELD} />
               </label>
-              <button type="submit" disabled={busy} className="rounded border border-line px-3 py-1 hover:bg-bg disabled:opacity-50">
+              <Button type="submit" disabled={busy}>
                 Criar ciclo
-              </button>
+              </Button>
             </form>
           </div>
         </div>
@@ -170,16 +166,15 @@ export function FilterBar({ projectId, data, filters, onChange, busy, act }: { p
   );
 }
 
-/** Inside the ticket panel: labels, cycle, estimate, due date and relations with other tickets. */
+const SECTION = 'owl-label m-0 font-medium';
+
+/** In the ticket side column: labels, cycle, estimate, due date and relations with other tickets. */
 export function OrganizePanel({ detail: d, board, busy, act, onOpen }: { detail: TicketDetail; board: BoardData | null; busy: boolean; act: Act; onOpen: (id: string) => void }) {
   const t = d.ticket;
   const [relTarget, setRelTarget] = useState('');
   const [relType, setRelType] = useState<RelationType>('bloqueia');
   const all = board?.tickets ?? [];
-  const name = (id: string) => {
-    const x = all.find((k) => k.id === id);
-    return x ? `${x.identificador} ${x.titulo}` : id;
-  };
+  const find = (id: string) => all.find((k) => k.id === id);
   const mine = new Set(d.etiquetas.map((l) => l.id));
 
   const saveFields = (e: FormEvent<HTMLFormElement>) => {
@@ -190,32 +185,53 @@ export function OrganizePanel({ detail: d, board, busy, act, onOpen }: { detail:
     void act(() => api.patchTicket(t.id, { estimativa: est === '' ? null : Number(est), prazo: prazo === '' ? null : prazo }));
   };
 
+  const relRow = (id: string, other: string, kind: string, relId: string) => {
+    const x = find(other);
+    const label = x ? `${x.identificador} ${x.titulo}` : other;
+    return (
+      <li key={relId} className="flex items-start gap-1">
+        <button type="button" className="flex min-w-0 flex-1 flex-col gap-0.5 text-left text-fg hover:text-accent" onClick={() => onOpen(other)}>
+          <span className="text-[11px] text-muted">{kind}</span>
+          <span className="text-xs">
+            <span className="font-mono">{x?.identificador ?? other}</span> {x?.titulo ?? ''}
+          </span>
+          <span className="sr-only">{label}</span>
+        </button>
+        <button type="button" disabled={busy} aria-label={`Remover relação com ${label}`} onClick={() => void act(() => api.removeRelation(relId))} className="grid size-6 flex-none place-items-center rounded-sm text-muted hover:bg-danger-wash hover:text-danger">
+          <X size={12} aria-hidden="true" />
+        </button>
+      </li>
+    );
+  };
+
   return (
-    <section aria-label="Organização do ticket" className="space-y-3">
-      <h3 className="font-semibold">Organização</h3>
+    <section aria-label="Organização do ticket" className="flex flex-col gap-4 text-[13px]">
       {d.bloqueadoPor.length > 0 && (
-        <p role="status" className="rounded border border-danger p-2 text-danger">
-          Bloqueado por{' '}
-          {d.bloqueadoPor.map((b, i) => (
-            <span key={b.id}>
-              {i > 0 && ', '}
-              <button type="button" className="underline" onClick={() => onOpen(b.id)}>
-                {b.identificador}
-              </button>
-            </span>
-          ))}
-          . Nenhum agente inicia este ticket até que sejam concluídos.
+        <p role="status" className="m-0 flex items-start gap-2 rounded-md border border-line bg-raised p-2.5 text-xs text-muted">
+          <Lock size={14} className="mt-px flex-none" aria-hidden="true" />
+          <span>
+            Bloqueado por{' '}
+            {d.bloqueadoPor.map((b, i) => (
+              <span key={b.id}>
+                {i > 0 && ', '}
+                <button type="button" className="font-mono text-fg underline" onClick={() => onOpen(b.id)}>
+                  {b.identificador}
+                </button>
+              </span>
+            ))}
+            . Nenhum agente inicia este ticket até que sejam concluídos.
+          </span>
         </p>
       )}
 
-      <div>
-        <p className="text-muted">Etiquetas</p>
-        <ul className="mt-1 flex flex-wrap gap-2">
-          {(board?.etiquetas ?? []).length === 0 && <li className="text-muted">Crie etiquetas em "Etiquetas e ciclos".</li>}
+      <div className="flex flex-col gap-2 border-t border-line pt-4">
+        <h3 className={SECTION}>Etiquetas</h3>
+        <ul className="m-0 flex list-none flex-wrap gap-x-3 gap-y-1 p-0">
+          {(board?.etiquetas ?? []).length === 0 && <li className="text-xs text-muted">Crie etiquetas em "Etiquetas e ciclos".</li>}
           {(board?.etiquetas ?? []).map((l) => (
             <li key={l.id}>
-              <label className="flex items-center gap-1">
-                <input type="checkbox" disabled={busy} checked={mine.has(l.id)} onChange={(e) => void act(() => (e.target.checked ? api.addTicketLabel(t.id, l.id) : api.removeTicketLabel(t.id, l.id)))} />
+              <label className="flex cursor-pointer items-center gap-1.5">
+                <input type="checkbox" disabled={busy} checked={mine.has(l.id)} onChange={(e) => void act(() => (e.target.checked ? api.addTicketLabel(t.id, l.id) : api.removeTicketLabel(t.id, l.id)))} className="size-4 accent-[var(--c-accent)]" />
                 <LabelChip label={l} />
               </label>
             </li>
@@ -223,9 +239,9 @@ export function OrganizePanel({ detail: d, board, busy, act, onOpen }: { detail:
         </ul>
       </div>
 
-      <label className="block">
-        Ciclo
-        <select value={t.cicloId ?? ''} disabled={busy} onChange={(e) => void act(() => api.assignCycle(t.id, e.target.value || null))} className="mt-1 block w-full rounded border border-line bg-bg px-2 py-1">
+      <label className={SMALL_LABEL}>
+        <span className="font-normal text-muted">Ciclo</span>
+        <select value={t.cicloId ?? ''} disabled={busy} onChange={(e) => void act(() => api.assignCycle(t.id, e.target.value || null))} className={FIELD}>
           <option value="">sem ciclo</option>
           {(board?.ciclos ?? []).map((c) => (
             <option key={c.id} value={c.id}>
@@ -236,45 +252,25 @@ export function OrganizePanel({ detail: d, board, busy, act, onOpen }: { detail:
       </label>
 
       <form key={`${t.estimativa}-${t.prazo}`} onSubmit={saveFields} aria-label="Estimativa e prazo" className="flex flex-wrap items-end gap-2">
-        <label>
-          Estimativa (pontos)
-          <input name="estimativa" type="number" min={0} max={1000} defaultValue={t.estimativa ?? ''} className="mt-1 block w-28 rounded border border-line bg-bg px-2 py-1" />
+        <label className={SMALL_LABEL}>
+          <span className="font-normal text-muted">Estimativa (pontos)</span>
+          <input name="estimativa" type="number" min={0} max={1000} defaultValue={t.estimativa ?? ''} className={`${FIELD} w-28 font-mono`} />
         </label>
-        <label>
-          Prazo
-          <input name="prazo" type="date" defaultValue={t.prazo ?? ''} className="mt-1 block rounded border border-line bg-bg px-2 py-1" />
+        <label className={SMALL_LABEL}>
+          <span className="font-normal text-muted">Prazo</span>
+          <input name="prazo" type="date" defaultValue={t.prazo ?? ''} className={`${FIELD} font-mono`} />
         </label>
-        <button type="submit" disabled={busy} className="rounded border border-line px-3 py-1 hover:bg-raised disabled:opacity-50">
+        <Button type="submit" size="sm" disabled={busy}>
           Salvar
-        </button>
+        </Button>
       </form>
 
-      <div>
-        <p className="text-muted">Relações</p>
-        <ul className="mt-1 space-y-1">
-          {d.relacoes.saem.length + d.relacoes.entram.length === 0 && <li className="text-muted">Nenhuma.</li>}
-          {d.relacoes.saem.map((r) => (
-            <li key={r.id}>
-              {REL_LABEL[r.tipo]}{' '}
-              <button type="button" className="underline" onClick={() => onOpen(r.relatedId)}>
-                {name(r.relatedId)}
-              </button>{' '}
-              <button type="button" disabled={busy} aria-label={`Remover relação com ${name(r.relatedId)}`} onClick={() => void act(() => api.removeRelation(r.id))} className="text-muted hover:text-danger">
-                ×
-              </button>
-            </li>
-          ))}
-          {d.relacoes.entram.map((r) => (
-            <li key={r.id}>
-              {REL_BACK[r.tipo]}{' '}
-              <button type="button" className="underline" onClick={() => onOpen(r.ticketId)}>
-                {name(r.ticketId)}
-              </button>{' '}
-              <button type="button" disabled={busy} aria-label={`Remover relação com ${name(r.ticketId)}`} onClick={() => void act(() => api.removeRelation(r.id))} className="text-muted hover:text-danger">
-                ×
-              </button>
-            </li>
-          ))}
+      <div className="flex flex-col gap-2 border-t border-line pt-4">
+        <h3 className={SECTION}>Relações</h3>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
+          {d.relacoes.saem.length + d.relacoes.entram.length === 0 && <li className="text-xs text-muted">Nenhuma.</li>}
+          {d.relacoes.saem.map((r) => relRow(r.id, r.relatedId, REL_LABEL[r.tipo], r.id))}
+          {d.relacoes.entram.map((r) => relRow(r.id, r.ticketId, REL_BACK[r.tipo], r.id))}
         </ul>
         <form
           aria-label="Nova relação"
@@ -282,19 +278,19 @@ export function OrganizePanel({ detail: d, board, busy, act, onOpen }: { detail:
             e.preventDefault();
             if (relTarget) void act(() => api.addRelation(t.id, relTarget, relType).then(() => setRelTarget('')));
           }}
-          className="mt-2 flex flex-wrap items-end gap-2"
+          className="flex flex-col gap-2"
         >
-          <label>
-            Este ticket
-            <select value={relType} onChange={(e) => setRelType(e.target.value as RelationType)} className="mt-1 block rounded border border-line bg-bg px-2 py-1">
+          <label className={SMALL_LABEL}>
+            <span className="font-normal text-muted">Este ticket</span>
+            <select value={relType} onChange={(e) => setRelType(e.target.value as RelationType)} className={FIELD}>
               <option value="bloqueia">bloqueia</option>
               <option value="relacionado">é relacionado a</option>
               <option value="duplicado">é duplicado de</option>
             </select>
           </label>
-          <label className="min-w-0 flex-1">
-            Ticket
-            <select value={relTarget} onChange={(e) => setRelTarget(e.target.value)} className="mt-1 block w-full rounded border border-line bg-bg px-2 py-1">
+          <label className={SMALL_LABEL}>
+            <span className="font-normal text-muted">Ticket</span>
+            <select value={relTarget} onChange={(e) => setRelTarget(e.target.value)} className={`${FIELD} w-full`}>
               <option value="">escolha…</option>
               {all
                 .filter((k) => k.id !== t.id)
@@ -305,11 +301,12 @@ export function OrganizePanel({ detail: d, board, busy, act, onOpen }: { detail:
                 ))}
             </select>
           </label>
-          <button type="submit" disabled={busy || !relTarget} className="rounded border border-line px-3 py-1 hover:bg-raised disabled:opacity-50">
+          <Button type="submit" size="sm" icon={Link2} disabled={busy || !relTarget}>
             Relacionar
-          </button>
+          </Button>
         </form>
       </div>
     </section>
   );
 }
+

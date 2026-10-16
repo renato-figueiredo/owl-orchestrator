@@ -7,7 +7,16 @@ import { MemoryPanel } from './components/MemoryPanel';
 import { MetricsPanel } from './components/MetricsPanel';
 import { ProjectScreen } from './components/ProjectScreen';
 import { RunPanel } from './components/RunPanel';
-import { Sidebar } from './components/Sidebar';
+import { ConversationList } from './components/shell/ConversationList';
+import { ProjectSwitcherMenu } from './components/shell/ProjectSwitcherMenu';
+import { Rail, type View } from './components/shell/Rail';
+import { Vigia, mono, type LiveRun } from './components/shell/Vigia';
+import { ApprovalsQueue } from './screens/ApprovalsQueue';
+import { MemoryScreen } from './screens/MemoryScreen';
+import { PairScreen } from './screens/PairScreen';
+import { PipelinesScreen } from './screens/PipelinesScreen';
+import { ProjectsHome } from './screens/ProjectsHome';
+import { StorageScreen } from './screens/StorageScreen';
 import { api, type SendInput } from './lib/api';
 import type { Fact, MemorySettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './lib/types';
 import { useRunStream } from './lib/useRunStream';
@@ -41,8 +50,12 @@ function Workspace() {
   const [memBusy, setMemBusy] = useState(false);
   const [memMessage, setMemMessage] = useState<string | null>(null);
   const [trashVersion, setTrashVersion] = useState(0);
-  const [view, setView] = useState<'chat' | 'agents' | 'board' | 'project' | 'metrics'>('chat');
+  const [view, setView] = useState<View>('chat');
+  /** The open project (null = "Sem projeto"). Conversations, board, team and memory all follow it. */
   const [boardProjectId, setBoardProjectId] = useState<string | null>(null);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [pending, setPending] = useState(0);
+  const [approvalsVersion, setApprovalsVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -205,61 +218,146 @@ function Workspace() {
     if (activeRunId) void api.cancel(activeRunId).catch((e) => setError(message(e)));
   };
 
+  // ---- shell: current project, approvals count, global shortcuts
+  const currentProject = projects.find((p) => p.id === boardProjectId) ?? null;
+  const projectSessions = sessions.filter((x) => (currentProject ? x.projectId === currentProject.id : !x.projectId || !projects.some((p) => p.id === x.projectId)));
+
+  // First load: open the project of the latest conversation, else the first project.
+  const [startedAt] = useState(() => ({ done: false }));
+  useEffect(() => {
+    if (startedAt.done || (projects.length === 0 && sessions.length === 0)) return;
+    startedAt.done = true;
+    setBoardProjectId(sessions.length > 0 ? (sessions[0]!.projectId ?? null) : (projects[0]?.id ?? null));
+  }, [projects, sessions, startedAt]);
+
+  const refreshApprovals = useCallback(() => setApprovalsVersion((v) => v + 1), []);
+  useEffect(() => {
+    if (projects.length === 0) return setPending(0);
+    let cancelled = false;
+    const load = () =>
+      Promise.all(projects.map((p) => api.projectApprovals(p.id)))
+        .then((all) => !cancelled && setPending(all.reduce((n, list) => n + list.length, 0)))
+        .catch(() => undefined); // the badge is a hint; the queue screen shows real errors
+    void load();
+    const t = setInterval(() => void load(), 20_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [projects, approvalsVersion, view]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
+      const typing = tag === 'textarea' || tag === 'input';
+      const k = e.key.toLowerCase();
+      if (k === 'a' && !typing) {
+        e.preventDefault();
+        setView('queue');
+      } else if (k === 'p') {
+        e.preventDefault();
+        setSwitcherOpen((v) => !v);
+      } else if (/^[1-9]$/.test(k) && projects[Number(k) - 1]) {
+        e.preventDefault();
+        setBoardProjectId(projects[Number(k) - 1]!.id);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [projects]);
+
+  const activeRun = detail?.runs.find((r) => r.id === activeRunId) ?? null;
+  const live: LiveRun[] =
+    activeRun && liveStream && (liveStream.phase === 'running' || liveStream.phase === 'connecting')
+      ? [{ id: activeRun.id, agent: activeRun.etapa ?? 'agente', provider: activeRun.provedor || null, label: selectedSession?.titulo ?? 'Nova conversa', startedAt: Date.parse(activeRun.inicio) || Date.now(), status: 'running', onOpen: () => setView('chat') }]
+      : [];
+
   return (
-    <div className="flex h-full">
-      <Sidebar
-        projects={projects}
-        sessions={sessions}
-        selectedId={selectedId}
-        onSelect={(id) => {
-          setSelectedId(id);
-          setView('chat');
-        }}
-        onNewSession={(pid) => void newSession(pid)}
-        onDeleteSession={(id) => void trashSession(id)}
-        trashVersion={trashVersion}
-        onRestored={() => void refreshSessions().catch((e) => setError(message(e)))}
-        onCreateProject={async (input) => {
-          const p = await api.createProject(input);
-          setProjects((list) => [p, ...list]);
-        }}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        onOpenAgents={() => setView('agents')}
-        onOpenMetrics={() => setView('metrics')}
-        onOpenBoard={(pid) => {
-          setBoardProjectId(pid);
-          setView('board');
-        }}
-        onOpenProject={(pid) => {
-          setBoardProjectId(pid);
-          setView('project');
-        }}
+    <div className="relative flex h-full flex-col">
+      <Vigia
+        project={currentProject ? { nome: currentProject.nome, branch: currentProject.branchBase ?? null } : null}
+        onOpenSwitcher={() => setSwitcherOpen((v) => !v)}
+        switcherOpen={switcherOpen}
+        live={live}
+        pending={pending}
+        onOpenQueue={() => setView('queue')}
       />
-      {view === 'agents' && <AgentLibrary onClose={() => setView('chat')} />}
-      {view === 'metrics' && <MetricsPanel projects={projects} providers={providers} initialProjectId={boardProjectId} onClose={() => setView('chat')} />}
-      {view === 'board' && projects.some((p) => p.id === boardProjectId) && (
-        <Board
-          project={projects.find((p) => p.id === boardProjectId)!}
+      {switcherOpen && (
+        <ProjectSwitcherMenu
           projects={projects}
-          onSwitch={setBoardProjectId}
-          onOpenProject={() => setView('project')}
-          onClose={() => setView('chat')}
+          currentId={boardProjectId}
+          onPick={(id) => {
+            setBoardProjectId(id);
+            setSelectedId(null);
+            setSwitcherOpen(false);
+          }}
+          onAll={() => {
+            setSwitcherOpen(false);
+            setView('projects');
+          }}
+          onNew={() => {
+            setSwitcherOpen(false);
+            setView('projects');
+          }}
+          onClose={() => setSwitcherOpen(false)}
         />
       )}
-      {view === 'project' && projects.some((p) => p.id === boardProjectId) && (
-        <ProjectScreen
-          projects={projects}
-          projectId={boardProjectId!}
-          onSwitch={setBoardProjectId}
-          onClose={() => setView('chat')}
-          onOpenBoard={() => setView('board')}
-          onChanged={() => void api.projects().then(setProjects).catch((e) => setError(message(e)))}
-        />
-      )}
+      <div className="flex min-h-0 flex-1">
+        <Rail view={view} onGo={setView} projectMono={currentProject ? mono(currentProject.nome) : '—'} pending={pending} theme={theme} onToggleTheme={toggleTheme} />
+        {view === 'projects' && (
+          <ProjectsHome
+            projects={projects}
+            currentId={boardProjectId}
+            onOpen={(id: string) => {
+              setBoardProjectId(id);
+              setSelectedId(null);
+              setView('chat');
+            }}
+            onCreated={(p: Project) => {
+              setProjects((list) => [p, ...list]);
+              setBoardProjectId(p.id);
+            }}
+          />
+        )}
+        {view === 'agents' && <AgentLibrary onClose={() => setView('chat')} />}
+        {view === 'pipelines' && <PipelinesScreen />}
+        {view === 'memory' && <MemoryScreen projects={projects} projectId={boardProjectId} />}
+        {view === 'metrics' && <MetricsPanel projects={projects} providers={providers} initialProjectId={boardProjectId} onClose={() => setView('chat')} />}
+        {view === 'queue' && <ApprovalsQueue projects={projects} currentId={boardProjectId} onChanged={refreshApprovals} />}
+        {view === 'storage' && <StorageScreen trashVersion={trashVersion} onRestored={() => void refreshSessions().catch((e) => setError(message(e)))} />}
+        {view === 'pair' && <PairScreen />}
+        {view === 'board' && currentProject && (
+          <Board project={currentProject} projects={projects} onSwitch={setBoardProjectId} onOpenProject={() => setView('team')} onClose={() => setView('chat')} />
+        )}
+        {view === 'team' && currentProject && (
+          <ProjectScreen
+            projects={projects}
+            projectId={currentProject.id}
+            onSwitch={setBoardProjectId}
+            onClose={() => setView('chat')}
+            onOpenBoard={() => setView('board')}
+            onChanged={() => void api.projects().then(setProjects).catch((e) => setError(message(e)))}
+          />
+        )}
+        {(view === 'board' || view === 'team') && !currentProject && (
+          <main className="flex flex-1 items-center justify-center text-muted">Escolha um projeto para ver {view === 'board' ? 'o quadro' : 'a equipe'}.</main>
+        )}
       {/* Kept mounted while the library or the board is open, so a stream or a draft in progress is not lost. */}
       <div className={view === 'chat' ? 'contents' : 'hidden'}>
+      <ConversationList
+        projectName={currentProject?.nome ?? 'Sem projeto'}
+        sessions={projectSessions}
+        selectedId={selectedId}
+        onSelect={setSelectedId}
+        onNew={() => void newSession(currentProject?.id)}
+        onDelete={(id) => void trashSession(id)}
+      />
       <Chat
+        projectName={currentProject?.nome ?? 'Sem projeto'}
+        title={selectedSession?.titulo ?? 'Nova conversa'}
+        runs={detail?.runs ?? []}
+        loading={selectedId !== null && !detail}
         hasSession={selectedId !== null}
         messages={detail?.messages ?? []}
         stream={shownStream}
@@ -278,6 +376,7 @@ function Workspace() {
         onSummarize={summarizeNow}
       />
       <RunPanel
+        onCancel={cancel}
         runs={detail?.runs ?? []}
         stream={liveStream}
         open={panelOpen}
@@ -308,6 +407,7 @@ function Workspace() {
           />
         }
       />
+      </div>
       </div>
     </div>
   );

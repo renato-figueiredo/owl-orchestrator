@@ -4,7 +4,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Board, dropTarget } from './components/Board';
-import type { BoardData, Ticket, TicketDetail } from './lib/types';
+import type { BoardData, Ticket, TicketApproval, TicketDetail } from './lib/types';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 const ticket = (id: string, over: Partial<Ticket> = {}): Ticket => ({
@@ -75,61 +75,94 @@ afterEach(() => {
 const project = { id: 'p1', nome: 'Meu app', pasta: '/x' };
 const open = () => render(<Board project={project} onClose={() => {}} pollMs={0} />);
 
+const card = (n: string) => new RegExp(`^OWL-${n}\\b.*Ticket ${n}`);
+const gate = (id: string, over: Partial<TicketApproval> = {}): TicketApproval => ({ id, ticketId: '2', motivo: 'Entrega aguardando aprovação', tipo: 'entrega', status: 'pendente', comentario: null, criadoEm: null, ticketIdentificador: 'OWL-2', ticketTitulo: 'Ticket 2', ...over });
+/** Board with ticket 2 waiting on the given gate; opens ticket 2. */
+const openWithGate = async (g: TicketApproval) => {
+  data.aprovacoes = [g];
+  data.tickets[1] = { ...data.tickets[1]!, status: 'aguardando_aprovacao' };
+  detail.ticket = data.tickets[1]!;
+  detail.aprovacoes = [g];
+  const user = userEvent.setup();
+  open();
+  await user.click(await screen.findByRole('button', { name: card('2') }));
+  return { user, screen: await screen.findByRole('region', { name: 'Ticket OWL-2' }) };
+};
+
 describe('board', () => {
-  it('shows the seven columns with their tickets', async () => {
+  it('lays the statuses out in three zones, each column with its tickets', async () => {
     open();
-    await screen.findByRole('button', { name: /OWL-1: Ticket 1/ });
-    for (const name of ['Backlog', 'Pronto', 'Em andamento', 'Em revisão', 'Aguardando aprovação', 'Concluído', 'Bloqueado']) {
-      expect(screen.getByRole('listitem', { name })).toBeInTheDocument();
-    }
-    expect(within(screen.getByRole('listitem', { name: 'Pronto' })).getByText('Ticket 1')).toBeInTheDocument();
-    expect(within(screen.getByRole('listitem', { name: 'Em andamento' })).getByText('Ticket 2')).toBeInTheDocument();
+    await screen.findByRole('button', { name: card('1') });
+    for (const zone of ['Com os agentes', 'Com você', 'Feito']) expect(screen.getByRole('region', { name: zone })).toBeInTheDocument();
+    const agents = screen.getByRole('region', { name: 'Com os agentes' });
+    for (const name of ['Backlog', 'Pronto', 'Em andamento', 'Revisão']) expect(within(agents).getByRole('group', { name })).toBeInTheDocument();
+    const mine = screen.getByRole('region', { name: 'Com você' });
+    for (const name of ['Aprovar', 'Destravar']) expect(within(mine).getByRole('group', { name })).toBeInTheDocument();
+    expect(within(screen.getByRole('group', { name: 'Pronto' })).getByText('Ticket 1')).toBeInTheDocument();
+    expect(within(screen.getByRole('group', { name: 'Em andamento' })).getByText('Ticket 2')).toBeInTheDocument();
+    expect(within(mine).getByText('Nada esperando você')).toBeInTheDocument();
   });
 
-  it('opens a ticket with its comments by agent, history, runs and what it cost', async () => {
+  it('puts finished tickets in the Feito zone and a gate on the card as "na sua mesa"', async () => {
+    data.tickets.push(ticket('3', { status: 'concluido' }), ticket('4', { status: 'aguardando_aprovacao' }));
+    data.aprovacoes = [gate('a4', { ticketId: '4', ticketIdentificador: 'OWL-4', ticketTitulo: 'Ticket 4' })];
+    open();
+    const done = await screen.findByRole('group', { name: 'Concluído' });
+    expect(within(done).getByRole('button', { name: /OWL-3: Ticket 3/ })).toBeInTheDocument();
+    const waiting = within(screen.getByRole('group', { name: 'Aprovar' })).getByRole('button', { name: card('4') });
+    expect(waiting).toHaveTextContent('Entrega · na sua mesa');
+  });
+
+  it('opens a ticket with its comments by agent, activity, runs and what it cost', async () => {
     const user = userEvent.setup();
     open();
-    await user.click(await screen.findByRole('button', { name: /OWL-2: Ticket 2/ }));
-    const panel = await screen.findByRole('complementary', { name: 'Ticket OWL-2' });
+    await user.click(await screen.findByRole('button', { name: card('2') }));
+    const panel = await screen.findByRole('region', { name: 'Ticket OWL-2' });
     expect(await within(panel).findByText('Implementei.')).toBeInTheDocument();
-    expect(within(panel).getByText(/dev-back \(agente\)/)).toBeInTheDocument();
-    expect(within(panel).getByLabelText('Custo do ticket')).toHaveTextContent('1 execução(ões) · 150 tokens · US$ 0,0100');
-    expect(within(panel).getByRole('list', { name: 'Histórico' })).toHaveTextContent('tech-lead criou Pronto');
+    expect(within(panel).getByText(/\(agente\)/)).toBeInTheDocument();
+    expect(within(panel).getByLabelText('Custo do ticket')).toHaveTextContent('1 execução · 150 tok · $0,010');
+    expect(within(panel).getByRole('list', { name: 'Atividade' })).toHaveTextContent('tech-lead criou pronto');
+    await user.click(within(panel).getByRole('button', { name: 'Quadro' }));
+    expect(await screen.findByRole('region', { name: 'Com os agentes' })).toBeInTheDocument();
   });
 
-  it('lists pending approvals; rejecting needs a comment and sends it', async () => {
-    data.aprovacoes = [{ id: 'a1', ticketId: '2', motivo: 'Entrega aguardando aprovação', tipo: 'entrega', status: 'pendente', comentario: null, criadoEm: null, ticketIdentificador: 'OWL-2', ticketTitulo: 'Ticket 2' }];
-    const user = userEvent.setup();
-    open();
-    const queue = await screen.findByRole('region', { name: 'Fila de aprovações' });
-    expect(queue).toHaveTextContent('OWL-2 Ticket 2');
-    expect(queue).toHaveTextContent('Entrega');
-    const reject = within(queue).getByRole('button', { name: 'Rejeitar' });
+  it('shows the pending gate inline; rejecting needs a reason and sends it', async () => {
+    const { user, screen: panel } = await openWithGate(gate('a1'));
+    const g = await within(panel).findByRole('region', { name: 'Aprovação: Entrega OWL-2' });
+    expect(g).toHaveTextContent('Entrega aguardando aprovação');
+    await user.click(within(g).getByRole('button', { name: 'Reprovar com motivo' }));
+    const reject = within(g).getByRole('button', { name: 'Reprovar' });
     expect(reject).toBeDisabled();
-    await user.type(within(queue).getByRole('textbox', { name: 'Comentário da decisão' }), 'falta teste');
+    await user.type(within(g).getByRole('textbox', { name: 'Motivo da reprovação' }), 'falta teste');
     await user.click(reject);
     await waitFor(() => expect(calls.find((c) => c.path === '/approvals/a1/decide')?.body).toEqual({ decisao: 'rejeitado', comentario: 'falta teste' }));
   });
 
-  it('approves with one click, comment optional', async () => {
-    data.aprovacoes = [{ id: 'a1', ticketId: '2', motivo: 'Ação destrutiva: rm -rf', tipo: 'destrutiva', status: 'pendente', comentario: null, criadoEm: null, ticketIdentificador: 'OWL-2', ticketTitulo: 'Ticket 2' }];
-    const user = userEvent.setup();
-    open();
-    await user.click(await screen.findByRole('button', { name: 'Aprovar' }));
+  it('approves with one click', async () => {
+    const { user, screen: panel } = await openWithGate(gate('a1', { motivo: 'Ação destrutiva: rm -rf dist', tipo: 'destrutiva' }));
+    const g = await within(panel).findByRole('region', { name: 'Aprovação: Ação destrutiva OWL-2' });
+    expect(g).toHaveTextContent('rm -rf dist');
+    await user.click(within(g).getByRole('button', { name: 'Aprovar' }));
     await waitFor(() => expect(calls.find((c) => c.path === '/approvals/a1/decide')?.body).toEqual({ decisao: 'aprovado' }));
   });
 
   it('a "reprovacao" gate says the author redoes it either way', async () => {
-    data.aprovacoes = [{ id: 'a1', ticketId: '2', motivo: 'Revisor reprovou', tipo: 'reprovacao', status: 'pendente', comentario: null, criadoEm: null, ticketIdentificador: 'OWL-2', ticketTitulo: 'Ticket 2' }];
+    const { user, screen: panel } = await openWithGate(gate('a1', { motivo: 'Revisor reprovou', tipo: 'reprovacao' }));
+    const g = await within(panel).findByRole('region', { name: 'Aprovação: Reprovação OWL-2' });
+    expect(within(g).queryByRole('button', { name: 'Aprovar' })).toBeNull();
+    expect(g).toHaveTextContent('Nos dois casos o autor refaz');
+    expect(within(g).getByRole('button', { name: 'Refazer do meu jeito' })).toBeDisabled();
+    await user.click(within(g).getByRole('button', { name: 'Confirmar e refazer' }));
+    await waitFor(() => expect(calls.find((c) => c.path === '/approvals/a1/decide')?.body).toEqual({ decisao: 'aprovado' }));
+  });
+
+  it('comments as the human', async () => {
     const user = userEvent.setup();
     open();
-    const queue = await screen.findByRole('region', { name: 'Fila de aprovações' });
-    expect(within(queue).queryByRole('button', { name: 'Aprovar' })).toBeNull();
-    expect(within(queue).queryByRole('button', { name: 'Rejeitar' })).toBeNull();
-    expect(queue).toHaveTextContent('Nos dois casos o autor refaz');
-    expect(within(queue).getByRole('button', { name: 'Refazer do meu jeito' })).toBeDisabled();
-    await user.click(within(queue).getByRole('button', { name: 'Confirmar e refazer' }));
-    await waitFor(() => expect(calls.find((c) => c.path === '/approvals/a1/decide')?.body).toEqual({ decisao: 'aprovado' }));
+    await user.click(await screen.findByRole('button', { name: card('2') }));
+    await user.type(await screen.findByRole('textbox', { name: 'Novo comentário' }), 'ok, segue');
+    await user.click(screen.getByRole('button', { name: 'Comentar' }));
+    await waitFor(() => expect(calls.find((c) => c.path === '/tickets/2/comments')?.body).toEqual({ texto: 'ok, segue' }));
   });
 
   it('creates a ticket and starts a goal', async () => {
@@ -141,7 +174,8 @@ describe('board', () => {
     await user.click(within(form).getByRole('button', { name: 'Criar ticket' }));
     await waitFor(() => expect(calls.find((c) => c.path === '/projects/p1/tickets')?.body).toMatchObject({ titulo: 'Corrigir login', requerAprovacao: true, status: 'pronto' }));
 
-    await user.click(screen.getByRole('button', { name: 'Novo objetivo' }));
+    await user.click(await screen.findByRole('button', { name: 'Quadro' })); // creating opens the new ticket
+    await user.click(await screen.findByRole('button', { name: 'Novo objetivo' }));
     await user.type(screen.getByRole('textbox', { name: 'Objetivo' }), 'Login com e-mail');
     await user.click(screen.getByRole('button', { name: 'Começar' }));
     await waitFor(() => expect(calls.find((c) => c.path === '/projects/p1/board/goals')?.body).toEqual({ objetivo: 'Login com e-mail' }));

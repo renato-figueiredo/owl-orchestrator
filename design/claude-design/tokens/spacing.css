@@ -1,0 +1,24 @@
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
+  --r-xs: 2px;   /* marcadores de provedor */
+  --r-sm: 4px;   /* chips, código inline, kbd */
+  --r-ctl: 6px;  /* botões, inputs, cards de ticket */
+  --r-panel: 10px; /* painéis, gates, composer */
+
+  --border: 1px solid var(--c-line);
+  --shadow-overlay: 0 12px 32px rgba(0,0,0,0.45), 0 0 0 1px var(--c-line);
+
+  --h-vigia: 44px;
+  --w-rail: 56px;
+  --w-run: 380px;
+  --h-ctl-sm: 28px;
+  --h-ctl: 32px;
+  --h-ctl-lg: 40px; /* telas de aprovação: alvo ≥ 40px */
+}

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="assets/owl/favicon.svg">
+<style>
+html,body{margin:0;background:var(--c-bg);color:var(--c-fg);font-family:var(--font-sans)}
+a{color:var(--c-accent);text-decoration:none}a:hover{color:var(--c-accent-hover);text-decoration:underline}
+*{font-variant-ligatures:none}
+</style>
+</helmet>
+<div style="min-height:100vh;background:var(--c-bg);color:var(--c-fg);font-size:14px">
+  <header style="display:flex;align-items:center;gap:12px;padding:16px 32px;border-bottom:1px solid var(--c-line);background:var(--c-chrome)">
+    <img src="assets/owl/mark.svg" alt="OWL" style="width:24px;height:24px">
+    <span style="font-family:var(--font-mono);font-weight:600;letter-spacing:.14em;font-size:12px">OWL</span>
+    <span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted);letter-spacing:.08em">MARCA · V2</span>
+    <span style="flex:1"></span>
+    <button onClick="{{ replay }}" style="height:32px;padding:0 12px;display:flex;align-items:center;gap:8px;border-radius:6px;border:1px solid var(--c-line);background:var(--c-panel);color:var(--c-fg);font:500 13px var(--font-sans);cursor:pointer" style-hover="background:var(--c-raised)"><i class="icon-rotate-ccw"></i>Repetir animações</button>
+  </header>
+
+  <section data-screen-label="Marca" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:48px;padding:56px 32px;max-width:1200px;margin:0 auto;align-items:center">
+    <div style="display:flex;flex-direction:column;gap:20px">
+      <span style="font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;color:var(--c-muted)">A CORUJA QUE VIGIA</span>
+      <h1 style="margin:0;font-size:40px;line-height:1.1;font-weight:600;text-wrap:pretty">Mesma coruja, agora com rosto.</h1>
+      <p style="margin:0;color:var(--c-muted);line-height:1.6;max-width:52ch;text-wrap:pretty">O sobrolho em W continua sendo a assinatura. Ganhou disco facial (dois círculos sobrepostos, um nível de superfície acima do fundo), íris âmbar, bico facetado em âmbar + brasa e um olhar que se mexe — é o olhar que conta o estado.</p>
+      <div style="display:flex;gap:24px;align-items:flex-end;padding-top:8px">
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:center"><img src="assets/logo-mark.svg" alt="Marca v1" style="width:72px;height:72px;opacity:.85"><span style="font-family:var(--font-mono);font-size:11px;color:var(--c-faint)">v1</span></div>
+        <i class="icon-arrow-right" style="color:var(--c-faint);padding-bottom:34px"></i>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:center"><img src="assets/owl/mark.svg" alt="Marca v2" style="width:72px;height:72px"><span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">v2</span></div>
+      </div>
+    </div>
+    <div style="display:grid;place-items:center;aspect-ratio:1;max-width:420px;width:100%;justify-self:center;border:1px solid var(--c-line);border-radius:10px;background:var(--c-chrome)">
+      <img src="assets/owl/anim-splash.svg?v={{ v }}" alt="OWL abrindo" style="width:62%;height:auto">
+    </div>
+  </section>
+
+  <section data-screen-label="Construção" style="max-width:1200px;margin:0 auto;padding:0 32px 56px;display:flex;flex-direction:column;gap:20px">
+    <h2 style="margin:0;font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:.08em;color:var(--c-muted)">ANATOMIA · GRADE 96</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px">
+      <div style="padding:16px;border:1px solid var(--c-line);border-radius:10px;display:flex;flex-direction:column;gap:8px"><span style="display:flex;align-items:center;gap:8px;font-weight:600"><span style="width:10px;height:10px;border-radius:2px;background:#F5B055"></span>Sobrolho</span><span style="color:var(--c-muted);font-size:13px;line-height:1.5">W de 5 pontos, traço 7, pontas e junções redondas. Os tufos são as pontas externas.</span></div>
+      <div style="padding:16px;border:1px solid var(--c-line);border-radius:10px;display:flex;flex-direction:column;gap:8px"><span style="display:flex;align-items:center;gap:8px;font-weight:600"><span style="width:10px;height:10px;border-radius:2px;background:#0B1645;outline:1px solid var(--c-line)"></span>Disco facial</span><span style="color:var(--c-muted);font-size:13px;line-height:1.5">2 círculos r21 em x33/x63. Cor = --c-panel: some no app, aparece no ícone.</span></div>
+      <div style="padding:16px;border:1px solid var(--c-line);border-radius:10px;display:flex;flex-direction:column;gap:8px"><span style="display:flex;align-items:center;gap:8px;font-weight:600"><span style="width:10px;height:10px;border-radius:50%;background:#FBF0CF"></span>Olhos</span><span style="color:var(--c-muted);font-size:13px;line-height:1.5">Esclera r14, íris r9, pupila r5,5, brilho r2. Pupila deslocada 1,5 para a direita: está olhando.</span></div>
+      <div style="padding:16px;border:1px solid var(--c-line);border-radius:10px;display:flex;flex-direction:column;gap:8px"><span style="display:flex;align-items:center;gap:8px;font-weight:600"><span style="width:10px;height:10px;border-radius:2px;background:linear-gradient(90deg,#F5B055 50%,#D4631F 50%)"></span>Bico</span><span style="color:var(--c-muted);font-size:13px;line-height:1.5">Losango facetado: metade âmbar, metade brasa (#D4631F, só marca).</span></div>
+    </div>
+    <div style="display:flex;align-items:flex-end;gap:28px;flex-wrap:wrap;padding:24px;border:1px solid var(--c-line);border-radius:10px;background:var(--c-panel)">
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:center"><img src="assets/owl/favicon.svg" alt="" style="width:16px;height:16px"><span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">16 · glifo</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:center"><img src="assets/owl/mark.svg" alt="" style="width:24px;height:24px"><span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">24</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:center"><img src="assets/owl/mark.svg" alt="" style="width:32px;height:32px"><span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">32</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:center"><img src="assets/owl/mark.svg" alt="" style="width:48px;height:48px"><span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">48</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:center"><img src="assets/owl/mark.svg" alt="" style="width:96px;height:96px"><span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">96</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:center"><img src="assets/owl/mark-light.svg" alt="" style="width:96px;height:96px"><span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">claro</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:center"><img src="assets/owl/mono-cream.svg" alt="" style="width:96px;height:96px"><span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">mono</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:center"><div style="width:96px;height:96px;border-radius:24px;background:#FBF0CF;display:grid;place-items:center"><img src="assets/owl/mono-ink.svg" alt="" style="width:80px;height:80px"></div><span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">mono tinta</span></div>
+    </div>
+  </section>
+
+  <section data-screen-label="Estados" style="max-width:1200px;margin:0 auto;padding:0 32px 56px;display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+      <h2 style="margin:0;font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:.08em;color:var(--c-muted)">ESTADOS ANIMADOS</h2>
+      <span style="font-size:13px;color:var(--c-muted)">SVG + CSS dentro do arquivo: funciona em &lt;img&gt;, Electron/Tauri, WebView mobile. reduced-motion → parado.</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr));gap:12px">
+      <sc-for list="{{ states }}" as="s" hint-placeholder-count="9">
+        <div style="display:flex;flex-direction:column;border:1px solid {{ s.edge }};border-radius:10px;overflow:hidden;background:var(--c-panel)">
+          <div style="aspect-ratio:4/3;display:grid;place-items:center;background:var(--c-chrome)"><img src="{{ s.src }}" alt="{{ s.name }}" style="width:96px;height:96px"></div>
+          <div style="padding:12px 14px;display:flex;flex-direction:column;gap:4px;border-top:1px solid var(--c-line)">
+            <span style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px"><span style="font-family:var(--font-mono);color:{{ s.color }}">{{ s.glyph }}</span>{{ s.name }}</span>
+            <span style="font-size:12px;color:var(--c-muted);line-height:1.45;text-wrap:pretty">{{ s.use }}</span>
+            <span style="font-family:var(--font-mono);font-size:11px;color:var(--c-faint)">{{ s.file }}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section data-screen-label="Plataformas" style="max-width:1200px;margin:0 auto;padding:0 32px 56px;display:flex;flex-direction:column;gap:20px">
+    <h2 style="margin:0;font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:.08em;color:var(--c-muted)">PLATAFORMAS · UM ARQUIVO, CADA SISTEMA APLICA SUA MÁSCARA</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:12px">
+      <div style="padding:20px;border:1px solid var(--c-line);border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:12px"><img src="assets/owl/app-icon.svg" alt="" style="width:80px;height:80px;border-radius:18px;outline:1px solid var(--c-line)"><span style="font-size:13px;font-weight:600">macOS</span><span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">.icns · squircle</span></div>
+      <div style="padding:20px;border:1px solid var(--c-line);border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:12px"><img src="assets/owl/app-icon.svg" alt="" style="width:80px;height:80px;border-radius:8px;outline:1px solid var(--c-line)"><span style="font-size:13px;font-weight:600">Windows</span><span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">.ico 16→256</span></div>
+      <div style="padding:20px;border:1px solid var(--c-line);border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:12px"><img src="assets/owl/app-icon.svg" alt="" style="width:80px;height:80px;border-radius:12px;outline:1px solid var(--c-line)"><span style="font-size:13px;font-weight:600">Linux</span><span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">hicolor .png/.svg</span></div>
+      <div style="padding:20px;border:1px solid var(--c-line);border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:12px"><img src="assets/owl/app-icon.svg" alt="" style="width:80px;height:80px;border-radius:22.5%;outline:1px solid var(--c-line)"><span style="font-size:13px;font-weight:600">iOS</span><span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">1024 sem cantos</span></div>
+      <div style="padding:20px;border:1px solid var(--c-line);border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:12px"><img src="assets/owl/app-icon.svg" alt="" style="width:80px;height:80px;border-radius:50%;outline:1px solid var(--c-line)"><span style="font-size:13px;font-weight:600">Android</span><span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">adaptativo · círculo</span></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px">
+      <div style="padding:16px;border:1px solid var(--c-line);border-radius:10px;display:flex;flex-direction:column;gap:12px">
+        <span style="font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;color:var(--c-muted)">BARRA DE MENUS / BANDEJA</span>
+        <div style="height:28px;border-radius:6px;background:#E9E3D6;display:flex;align-items:center;justify-content:flex-end;gap:14px;padding:0 12px">
+          <img src="assets/owl/tray.svg" alt="" style="width:16px;height:16px">
+          <img src="assets/owl/tray-alert.svg" alt="" style="width:16px;height:16px">
+          <span style="font:500 12px var(--font-sans);color:#2D2019">qui 14:32</span>
+        </div>
+        <span style="font-size:12px;color:var(--c-muted)">Template monocromático (o sistema pinta). Ponto âmbar = há aprovação esperando você.</span>
+      </div>
+      <div style="padding:16px;border:1px solid var(--c-line);border-radius:10px;display:flex;flex-direction:column;gap:12px">
+        <span style="font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;color:var(--c-muted)">NOTIFICAÇÃO</span>
+        <div style="display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:10px;background:var(--c-overlay);box-shadow:var(--shadow-overlay)">
+          <img src="assets/owl/anim-waiting.svg" alt="" style="width:36px;height:36px;flex:none">
+          <div style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-weight:600;font-size:13px">OWL-138 espera você</span><span style="font-size:12px;color:var(--c-muted)">pnpm add zod@3 — risco 2/3</span></div>
+        </div>
+        <span style="font-size:12px;color:var(--c-muted)">Desktop e celular usam o estado animado do motivo.</span>
+      </div>
+      <div style="padding:16px;border:1px solid var(--c-line);border-radius:10px;display:flex;flex-direction:column;gap:12px">
+        <span style="font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;color:var(--c-muted)">ABA DO NAVEGADOR</span>
+        <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:6px 6px 0 0;background:var(--c-raised);width:max-content;max-width:100%">
+          <img src="assets/owl/favicon.svg" alt="" style="width:16px;height:16px"><span style="font-size:12px">(1) OWL · owl-orchestrator</span>
+        </div>
+        <span style="font-size:12px;color:var(--c-muted)">Abaixo de 24px o disco e a íris saem: só sobrolho + olhos.</span>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Assinaturas" style="max-width:1200px;margin:0 auto;padding:0 32px 72px;display:flex;flex-direction:column;gap:20px">
+    <h2 style="margin:0;font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:.08em;color:var(--c-muted)">ASSINATURAS</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px">
+      <div style="padding:40px 32px;border-radius:10px;background:var(--c-chrome);border:1px solid var(--c-line);display:flex;align-items:center;gap:16px">
+        <img src="assets/owl/mark.svg" alt="" style="width:56px;height:56px">
+        <div style="display:flex;flex-direction:column;gap:4px"><span style="font-family:var(--font-mono);font-weight:600;letter-spacing:.2em;font-size:26px">OWL</span><span style="font-size:12px;color:var(--c-muted)">Orchestrator for Work &amp; LLMs</span></div>
+      </div>
+      <div style="padding:40px 32px;border-radius:10px;background:#FDF1E1;display:flex;align-items:center;gap:16px;color:#2D2019">
+        <img src="assets/owl/mark-light.svg" alt="" style="width:56px;height:56px">
+        <div style="display:flex;flex-direction:column;gap:4px"><span style="font-family:var(--font-mono);font-weight:600;letter-spacing:.2em;font-size:26px">OWL</span><span style="font-size:12px;color:#6B5545">Orchestrator for Work &amp; LLMs</span></div>
+      </div>
+      <div style="padding:32px;border-radius:10px;background:var(--c-chrome);border:1px solid var(--c-line);display:flex;flex-direction:column;align-items:center;gap:12px">
+        <img src="assets/owl/mark.svg" alt="" style="width:64px;height:64px">
+        <span style="font-family:var(--font-mono);font-weight:600;letter-spacing:.2em;font-size:20px">OWL</span>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { v: 0 };
+  renderVals() {
+    const v = this.state.v;
+    const S = [
+      ['anim-idle', 'Ocioso', '○', 'var(--c-muted)', 'Pisca a cada ~5s e olha em volta. Vigia sem runs, splash parado.'],
+      ['anim-watching', 'Rodando', '••', 'var(--c-fg)', 'Pupilas varrem de um lado ao outro. Run viva, streaming.'],
+      ['anim-thinking', 'Pensando', '••', 'var(--c-fg)', 'Pupilas pulsam alternadas. Carregando, aguardando o modelo.'],
+      ['anim-waiting', 'Esperando você', '▲', 'var(--c-accent)', 'Sobrolho sobe e a moldura pulsa âmbar. Gate pendente, notificação.'],
+      ['anim-sync', 'Sincronizando', '◐', 'var(--c-fg)', 'Pupilas orbitam. Clonar repositório, backup, pareamento.'],
+      ['anim-done', 'Concluído', '✓', 'var(--c-ok)', 'Olhos sorriem, selo verde. Toca uma vez.'],
+      ['anim-error', 'Falhou', '✕', 'var(--c-danger)', 'Pálpebras caem, selo vermelho. FailureCard.'],
+      ['anim-sleep', 'Offline', '—', 'var(--c-faint)', 'Olhos fechados, z flutua. Servidor parado, sem conexão.'],
+      ['anim-splash', 'Abrindo', '▍', 'var(--c-accent)', 'Sobrolho se desenha, olhos abrem. Boot do app desktop e mobile.'],
+    ];
+    return {
+      v,
+      replay: () => this.setState(s => ({ v: s.v + 1 })),
+      states: S.map(([f, name, glyph, color, use]) => ({
+        src: `assets/owl/${f}.svg?v=${v}`, file: `assets/owl/${f}.svg`, name, glyph, color, use,
+        edge: f === 'anim-waiting' ? 'var(--c-accent)' : 'var(--c-line)',
+      })),
+    };
+  }
+}
+</script>
+</body>
+</html>

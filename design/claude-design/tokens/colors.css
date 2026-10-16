@@ -1,0 +1,88 @@
+/* OWL — cor. Noite é o modo nativo: :root = escuro; [data-theme='light'] = papel creme.
+   Nomes --c-* existentes preservados (apps/web/src/index.css). */
+:root, [data-theme='dark'] {
+  /* marca — paleta 2026 (navy puro, sem roxo) */
+  --brand-night: #010736;
+  --brand-cream: #fbf0cf;
+  --brand-amber: #f5b055;
+  --brand-ember: #d4631f;  /* laranja queimado — só marca/ilustração, nunca status */
+  --brand-earth: #2d2019;
+
+  /* superfícies: 4 níveis por luminosidade + borda (sem sombra) */
+  --c-chrome: #00041f;   /* barra Vigia, trilho */
+  --c-bg: #010736;
+  --c-panel: #0b1645;
+  --c-raised: #142352;
+  --c-overlay: #1d2f63;  /* menus, modais, toasts (+ --shadow-overlay) */
+  --c-line: #283c6e;
+  --c-line-strong: #3b5592;
+
+  /* texto */
+  --c-fg: #fbf0cf;
+  --c-muted: #aab3cf;
+  --c-faint: #8791b4;    /* só ≥ 12px, metadados */
+
+  /* ação / semântica */
+  --c-accent: #f5b055;
+  --c-accent-hover: #ffc477;
+  --c-accent-fg: #010736;
+  --c-accent-wash: rgba(245,176,85,0.07);
+  --c-user: #1a2b5e;
+  --c-danger: #ff8a7a;
+  --c-danger-wash: rgba(255,138,122,0.09);
+  --c-ok: #6fd6a0;
+  --c-ok-wash: rgba(111,214,160,0.08);
+
+  /* status de execução — sempre com forma + texto, nunca só cor */
+  --c-status-running: var(--c-fg);        /* olhos piscando */
+  --c-status-waiting-human: var(--c-accent); /* ▲ */
+  --c-status-queued: var(--c-muted);      /* ○ */
+  --c-status-failed: var(--c-danger);     /* ✕ */
+  --c-status-done: var(--c-ok);           /* ✓ */
+  --c-status-cancelled: var(--c-faint);   /* — */
+
+  /* gate */
+  --c-gate-pending: var(--c-accent);
+  --c-gate-approved: var(--c-ok);
+  --c-gate-rejected: var(--c-danger);
+
+  /* provedor/agente — só marcador 6px, nunca fundo */
+  --c-prov-claude-cli: oklch(0.74 0.11 45);
+  --c-prov-codex-cli: oklch(0.74 0.11 165);
+  --c-prov-ollama: oklch(0.74 0.11 235);
+  --c-prov-other: oklch(0.74 0.11 300);
+
+  /* diff */
+  --c-diff-add: var(--c-ok);
+  --c-diff-add-bg: var(--c-ok-wash);
+  --c-diff-del: var(--c-danger);
+  --c-diff-del-bg: var(--c-danger-wash);
+  color-scheme: dark;
+}
+[data-theme='light'] {
+  /* papel creme — paleta quente */
+  --c-chrome: #f6e5cc;
+  --c-bg: #fdf1e1;
+  --c-panel: #fff8ee;
+  --c-raised: #ffffff;
+  --c-overlay: #ffffff;
+  --c-line: #ead4b6;
+  --c-line-strong: #d6b88f;
+  --c-fg: #2d2019;
+  --c-muted: #6b5545;
+  --c-faint: #7d6656;
+  --c-accent: #b4501a;
+  --c-accent-hover: #9a4313;
+  --c-accent-fg: #ffffff;
+  --c-accent-wash: rgba(212,99,31,0.08);
+  --c-user: #f8e3c4;
+  --c-danger: #b42318;
+  --c-danger-wash: rgba(180,35,24,0.07);
+  --c-ok: #1a7f4b;
+  --c-ok-wash: rgba(26,127,75,0.07);
+  --c-prov-claude-cli: oklch(0.55 0.12 45);
+  --c-prov-codex-cli: oklch(0.55 0.12 165);
+  --c-prov-ollama: oklch(0.55 0.12 235);
+  --c-prov-other: oklch(0.55 0.12 300);
+  color-scheme: light;
+}

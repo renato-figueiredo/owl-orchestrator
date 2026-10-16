@@ -80,32 +80,33 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const card = (n: string) => new RegExp(`^OWL-${n}\\b.*Ticket ${n}`);
 const open = () => render(<Board project={{ id: 'p1', nome: 'Meu app', pasta: '/x' }} onClose={() => {}} pollMs={0} />);
 
 describe('board labels, cycles and blocks', () => {
   it('shows labels, estimate, due date and the block on the cards', async () => {
     open();
-    const card1 = await screen.findByRole('button', { name: /OWL-1: Ticket 1/ });
-    expect(card1).toHaveTextContent('bug');
+    const card1 = await screen.findByRole('button', { name: card('1') });
+    expect(card1).toHaveTextContent('#bug');
     expect(card1).toHaveTextContent('3 pt');
     expect(card1).toHaveTextContent('até 30/11/2026');
-    expect(await screen.findByRole('button', { name: /OWL-2: Ticket 2/ })).toHaveTextContent('bloqueado por OWL-1');
+    expect(await screen.findByRole('button', { name: card('2') })).toHaveTextContent('espera OWL-1');
   });
 
   it('filters by label and by cycle, and shows the cycle progress', async () => {
     const user = userEvent.setup();
     open();
-    await screen.findByRole('button', { name: /OWL-1: Ticket 1/ });
+    await screen.findByRole('button', { name: card('1') });
     await user.selectOptions(screen.getByLabelText('Etiqueta'), 'l1');
-    expect(screen.getByRole('button', { name: /OWL-1: Ticket 1/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /OWL-2: Ticket 2/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: card('1') })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: card('2') })).not.toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText('Etiqueta'), '');
     await user.selectOptions(screen.getByLabelText('Ciclo'), 'c1');
-    expect(screen.queryByRole('button', { name: /OWL-2: Ticket 2/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: card('2') })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Progresso do ciclo')).toHaveTextContent('1/2 tickets · 5/8 pontos');
     await user.selectOptions(screen.getByLabelText('Ciclo'), 'none');
-    expect(screen.getByRole('button', { name: /OWL-2: Ticket 2/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /OWL-1: Ticket 1/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: card('2') })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: card('1') })).not.toBeInTheDocument();
   });
 
   it('creates a label and a cycle from the management area', async () => {
@@ -126,7 +127,7 @@ describe('board labels, cycles and blocks', () => {
   it('in the ticket: warns about the blocker, toggles a label, assigns a cycle, saves estimate and adds a relation', async () => {
     const user = userEvent.setup();
     open();
-    await user.click(await screen.findByRole('button', { name: /OWL-2: Ticket 2/ }));
+    await user.click(await screen.findByRole('button', { name: card('2') }));
     const panel = await screen.findByRole('region', { name: 'Organização do ticket' });
     expect(panel).toHaveTextContent('Bloqueado por OWL-1');
     expect(panel).toHaveTextContent('bloqueado por');

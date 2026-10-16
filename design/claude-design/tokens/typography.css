@@ -1,0 +1,25 @@
+:root {
+  --font-sans: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  --text-11: 0.6875rem; /* metadados mono, rótulos de seção */
+  --text-12: 0.75rem;   /* mono de dados, chips */
+  --text-13: 0.8125rem; /* base densa de UI */
+  --text-14: 0.875rem;  /* texto corrido do chat */
+  --text-16: 1rem;
+  --text-20: 1.25rem;
+  --text-24: 1.5rem;
+  --text-32: 2rem;
+
+  --leading-tight: 1.2;
+  --leading-ui: 1.4;
+  --leading-body: 1.6;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --tracking-label: 0.08em; /* rótulos mono caixa-alta: TEMPO, VIGIA */
+  --tracking-brand: 0.14em; /* "OWL" no cabeçalho */
+}

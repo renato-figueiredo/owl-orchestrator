@@ -132,7 +132,7 @@ describe('Board loading state and cards', () => {
       media(reduce);
       stub(true);
       render(<Board project={project} onClose={() => {}} pollMs={0} />);
-      await waitFor(() => expect(screen.getByRole('button', { name: /OWL-1: T1/ })).toBeInTheDocument());
-      expect(screen.getAllByRole('button', { name: /OWL-2: T2/ })).toHaveLength(1);
+      await waitFor(() => expect(screen.getByRole('button', { name: /^OWL-1\b.*T1/ })).toBeInTheDocument());
+      expect(screen.getAllByRole('button', { name: /^OWL-2\b.*T2/ })).toHaveLength(1);
     });
 });

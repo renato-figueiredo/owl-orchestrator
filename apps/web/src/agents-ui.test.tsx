@@ -78,7 +78,7 @@ async function open() {
   const user = userEvent.setup();
   render(<App />);
   await user.click(await screen.findByRole('button', { name: 'Agentes' }));
-  await screen.findByRole('region', { name: 'Biblioteca de agentes' });
+  await screen.findByRole('main', { name: 'Biblioteca de agentes' });
   return user;
 }
 
@@ -91,20 +91,24 @@ describe('agent library', () => {
 
   it('lists the agents with their origin, provider and tools', async () => {
     await open();
-    const card = (await screen.findByRole('heading', { name: 'revisor' })).closest('li')!;
+    const card = (await screen.findByRole('button', { name: 'Editar revisor' })).closest('li')!;
     expect(within(card).getByText('exemplo')).toBeInTheDocument();
     expect(within(card).getByText('claude-cli · sonnet')).toBeInTheDocument();
     expect(within(card).getByText('Ferramentas: Read')).toBeInTheDocument();
-    expect(within(screen.getByRole('heading', { name: 'meu' }).closest('li')!).getByText('seu')).toBeInTheDocument();
+    expect(within(screen.getByRole('button', { name: 'Editar meu' }).closest('li')!).getByText('seu')).toBeInTheDocument();
+    // the first agent is open in the editor, with its permissions as chips
+    const editor = await screen.findByRole('complementary', { name: 'Editor de agente' });
+    expect(within(editor).getByRole('heading', { name: 'revisor' })).toBeInTheDocument();
+    expect(within(within(editor).getByRole('list', { name: 'Ferramentas' })).getByText('Read')).toBeInTheDocument();
   });
 
   it('shows a broken file with the reason, next to the working agents', async () => {
     problemas = [{ arquivo: 'agents/quebrado.md', origem: 'usuario', erro: 'ferramentas: Invalid input' }];
     await open();
-    const alert = await screen.findByRole('alert', { name: 'Arquivos com problema' });
+    const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('agents/quebrado.md');
     expect(alert).toHaveTextContent('ferramentas: Invalid input');
-    expect(screen.getByRole('heading', { name: 'revisor' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Editar revisor' })).toBeInTheDocument();
   });
 
   it('edits an agent: loads the file text and saves it back under the same name', async () => {
@@ -115,7 +119,7 @@ describe('agent library', () => {
     expect(screen.getByText(/cria a sua cópia/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Salvar' }));
     await waitFor(() => expect(calls.some((c) => c.method === 'PUT' && c.path === '/agents/revisor')).toBe(true));
-    await waitFor(() => expect(screen.queryByRole('textbox', { name: /Arquivo do agente/ })).toBeNull());
+    await waitFor(() => expect(calls.filter((c) => c.method === 'GET' && c.path === '/agents/revisor').length).toBeGreaterThan(2)); // reloaded after saving
   });
 
   it('keeps the editor and the text when the server refuses the agent, and says why', async () => {
@@ -137,7 +141,7 @@ describe('agent library', () => {
     expect((box as HTMLTextAreaElement).value).toContain('nome: dev-novo');
     await user.click(screen.getByRole('button', { name: 'Salvar' }));
     await waitFor(() => expect(calls.some((c) => c.method === 'PUT' && c.path === '/agents/dev-novo')).toBe(true));
-    expect(await screen.findByRole('heading', { name: 'dev-novo' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Editar dev-novo' })).toBeInTheDocument();
   });
 
   it('refuses a bad or repeated name before calling the server', async () => {
@@ -154,27 +158,26 @@ describe('agent library', () => {
 
   it('duplicates an agent under a new name', async () => {
     const user = await open();
+    await user.click(await screen.findByRole('button', { name: 'Editar revisor' }));
     await user.click(await screen.findByRole('button', { name: 'Duplicar revisor' }));
     const input = screen.getByLabelText('Nome da cópia');
     expect(input).toHaveValue('revisor-2');
-    await user.click(screen.getByRole('button', { name: 'Duplicar' }));
+    await user.click(screen.getByRole('button', { name: 'Criar cópia' }));
     await waitFor(() => expect(calls).toContainEqual({ method: 'POST', path: '/agents/revisor/duplicate', body: { novoNome: 'revisor-2' } }));
-    expect(await screen.findByRole('heading', { name: 'revisor-2' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Editar revisor-2' })).toBeInTheDocument();
   });
 
   it('deleting asks twice, and only the user’s own agents can be deleted', async () => {
     const user = await open();
+    await user.click(await screen.findByRole('button', { name: 'Editar revisor' }));
+    await screen.findByRole('textbox', { name: /Arquivo do agente revisor/ });
     expect(screen.queryByRole('button', { name: 'Excluir revisor' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Editar meu' }));
     await user.click(await screen.findByRole('button', { name: 'Excluir meu' }));
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
     await user.click(screen.getByRole('button', { name: 'Confirmar exclusão' }));
     await waitFor(() => expect(calls).toContainEqual({ method: 'DELETE', path: '/agents/meu' }));
-    await waitFor(() => expect(screen.queryByRole('heading', { name: 'meu' })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Editar meu' })).toBeNull());
   });
 
-  it('goes back to the conversations', async () => {
-    const user = await open();
-    await user.click(screen.getByRole('button', { name: 'Voltar às conversas' }));
-    expect(screen.queryByRole('region', { name: 'Biblioteca de agentes' })).toBeNull();
-  });
 });

@@ -1,3 +1,5 @@
+> **Superado.** Este brief gerou o design em `design/claude-design/`, que agora é a regra matriz da UI (paleta nova: navy puro `#010736`, creme `#FBF0CF`, âmbar `#F5B055`; modo claro creme quente). Os valores abaixo são históricos.
+
 # OWL — Design System Brief (para o Claude Design)
 
 > Cole este documento inteiro no Claude Design como instrução do design system. Depois, conecte o MCP para

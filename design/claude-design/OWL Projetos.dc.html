@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="assets/owl/favicon.svg">
+<style>
+html,body{margin:0;height:100%;background:var(--c-bg);color:var(--c-fg);font-family:var(--font-sans)}
+a{color:var(--c-accent);text-decoration:none}a:hover{color:var(--c-accent-hover);text-decoration:underline}
+input::placeholder,textarea::placeholder{color:var(--c-faint)}
+*{font-variant-ligatures:none}
+</style>
+</helmet>
+<div style="height:100vh;min-height:680px;display:flex;flex-direction:column;background:var(--c-bg);color:var(--c-fg);font-size:13px;position:relative">
+
+  <header style="height:44px;flex:none;display:flex;align-items:center;gap:12px;padding:0 12px 0 16px;background:var(--c-chrome);border-bottom:1px solid var(--c-line);position:relative;z-index:5">
+    <img src="assets/owl/mark.svg" alt="OWL" style="width:24px;height:24px;display:block">
+    <span style="font-family:var(--font-mono);font-weight:600;letter-spacing:.14em;font-size:12px">OWL</span>
+    <span style="width:1px;height:20px;background:var(--c-line)"></span>
+    <button onClick="{{ toggleSwitcher }}" aria-haspopup="listbox" aria-expanded="{{ switcherOpen }}" style="display:flex;align-items:center;gap:8px;height:30px;padding:0 8px 0 4px;border-radius:6px;border:1px solid var(--c-line);background:var(--c-panel);color:var(--c-fg);font:500 13px var(--font-sans);cursor:pointer;flex:none" style-hover="background:var(--c-raised);border-color:var(--c-line-strong)">
+      <span style="width:22px;height:22px;border-radius:4px;display:grid;place-items:center;background:var(--c-raised);font-family:var(--font-mono);font-size:10px;font-weight:600">{{ cur.mono }}</span>
+      <span>{{ cur.nome }}</span>
+      <span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">{{ cur.branch }}</span>
+      <i class="icon-chevrons-up-down" style="font-size:14px;color:var(--c-muted)"></i>
+    </button>
+    <span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted);letter-spacing:.08em;flex:none">VIGIA</span>
+    <div style="display:flex;gap:8px;flex:1;min-width:0;overflow:hidden">
+      <sc-for list="{{ live }}" as="r" hint-placeholder-count="3">
+        <span style="display:flex;align-items:center;gap:8px;height:28px;padding:0 10px;border:1px solid var(--c-line);border-radius:6px;background:var(--c-panel);font-family:var(--font-mono);font-size:11px;white-space:nowrap;flex:none">
+          {{ eyes }}<span style="width:6px;height:6px;border-radius:2px;background:{{ r.prov }}"></span>
+          <span style="color:var(--c-faint)">{{ r.proj }} /</span><span>{{ r.agent }}</span><span style="color:var(--c-muted)">{{ r.ticket }}</span><span style="color:var(--c-muted)">{{ r.time }}</span>
+        </span>
+      </sc-for>
+    </div>
+    <span style="display:flex;align-items:center;gap:8px;height:28px;padding:0 12px;border-radius:6px;background:var(--c-accent);color:var(--c-accent-fg);font:600 12px var(--font-sans);flex:none">▲ 3 esperando você <span style="font-family:var(--font-mono);font-size:10px;opacity:.75">⌘A</span></span>
+  </header>
+
+  <sc-if value="{{ switcherOpen }}">
+    <div onClick="{{ closeSwitcher }}" style="position:absolute;inset:44px 0 0 0;z-index:6"></div>
+    <div role="listbox" aria-label="Trocar de projeto" style="position:absolute;top:48px;left:108px;width:380px;z-index:7;background:var(--c-overlay);border:1px solid var(--c-line-strong);border-radius:10px;box-shadow:var(--shadow-overlay);overflow:hidden;animation:owl-fade-in 180ms ease-out">
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--c-line)">
+        <i class="icon-search" style="color:var(--c-muted)"></i>
+        <input value="{{ q }}" onChange="{{ setQ }}" placeholder="Trocar de projeto…" style="flex:1;min-width:0;background:none;border:0;outline:0;color:var(--c-fg);font:400 13px var(--font-sans)">
+        <span style="font-family:var(--font-mono);font-size:10px;color:var(--c-muted);border:1px solid var(--c-line);border-radius:4px;padding:1px 5px">⌘P</span>
+      </div>
+      <div style="padding:6px;display:flex;flex-direction:column;gap:2px">
+        <sc-for list="{{ swList }}" as="p" hint-placeholder-count="4">
+          <button onClick="{{ p.pick }}" style="display:flex;align-items:center;gap:10px;padding:8px;border:0;border-radius:6px;background:{{ p.bg }};color:var(--c-fg);font:inherit;text-align:left;cursor:pointer" style-hover="background:var(--c-raised)">
+            <span style="width:28px;height:28px;border-radius:6px;display:grid;place-items:center;background:var(--c-raised);border:1px solid var(--c-line);font-family:var(--font-mono);font-size:11px;font-weight:600;flex:none">{{ p.mono }}</span>
+            <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+              <span style="font-weight:500">{{ p.nome }}</span>
+              <span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.src }}</span>
+            </span>
+            <sc-if value="{{ p.running }}"><span style="display:flex;align-items:center;gap:4px;font-family:var(--font-mono);font-size:11px">{{ eyes }}{{ p.running }}</span></sc-if>
+            <sc-if value="{{ p.pending }}"><span style="font-family:var(--font-mono);font-size:11px;color:var(--c-accent);font-weight:600">▲{{ p.pending }}</span></sc-if>
+            <span style="font-family:var(--font-mono);font-size:10px;color:var(--c-faint);width:22px;text-align:right">{{ p.key }}</span>
+          </button>
+        </sc-for>
+      </div>
+      <div style="display:flex;gap:4px;padding:6px;border-top:1px solid var(--c-line)">
+        <button onClick="{{ goHome }}" style="flex:1;display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border:0;border-radius:6px;background:none;color:var(--c-fg);font:inherit;cursor:pointer" style-hover="background:var(--c-raised)"><i class="icon-layout-grid" style="color:var(--c-muted)"></i>Todos os projetos</button>
+        <button onClick="{{ openNew }}" style="flex:1;display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border:0;border-radius:6px;background:none;color:var(--c-fg);font:inherit;cursor:pointer" style-hover="background:var(--c-raised)"><i class="icon-plus" style="color:var(--c-accent)"></i>Novo projeto…</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="flex:1;min-height:0;display:flex">
+    <nav aria-label="Navegação" style="width:56px;flex:none;background:var(--c-chrome);border-right:1px solid var(--c-line);display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 0">
+      <button title="Projetos" aria-label="Projetos" style="width:40px;height:40px;display:grid;place-items:center;border-radius:6px;border:0;font-size:18px;cursor:pointer;background:var(--c-raised);color:var(--c-fg)"><i class="icon-layout-grid"></i></button>
+      <span style="width:24px;height:1px;background:var(--c-line);margin:6px 0"></span>
+      <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:.08em;color:var(--c-faint)">{{ cur.mono }}</span>
+      <sc-for list="{{ railProj }}" as="n" hint-placeholder-count="4">
+        <button title="{{ n.label }}" aria-label="{{ n.label }}" style="width:40px;height:40px;display:grid;place-items:center;border-radius:6px;border:0;font-size:18px;cursor:pointer;background:transparent;color:var(--c-muted)" style-hover="background:var(--c-panel);color:var(--c-fg)"><i class="{{ n.icon }}"></i></button>
+      </sc-for>
+      <span style="width:24px;height:1px;background:var(--c-line);margin:6px 0"></span>
+      <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:.08em;color:var(--c-faint)">MESA</span>
+      <sc-for list="{{ railGlobal }}" as="n" hint-placeholder-count="4">
+        <button title="{{ n.label }}" aria-label="{{ n.label }}" style="width:40px;height:40px;display:grid;place-items:center;border-radius:6px;border:0;font-size:18px;cursor:pointer;background:transparent;color:var(--c-muted)" style-hover="background:var(--c-panel);color:var(--c-fg)"><i class="{{ n.icon }}"></i></button>
+      </sc-for>
+    </nav>
+
+    <main data-screen-label="Projetos" style="flex:1;min-width:0;overflow:auto">
+      <div style="max-width:1120px;margin:0 auto;padding:28px 32px 48px;display:flex;flex-direction:column;gap:28px">
+        <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap">
+          <div style="display:flex;flex-direction:column;gap:6px;flex:1;min-width:260px">
+            <h1 style="margin:0;font-size:24px;font-weight:600">Projetos <span style="font-family:var(--font-mono);font-size:13px;color:var(--c-muted);font-weight:400">{{ count }}</span></h1>
+            <p style="margin:0;color:var(--c-muted);font-size:14px;line-height:1.5;max-width:64ch;text-wrap:pretty">Cada projeto é uma pasta com conversas, quadro, equipes e memória próprios. Agentes, pipelines e métricas são da sua mesa toda.</p>
+          </div>
+          <button onClick="{{ openNew }}" style="height:36px;padding:0 14px;display:flex;align-items:center;gap:8px;border-radius:6px;border:0;background:var(--c-accent);color:var(--c-accent-fg);font:600 13px var(--font-sans);cursor:pointer" style-hover="background:var(--c-accent-hover)" style-active="transform:translateY(1px)"><i class="icon-plus"></i>Novo projeto <span style="font-family:var(--font-mono);font-size:10px;opacity:.7">⌘⇧N</span></button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:12px">
+          <sc-for list="{{ cards }}" as="p" hint-placeholder-count="4">
+            <button onClick="{{ p.pick }}" style="display:flex;flex-direction:column;gap:14px;padding:16px;border-radius:10px;border:1px solid {{ p.edge }};background:{{ p.bg }};color:var(--c-fg);font:inherit;text-align:left;cursor:pointer" style-hover="border-color:var(--c-line-strong)">
+              <div style="display:flex;align-items:center;gap:12px;width:100%">
+                <span style="width:40px;height:40px;border-radius:6px;display:grid;place-items:center;background:var(--c-raised);border:1px solid var(--c-line);font-family:var(--font-mono);font-size:13px;font-weight:600;flex:none">{{ p.mono }}</span>
+                <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                  <span style="font-size:15px;font-weight:600">{{ p.nome }}</span>
+                  <span style="display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:11px;color:var(--c-muted);min-width:0"><i class="{{ p.srcIcon }}" style="font-size:12px;flex:none"></i><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.src }}</span></span>
+                </span>
+                <sc-if value="{{ p.isCur }}"><span style="font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;color:var(--c-muted)">ABERTO</span></sc-if>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px 14px;font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">
+                <span style="display:flex;align-items:center;gap:4px"><i class="icon-git-branch" style="font-size:12px"></i>{{ p.branch }}</span>
+                <span>{{ p.tickets }}</span>
+                <span>{{ p.last }}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding-top:12px;border-top:1px solid var(--c-line);width:100%;font-size:12px;min-height:18px">
+                <sc-if value="{{ p.running }}"><span style="display:flex;align-items:center;gap:6px">{{ eyes }}{{ p.runningTxt }}</span></sc-if>
+                <sc-if value="{{ p.pending }}"><span style="color:var(--c-accent);font-weight:600">▲ {{ p.pendingTxt }}</span></sc-if>
+                <sc-if value="{{ p.quiet }}"><span style="color:var(--c-muted)">○ Nada rodando</span></sc-if>
+                <sc-if value="{{ p.noGit }}"><span style="color:var(--c-muted)">⊘ sem git · só leitura</span></sc-if>
+              </div>
+            </button>
+          </sc-for>
+        </div>
+
+        <section aria-label="O que é de cada projeto" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:12px">
+          <div style="padding:16px;border:1px solid var(--c-line);border-radius:10px;display:flex;flex-direction:column;gap:10px">
+            <span style="font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;color:var(--c-muted)">DO PROJETO · TROCA COM ⌘P</span>
+            <sc-for list="{{ ownProj }}" as="o" hint-placeholder-count="5"><div style="display:flex;gap:10px;align-items:baseline"><i class="{{ o.icon }}" style="color:var(--c-muted);flex:none"></i><span style="font-weight:500;flex:none">{{ o.t }}</span><span style="color:var(--c-muted);font-size:12px">{{ o.d }}</span></div></sc-for>
+          </div>
+          <div style="padding:16px;border:1px solid var(--c-line);border-radius:10px;display:flex;flex-direction:column;gap:10px">
+            <span style="font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;color:var(--c-muted)">DA MESA · VALE PARA TODOS</span>
+            <sc-for list="{{ ownGlobal }}" as="o" hint-placeholder-count="5"><div style="display:flex;gap:10px;align-items:baseline"><i class="{{ o.icon }}" style="color:var(--c-muted);flex:none"></i><span style="font-weight:500;flex:none">{{ o.t }}</span><span style="color:var(--c-muted);font-size:12px">{{ o.d }}</span></div></sc-for>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <sc-if value="{{ modalOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:20;background:rgba(0,4,31,.72);display:grid;place-items:center;padding:24px">
+      <div role="dialog" aria-label="Novo projeto" style="width:100%;max-width:940px;height:min(640px,100%);display:flex;background:var(--c-panel);border:1px solid var(--c-line-strong);border-radius:10px;box-shadow:var(--shadow-overlay);overflow:hidden;animation:owl-fade-in 250ms ease-out">
+        <aside style="width:208px;flex:none;background:var(--c-chrome);border-right:1px solid var(--c-line);padding:20px 16px;display:flex;flex-direction:column;gap:18px">
+          <span style="font-size:15px;font-weight:600">Novo projeto</span>
+          <ol style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px">
+            <sc-for list="{{ steps }}" as="s" hint-placeholder-count="3">
+              <li style="display:flex;align-items:center;gap:10px;height:34px;padding:0 8px;border-radius:6px;background:{{ s.bg }};color:{{ s.color }}">
+                <span style="width:20px;height:20px;border-radius:4px;display:grid;place-items:center;font-family:var(--font-mono);font-size:11px;border:1px solid {{ s.edge }};color:{{ s.numColor }}">{{ s.n }}</span>{{ s.t }}
+              </li>
+            </sc-for>
+          </ol>
+          <span style="flex:1"></span>
+          <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--c-muted);line-height:1.5">
+            <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:.08em">RAÍZES PERMITIDAS</span>
+            <span style="font-family:var(--font-mono);font-size:11px;color:var(--c-fg)">~/code<br>~/docs</span>
+            <span>OWL_WORKSPACE_ROOTS. Fora delas, nenhum agente escreve.</span>
+          </div>
+        </aside>
+
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+          <div style="flex:1;min-height:0;overflow:auto;padding:22px 24px;display:flex;flex-direction:column;gap:18px">
+
+            <sc-if value="{{ isStep1 }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <h2 style="margin:0;font-size:18px;font-weight:600">De onde vem o código?</h2>
+                <p style="margin:0;color:var(--c-muted)">O OWL trabalha numa pasta local. Se vier do GitHub, ele clona antes.</p>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">
+                <sc-for list="{{ origins }}" as="o" hint-placeholder-count="4">
+                  <button onClick="{{ o.pick }}" aria-pressed="{{ o.on }}" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:12px;border-radius:6px;border:1px solid {{ o.edge }};background:{{ o.bg }};color:var(--c-fg);font:inherit;text-align:left;cursor:pointer" style-hover="border-color:var(--c-line-strong)">
+                    <i class="{{ o.icon }}" style="font-size:18px;color:{{ o.iconColor }}"></i>
+                    <span style="font-weight:600">{{ o.t }}</span>
+                    <span style="font-size:12px;color:var(--c-muted);line-height:1.4">{{ o.d }}</span>
+                  </button>
+                </sc-for>
+              </div>
+
+              <sc-if value="{{ oFolder }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;flex-direction:column;gap:12px">
+                  <div style="display:flex;gap:8px">
+                    <div style="flex:1;min-width:0;display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border-radius:6px;border:1px solid var(--c-line);background:var(--c-bg)">
+                      <i class="icon-folder" style="color:var(--c-muted)"></i>
+                      <input value="{{ path }}" onChange="{{ setPath }}" aria-label="Caminho da pasta" placeholder="~/code/meu-projeto" style="flex:1;min-width:0;background:none;border:0;outline:0;color:var(--c-fg);font:400 13px var(--font-mono)">
+                    </div>
+                    <button onClick="{{ browse }}" style="height:36px;padding:0 14px;display:flex;align-items:center;gap:8px;border-radius:6px;border:1px solid var(--c-line);background:var(--c-raised);color:var(--c-fg);font:500 13px var(--font-sans);cursor:pointer" style-hover="background:var(--c-overlay)"><i class="icon-folder-open"></i>Procurar…</button>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:center;gap:10px;height:56px;border:1px dashed var(--c-line-strong);border-radius:6px;color:var(--c-muted);font-size:12px"><i class="icon-arrow-down-to-line"></i>Ou arraste uma pasta do Finder / Explorer para cá</div>
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;color:var(--c-muted)">ENCONTRADAS NAS RAÍZES</span>
+                    <div style="display:flex;flex-direction:column;border:1px solid var(--c-line);border-radius:6px;overflow:hidden">
+                      <sc-for list="{{ folders }}" as="f" hint-placeholder-count="4">
+                        <button onClick="{{ f.pick }}" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:0;border-bottom:1px solid var(--c-line);background:{{ f.bg }};color:var(--c-fg);font:inherit;text-align:left;cursor:pointer" style-hover="background:var(--c-raised)">
+                          <i class="icon-folder" style="color:var(--c-muted)"></i>
+                          <span style="flex:1;min-width:0;font-family:var(--font-mono);font-size:12px">{{ f.path }}</span>
+                          <span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">{{ f.meta }}</span>
+                        </button>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <sc-if value="{{ hasChecks }}">
+                    <div aria-live="polite" style="display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:6px;background:var(--c-bg);border:1px solid {{ checkEdge }}">
+                      <sc-for list="{{ checks }}" as="c">
+                        <div style="display:flex;align-items:center;gap:10px;font-size:13px">
+                          <span style="font-family:var(--font-mono);width:14px;text-align:center;color:{{ c.color }}">{{ c.g }}</span>
+                          <span style="flex:1">{{ c.t }}</span>
+                          <sc-if value="{{ c.action }}"><button onClick="{{ c.act }}" style="height:28px;padding:0 10px;border-radius:6px;border:1px solid var(--c-accent);background:transparent;color:var(--c-accent);font:600 12px var(--font-sans);cursor:pointer" style-hover="background:var(--c-accent-wash)">{{ c.action }}</button></sc-if>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ oGithub }}">
+                <div style="display:flex;flex-direction:column;gap:12px">
+                  <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--c-line);border-radius:6px">
+                    <i class="icon-github"></i><span>Conectado como <span style="font-family:var(--font-mono)">renato-figueiredo</span></span>
+                    <span style="color:var(--c-ok);font-family:var(--font-mono);font-size:11px">✓ token no chaveiro do sistema</span>
+                    <span style="flex:1"></span><a href="#" style="font-size:12px">Trocar conta</a>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border-radius:6px;border:1px solid var(--c-line);background:var(--c-bg)">
+                    <i class="icon-search" style="color:var(--c-muted)"></i>
+                    <input value="{{ rq }}" onChange="{{ setRq }}" placeholder="Buscar repositório" style="flex:1;min-width:0;background:none;border:0;outline:0;color:var(--c-fg);font:400 13px var(--font-sans)">
+                  </div>
+                  <div style="display:flex;flex-direction:column;border:1px solid var(--c-line);border-radius:6px;overflow:hidden">
+                    <sc-for list="{{ repos }}" as="r" hint-placeholder-count="5">
+                      <button onClick="{{ r.pick }}" disabled="{{ r.taken }}" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:0;border-bottom:1px solid var(--c-line);background:{{ r.bg }};color:{{ r.color }};font:inherit;text-align:left;cursor:{{ r.cursor }}" style-hover="background:var(--c-raised)">
+                        <i class="{{ r.icon }}" style="color:var(--c-muted);font-size:14px"></i>
+                        <span style="flex:1;min-width:0;font-family:var(--font-mono);font-size:12px"><span style="color:var(--c-muted)">{{ r.owner }}/</span>{{ r.name }}</span>
+                        <span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">{{ r.meta }}</span>
+                      </button>
+                    </sc-for>
+                  </div>
+                  <sc-if value="{{ repoSel }}">
+                    <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:10px;padding:12px 14px;border:1px solid var(--c-line);border-radius:6px;background:var(--c-bg)">
+                      <label style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--c-muted)">Clonar em
+                        <input value="{{ dest }}" onChange="{{ setDest }}" style="height:32px;padding:0 10px;border-radius:6px;border:1px solid var(--c-line);background:var(--c-panel);color:var(--c-fg);font:400 12px var(--font-mono)">
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--c-muted)">Branch
+                        <input value="{{ repoSel.branch }}" readonly="{{ true }}" style="height:32px;padding:0 10px;border-radius:6px;border:1px solid var(--c-line);background:var(--c-panel);color:var(--c-fg);font:400 12px var(--font-mono)">
+                      </label>
+                      <span style="grid-column:1/-1;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--c-muted)"><span style="color:var(--c-ok);font-family:var(--font-mono)">✓</span>Dentro de ~/code · pasta ainda não existe · ~{{ repoSel.size }}</span>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ oUrl }}">
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <label style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--c-muted)">URL do repositório (HTTPS ou SSH)
+                    <input value="{{ url }}" onChange="{{ setUrl }}" placeholder="git@gitlab.com:time/projeto.git" style="height:36px;padding:0 10px;border-radius:6px;border:1px solid var(--c-line);background:var(--c-bg);color:var(--c-fg);font:400 13px var(--font-mono)">
+                  </label>
+                  <label style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--c-muted)">Clonar em
+                    <input value="{{ urlDest }}" readonly="{{ true }}" style="height:36px;padding:0 10px;border-radius:6px;border:1px solid var(--c-line);background:var(--c-bg);color:var(--c-fg);font:400 13px var(--font-mono)">
+                  </label>
+                  <span style="font-size:12px;color:var(--c-muted)">GitLab, Bitbucket, Gitea ou servidor próprio. Usa as chaves SSH que já estão na sua máquina.</span>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ oEmpty }}">
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <label style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--c-muted)">Criar pasta
+                    <input value="{{ emptyPath }}" onChange="{{ setEmpty }}" style="height:36px;padding:0 10px;border-radius:6px;border:1px solid var(--c-line);background:var(--c-bg);color:var(--c-fg);font:400 13px var(--font-mono)">
+                  </label>
+                  <div style="display:flex;flex-direction:column;gap:6px;font-family:var(--font-mono);font-size:12px;color:var(--c-muted);padding:10px 12px;border-radius:6px;background:var(--c-bg)">
+                    <span><span style="color:var(--c-ok)">✓</span> mkdir + git init -b main</span>
+                    <span><span style="color:var(--c-ok)">✓</span> CLAUDE.md vazio para instruções</span>
+                    <span><span style="color:var(--c-ok)">✓</span> .gitignore com .owl/</span>
+                  </div>
+                </div>
+              </sc-if>
+            </sc-if>
+
+            <sc-if value="{{ isCloning }}">
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center">
+                <img src="assets/owl/anim-sync.svg" alt="" style="width:88px;height:88px">
+                <div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:16px;font-weight:600">Clonando {{ cloneName }}</span><span style="font-family:var(--font-mono);font-size:12px;color:var(--c-muted)">{{ dest }}</span></div>
+                <div style="width:min(420px,100%);height:6px;border-radius:3px;background:var(--c-raised);overflow:hidden"><div style="height:100%;width:{{ pct }}%;background:var(--c-fg);transition:width 250ms ease-out"></div></div>
+                <div style="width:min(420px,100%);text-align:left;font-family:var(--font-mono);font-size:11px;line-height:1.7;color:var(--c-muted)">
+                  <sc-for list="{{ cloneLog }}" as="l"><div>{{ l }}</div></sc-for>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ isStep2 }}">
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <h2 style="margin:0;font-size:18px;font-weight:600">Configurar</h2>
+                <p style="margin:0;color:var(--c-muted);font-family:var(--font-mono);font-size:12px">{{ finalPath }} · git ✓ · {{ finalBranch }}</p>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+                <label style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--c-muted)">Nome
+                  <input value="{{ nome }}" onChange="{{ setNome }}" style="height:36px;padding:0 10px;border-radius:6px;border:1px solid var(--c-line);background:var(--c-bg);color:var(--c-fg);font:400 13px var(--font-sans)">
+                </label>
+                <label style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--c-muted)">Branch base dos tickets
+                  <input value="{{ finalBranch }}" readonly="{{ true }}" style="height:36px;padding:0 10px;border-radius:6px;border:1px solid var(--c-line);background:var(--c-bg);color:var(--c-fg);font:400 13px var(--font-mono)">
+                </label>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <span style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--c-muted)">Instruções do projeto <span style="font-family:var(--font-mono);font-size:11px;color:var(--c-ok)">✓ lidas de CLAUDE.md</span></span>
+                <textarea rows="3" style="resize:vertical;padding:8px 10px;border-radius:6px;border:1px solid var(--c-line);background:var(--c-bg);color:var(--c-fg);font:400 13px/1.5 var(--font-sans)">TypeScript estrito. pnpm. Testes com vitest antes de qualquer push. Nunca editar migrations já aplicadas.</textarea>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <span style="font-size:12px;color:var(--c-muted)">Equipe inicial · quem pode pegar tickets daqui</span>
+                <div style="display:flex;flex-wrap:wrap;gap:6px">
+                  <sc-for list="{{ agents }}" as="a" hint-placeholder-count="4">
+                    <button onClick="{{ a.toggle }}" aria-pressed="{{ a.on }}" style="display:flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:6px;border:1px solid {{ a.edge }};background:{{ a.bg }};color:var(--c-fg);font:500 12px var(--font-sans);cursor:pointer">
+                      <span style="font-family:var(--font-mono);width:10px;color:var(--c-accent)">{{ a.check }}</span>
+                      <span style="width:6px;height:6px;border-radius:2px;background:{{ a.prov }}"></span>{{ a.nome }}<span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">{{ a.papel }}</span>
+                    </button>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;font-size:12px;color:var(--c-muted)">
+                <span>Execuções simultâneas</span>
+                <div style="display:flex;border:1px solid var(--c-line);border-radius:6px;overflow:hidden">
+                  <sc-for list="{{ concs }}" as="c"><button onClick="{{ c.pick }}" style="width:36px;height:30px;border:0;border-right:1px solid var(--c-line);background:{{ c.bg }};color:{{ c.color }};font:500 12px var(--font-mono);cursor:pointer">{{ c.n }}</button></sc-for>
+                </div>
+                <span>limite global 6 (OWL_CONCURRENCY)</span>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ isStep3 }}">
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center">
+                <img src="assets/owl/anim-done.svg" alt="" style="width:96px;height:96px">
+                <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:20px;font-weight:600">{{ nome }} está no OWL</span><span style="color:var(--c-muted)">Quadro vazio, memória vazia. {{ teamTxt }}</span></div>
+                <div style="display:flex;gap:8px">
+                  <button onClick="{{ finish }}" style="height:40px;padding:0 18px;display:flex;align-items:center;gap:8px;border-radius:6px;border:0;background:var(--c-accent);color:var(--c-accent-fg);font:600 14px var(--font-sans);cursor:pointer" style-hover="background:var(--c-accent-hover)"><i class="icon-message-square"></i>Nova conversa</button>
+                  <button onClick="{{ finish }}" style="height:40px;padding:0 16px;display:flex;align-items:center;gap:8px;border-radius:6px;border:1px solid var(--c-line);background:transparent;color:var(--c-fg);font:500 14px var(--font-sans);cursor:pointer" style-hover="background:var(--c-raised)"><i class="icon-kanban"></i>Abrir quadro</button>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+          <sc-if value="{{ showFooter }}" hint-placeholder-val="{{ true }}">
+            <div style="flex:none;display:flex;align-items:center;gap:8px;padding:12px 24px;border-top:1px solid var(--c-line)">
+              <button onClick="{{ closeNew }}" style="height:36px;padding:0 12px;border-radius:6px;border:0;background:transparent;color:var(--c-muted);font:500 13px var(--font-sans);cursor:pointer" style-hover="color:var(--c-fg)">Cancelar</button>
+              <span style="flex:1;font-size:12px;color:var(--c-muted);text-align:right">{{ footHint }}</span>
+              <sc-if value="{{ isStep2 }}"><button onClick="{{ back }}" style="height:36px;padding:0 14px;border-radius:6px;border:1px solid var(--c-line);background:transparent;color:var(--c-fg);font:500 13px var(--font-sans);cursor:pointer">Voltar</button></sc-if>
+              <button onClick="{{ next }}" disabled="{{ nextDisabled }}" style="height:36px;padding:0 16px;display:flex;align-items:center;gap:8px;border-radius:6px;border:0;background:{{ nextBg }};color:{{ nextColor }};font:600 13px var(--font-sans);cursor:{{ nextCursor }}">{{ nextLabel }}<i class="icon-arrow-right"></i></button>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;startOpen&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  state = { cur: 'owl', switcherOpen: false, q: '', modal: !!(this.props.startOpen ?? true), step: 1, origin: 'folder', path: '~/code/api-pagamentos', gitInit: false, rq: '', repo: null, dest: '', url: '', emptyPath: '~/code/novo-projeto', pct: 0, nome: 'api-pagamentos', team: { 'dev-back': true, revisor: true }, conc: 2, extra: [] };
+  componentWillUnmount() { clearInterval(this.t); }
+  clone() {
+    clearInterval(this.t);
+    this.setState({ step: 'clone', pct: 0 });
+    this.t = setInterval(() => this.setState(s => {
+      const pct = Math.min(100, s.pct + 9);
+      if (pct >= 100) { clearInterval(this.t); setTimeout(() => this.setState({ step: 2 }), 500); }
+      return { pct };
+    }), 220);
+  }
+  renderVals() {
+    const h = React.createElement, s = this.state, set = o => this.setState(o);
+    const PV = { 'claude-cli': 'var(--c-prov-claude-cli)', 'codex-cli': 'var(--c-prov-codex-cli)', ollama: 'var(--c-prov-ollama)' };
+    const dot = { width: 4, height: 4, borderRadius: '50%', background: 'var(--c-status-running)', display: 'block', animation: 'owl-eyes 3.2s ease-in-out infinite' };
+    const eyes = h('span', { 'aria-hidden': true, style: { display: 'inline-flex', gap: 2, alignItems: 'center' } }, h('span', { style: dot }), h('span', { style: dot }));
+    const P = [
+      { id: 'owl', nome: 'owl-orchestrator', mono: 'OW', kind: 'github', src: 'renato-figueiredo/owl-orchestrator', branch: 'main', running: 2, pending: 2, tickets: '14 abertos', last: 'agora', git: true },
+      { id: 'site', nome: 'owl-site', mono: 'OS', kind: 'github', src: 'renato-figueiredo/owl-site', branch: 'main', running: 1, pending: 0, tickets: '5 abertos', last: 'há 6 min', git: true },
+      { id: 'fin', nome: 'financeiro-pessoal', mono: 'FP', kind: 'folder', src: '~/code/financeiro', branch: 'dev', running: 0, pending: 1, tickets: '3 abertos', last: 'ontem', git: true },
+      { id: 'tcc', nome: 'tcc-redes', mono: 'TC', kind: 'folder', src: '~/docs/tcc-redes', branch: 'sem git', running: 0, pending: 0, tickets: '1 aberto', last: 'há 9 dias', git: false },
+      ...s.extra,
+    ];
+    const cur = P.find(p => p.id === s.cur) || P[0];
+    const pick = id => () => set({ cur: id, switcherOpen: false });
+    const qq = s.q.trim().toLowerCase();
+    const swList = P.filter(p => !qq || p.nome.includes(qq)).map((p, i) => ({ ...p, pick: pick(p.id), key: '⌘' + (i + 1), bg: p.id === s.cur ? 'var(--c-raised)' : 'transparent', running: p.running || 0, pending: p.pending || 0 }));
+    const cards = P.map(p => ({ ...p, pick: pick(p.id), isCur: p.id === s.cur, srcIcon: p.kind === 'github' ? 'icon-github' : 'icon-folder', edge: p.pending ? 'var(--c-accent)' : 'var(--c-line)', bg: p.pending ? 'var(--c-accent-wash)' : 'var(--c-panel)',
+      runningTxt: p.running === 1 ? '1 rodando' : p.running + ' rodando', pendingTxt: p.pending === 1 ? '1 esperando você' : p.pending + ' esperando você', quiet: !p.running && !p.pending && p.git, noGit: !p.git }));
+
+    // ---- modal
+    const FOLDERS = {
+      '~/code/api-pagamentos': { meta: 'git · main · CLAUDE.md', v: 'ok' },
+      '~/code/landing-coruja': { meta: 'git · main', v: 'ok2' },
+      '~/code/rascunho': { meta: 'sem git', v: 'nogit' },
+      '/etc/nginx': { meta: 'fora das raízes', v: 'out' },
+    };
+    const fv = (FOLDERS[s.path.trim()] || { v: s.path.trim() ? (s.path.startsWith('~/code') || s.path.startsWith('~/docs') ? 'unknown' : 'out') : 'none' }).v;
+    const okG = { g: '✓', color: 'var(--c-ok)' }, errG = { g: '✕', color: 'var(--c-danger)' }, warnG = { g: '▲', color: 'var(--c-accent)' }, infoG = { g: '○', color: 'var(--c-muted)' };
+    let checks = [];
+    if (fv === 'ok') checks = [{ ...okG, t: 'Dentro de ~/code' }, { ...okG, t: 'Repositório git · branch main · sem alterações' }, { ...okG, t: 'CLAUDE.md encontrado — vira as instruções do projeto' }, { ...infoG, t: 'package.json · pnpm workspace' }];
+    if (fv === 'ok2') checks = [{ ...okG, t: 'Dentro de ~/code' }, { ...okG, t: 'Repositório git · branch main · 2 arquivos alterados' }, { ...infoG, t: 'Sem CLAUDE.md nem AGENTS.md — instruções começam vazias' }];
+    if (fv === 'nogit') checks = [{ ...okG, t: 'Dentro de ~/code' }, s.gitInit ? { ...okG, t: 'git init -b main feito' } : { ...warnG, t: 'Não é um repositório git: agentes só poderão ler', action: 'Rodar git init', act: () => set({ gitInit: true }) }];
+    if (fv === 'out') checks = [{ ...errG, t: 'Fora das raízes permitidas (~/code, ~/docs)' }, { ...infoG, t: 'Adicione a pasta em OWL_WORKSPACE_ROOTS ou escolha outra.' }];
+    if (fv === 'unknown') checks = [{ ...okG, t: 'Dentro das raízes' }, { ...infoG, t: 'Verificando a pasta…' }];
+    const hasErr = checks.some(c => c.g === '✕'), hasWarn = checks.some(c => c.g === '▲');
+    const checkEdge = hasErr ? 'var(--c-danger)' : hasWarn ? 'var(--c-accent)' : 'var(--c-line)';
+    const folders = Object.entries(FOLDERS).map(([path, f]) => ({ path, meta: f.meta, bg: path === s.path ? 'var(--c-raised)' : 'transparent', pick: () => set({ path, gitInit: false, nome: path.split('/').pop() }) }));
+
+    const REPOS = [
+      { owner: 'renato-figueiredo', name: 'owl-orchestrator', meta: 'já no OWL', taken: true, branch: 'main', size: '38 MB' },
+      { owner: 'renato-figueiredo', name: 'owl-site', meta: 'já no OWL', taken: true, branch: 'main', size: '12 MB' },
+      { owner: 'renato-figueiredo', name: 'api-pagamentos', meta: 'privado · main · há 2 h', priv: true, branch: 'main', size: '21 MB' },
+      { owner: 'renato-figueiredo', name: 'dotfiles', meta: 'main · há 3 dias', branch: 'main', size: '2 MB' },
+      { owner: 'coruja-labs', name: 'ml-experimentos', meta: 'privado · dev · há 1 sem', priv: true, branch: 'dev', size: '140 MB' },
+    ];
+    const rq = s.rq.trim().toLowerCase();
+    const repos = REPOS.filter(r => !rq || r.name.includes(rq)).map(r => ({ ...r, icon: r.priv ? 'icon-lock' : 'icon-book-marked', color: r.taken ? 'var(--c-faint)' : 'var(--c-fg)', cursor: r.taken ? 'default' : 'pointer',
+      bg: s.repo === r.name ? 'var(--c-raised)' : 'transparent', pick: () => set({ repo: r.name, dest: '~/code/' + r.name, nome: r.name }) }));
+    const repoSel = REPOS.find(r => r.name === s.repo) || null;
+
+    const O = [['folder', 'icon-folder-open', 'Pasta no computador', 'Um projeto que já está na sua máquina.'], ['github', 'icon-github', 'GitHub', 'Escolher um repositório e clonar.'], ['url', 'icon-link', 'URL git', 'GitLab, Bitbucket, servidor próprio.'], ['empty', 'icon-folder-plus', 'Começar vazio', 'Pasta nova com git init.']];
+    const origins = O.map(([id, icon, t, d]) => { const on = s.origin === id; return { id, icon, t, d, on, edge: on ? 'var(--c-accent)' : 'var(--c-line)', bg: on ? 'var(--c-accent-wash)' : 'var(--c-bg)', iconColor: on ? 'var(--c-accent)' : 'var(--c-muted)', pick: () => set({ origin: id }) }; });
+
+    const urlName = (s.url.split('/').pop() || '').replace(/\.git$/, '');
+    const step1Ok = s.origin === 'folder' ? (!hasErr && (!hasWarn) && fv !== 'none' && fv !== 'unknown') : s.origin === 'github' ? !!repoSel : s.origin === 'url' ? /^(https?:\/\/|git@).+/.test(s.url.trim()) : !!s.emptyPath.trim();
+    const willClone = s.origin === 'github' || s.origin === 'url';
+    const finalPath = s.origin === 'folder' ? s.path : s.origin === 'github' ? s.dest : s.origin === 'url' ? '~/code/' + (urlName || 'repo') : s.emptyPath;
+    const finalBranch = repoSel ? repoSel.branch : 'main';
+    const stepIdx = s.step === 'clone' ? 1 : s.step;
+    const steps = [['1', 'Origem'], ['2', 'Configurar'], ['3', 'Pronto']].map(([n, t], i) => { const k = i + 1, on = k === stepIdx, done = k < stepIdx;
+      return { n: done ? '✓' : n, t, bg: on ? 'var(--c-raised)' : 'transparent', color: on || done ? 'var(--c-fg)' : 'var(--c-muted)', edge: on ? 'var(--c-accent)' : 'var(--c-line)', numColor: done ? 'var(--c-ok)' : on ? 'var(--c-accent)' : 'var(--c-muted)' }; });
+
+    const AG = [['dev-front', 'claude-cli', 'front'], ['dev-back', 'codex-cli', 'back'], ['revisor', 'claude-cli', 'revisão'], ['local-qwen', 'ollama', 'rascunhos']];
+    const agents = AG.map(([nome, prov, papel]) => { const on = !!s.team[nome]; return { nome, papel, prov: PV[prov], on, check: on ? '✓' : '', edge: on ? 'var(--c-accent)' : 'var(--c-line)', bg: on ? 'var(--c-accent-wash)' : 'transparent', toggle: () => this.setState(st => ({ team: { ...st.team, [nome]: !st.team[nome] } })) }; });
+    const nTeam = AG.filter(([n]) => s.team[n]).length;
+    const concs = [1, 2, 3, 4].map(n => ({ n, bg: s.conc === n ? 'var(--c-raised)' : 'transparent', color: s.conc === n ? 'var(--c-fg)' : 'var(--c-muted)', pick: () => set({ conc: n }) }));
+
+    const nextDisabled = s.step === 1 && !step1Ok;
+    const next = () => {
+      if (s.step === 1) { if (willClone) this.clone(); else set({ step: 2 }); }
+      else if (s.step === 2) set({ step: 3 });
+    };
+    const footHint = s.step === 1 ? (s.origin === 'folder' ? (hasErr ? 'Escolha uma pasta dentro das raízes.' : hasWarn ? 'Resolva o aviso para continuar.' : '') : s.origin === 'github' && !repoSel ? 'Escolha um repositório.' : '') : 'Nada roda até você abrir uma conversa ou mover um ticket.';
+    const log = ['Cloning into \'' + finalPath + '\'…', 'remote: Enumerating objects: 4 812, done.', 'Receiving objects: ' + Math.min(100, s.pct) + '%', s.pct >= 60 ? 'Resolving deltas: 100% (2 904/2 904)' : '', s.pct >= 90 ? '✓ git ok · CLAUDE.md encontrado' : ''].filter(Boolean);
+
+    return {
+      eyes, cur, switcherOpen: s.switcherOpen, q: s.q, setQ: e => set({ q: e.target.value }),
+      toggleSwitcher: () => set({ switcherOpen: !s.switcherOpen }), closeSwitcher: () => set({ switcherOpen: false }),
+      goHome: () => set({ switcherOpen: false }), openNew: () => set({ switcherOpen: false, modal: true, step: 1 }),
+      live: [{ proj: 'owl', agent: 'dev-front', ticket: 'OWL-142', time: '01:12', prov: PV['claude-cli'] }, { proj: 'owl', agent: 'dev-back', ticket: 'OWL-139', time: '04:51', prov: PV['codex-cli'] }, { proj: 'site', agent: 'dev-front', ticket: 'SITE-12', time: '00:20', prov: PV['claude-cli'] }],
+      swList, cards, count: P.length,
+      railProj: [{ icon: 'icon-message-square', label: 'Conversas' }, { icon: 'icon-kanban', label: 'Quadro' }, { icon: 'icon-users', label: 'Equipes' }, { icon: 'icon-brain', label: 'Memória do projeto' }],
+      railGlobal: [{ icon: 'icon-bot', label: 'Agentes' }, { icon: 'icon-workflow', label: 'Pipelines' }, { icon: 'icon-chart-column', label: 'Métricas' }, { icon: 'icon-hard-drive', label: 'Armazenamento' }],
+      ownProj: [{ icon: 'icon-message-square', t: 'Conversas', d: 'cada run roda na pasta do projeto' }, { icon: 'icon-kanban', t: 'Quadro e tickets', d: 'ids próprios (OWL-, SITE-)' }, { icon: 'icon-users', t: 'Equipes e papéis', d: 'o mesmo agente pode ser front aqui e revisor ali' }, { icon: 'icon-brain', t: 'Memória', d: 'fatos de um projeto nunca vazam para outro' }, { icon: 'icon-git-branch', t: 'Branch base e concorrência', d: 'worktrees em .owl/wt/' }],
+      ownGlobal: [{ icon: 'icon-bot', t: 'Agentes', d: 'biblioteca única, convocados por projeto' }, { icon: 'icon-workflow', t: 'Pipelines', d: 'modelos reutilizáveis' }, { icon: 'icon-shield-alert', t: 'Aprovações', d: 'a fila ⌘A junta todos os projetos' }, { icon: 'icon-chart-column', t: 'Métricas', d: 'filtráveis por projeto' }, { icon: 'icon-hard-drive', t: 'Armazenamento e backup', d: 'um SQLite para a mesa' }],
+      modalOpen: s.modal, closeNew: () => { clearInterval(this.t); set({ modal: false }); },
+      isStep1: s.step === 1, isCloning: s.step === 'clone', isStep2: s.step === 2, isStep3: s.step === 3, showFooter: s.step === 1 || s.step === 2,
+      steps, origins, oFolder: s.origin === 'folder', oGithub: s.origin === 'github', oUrl: s.origin === 'url', oEmpty: s.origin === 'empty',
+      path: s.path, setPath: e => set({ path: e.target.value, gitInit: false }), browse: () => set({ path: '~/code/landing-coruja', nome: 'landing-coruja' }),
+      folders, checks, hasChecks: checks.length > 0, checkEdge,
+      rq: s.rq, setRq: e => set({ rq: e.target.value }), repos, repoSel, dest: s.dest, setDest: e => set({ dest: e.target.value }),
+      url: s.url, setUrl: e => set({ url: e.target.value, nome: (e.target.value.split('/').pop() || '').replace(/\.git$/, '') }), urlDest: '~/code/' + (urlName || '…'),
+      emptyPath: s.emptyPath, setEmpty: e => set({ emptyPath: e.target.value, nome: e.target.value.split('/').pop() }),
+      pct: s.pct, cloneName: s.origin === 'github' ? s.repo : urlName, cloneLog: log,
+      nome: s.nome, setNome: e => set({ nome: e.target.value }), finalPath, finalBranch, agents, concs,
+      teamTxt: nTeam ? `Equipe com ${nTeam} agente${nTeam > 1 ? 's' : ''}.` : 'Qualquer agente da biblioteca pode trabalhar aqui.',
+      next, back: () => set({ step: 1 }), nextDisabled, footHint,
+      nextLabel: s.step === 2 ? 'Criar projeto' : willClone ? 'Clonar e continuar' : 'Continuar',
+      nextBg: nextDisabled ? 'var(--c-raised)' : 'var(--c-accent)', nextColor: nextDisabled ? 'var(--c-faint)' : 'var(--c-accent-fg)', nextCursor: nextDisabled ? 'not-allowed' : 'pointer',
+      finish: () => {
+        const id = 'n' + Date.now(), nome = s.nome || 'novo-projeto';
+        this.setState(st => ({ modal: false, step: 1, cur: id, extra: [...st.extra, { id, nome, mono: nome.slice(0, 2).toUpperCase(), kind: willClone && st.origin === 'github' ? 'github' : 'folder', src: st.origin === 'github' ? 'renato-figueiredo/' + st.repo : finalPath, branch: finalBranch, running: 0, pending: 0, tickets: '0 abertos', last: 'agora', git: true }] }));
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

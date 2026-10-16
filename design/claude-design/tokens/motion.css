@@ -1,0 +1,17 @@
+:root {
+  --dur-fast: 120ms;
+  --dur: 180ms;
+  --dur-slow: 250ms;
+  --dur-page: 400ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --spring: cubic-bezier(0.34, 1.4, 0.64, 1); /* aproximação CSS; em código use Motion spring */
+}
+@keyframes owl-caret { 50% { opacity: 0; } }
+@keyframes owl-eyes { 0%, 88%, 100% { transform: scaleY(1); } 93% { transform: scaleY(0.1); } }
+@keyframes owl-pulse { from { box-shadow: 0 0 0 0 var(--c-accent); } to { box-shadow: 0 0 0 8px transparent; } }
+@keyframes owl-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes owl-slide-in { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}

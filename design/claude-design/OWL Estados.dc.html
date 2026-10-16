@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="styles.css">
+<style>html,body{margin:0;background:var(--c-chrome);color:var(--c-fg);font-family:var(--font-sans)}*{font-variant-ligatures:none}a{color:var(--c-accent)}a:hover{color:var(--c-accent-hover)}</style>
+</helmet>
+<section style="padding:56px;display:flex;flex-direction:column;gap:40px">
+  <header style="display:flex;flex-direction:column;gap:8px;max-width:900px">
+    <div style="font-family:var(--font-mono);font-size:13px;color:var(--c-muted);letter-spacing:.08em">ESTADOS · VARIAÇÃO ESTREITA</div>
+    <h1 style="margin:0;font-size:36px;font-weight:600;line-height:1.15">Vazio, carregando, erro — e as aprovações no celular</h1>
+    <p style="margin:0;font-size:16px;line-height:1.55;color:var(--c-muted)">A coruja aparece só aqui: piscando enquanto carrega, quieta quando não há nada. Erros dizem a causa e a próxima ação.</p>
+  </header>
+
+  <div style="display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap">
+    <div data-screen-label="Vazio" style="width:420px;height:300px;background:var(--c-bg);border:1px solid var(--c-line);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;box-sizing:border-box;text-align:center">
+      <img src="assets/logo-mark.svg" alt="" style="width:56px;height:56px;opacity:.55;filter:saturate(.4)">
+      <div style="font-size:18px;font-weight:600">Nada esperando você</div>
+      <div style="font-size:13px;color:var(--c-muted);line-height:1.5;max-width:280px">Quando um agente pedir push, merge, deploy ou exclusão, aparece aqui.</div>
+      <span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">vazio · coruja quieta</span>
+    </div>
+
+    <div data-screen-label="Carregando" style="width:420px;height:300px;background:var(--c-bg);border:1px solid var(--c-line);border-radius:10px;display:flex;flex-direction:column;gap:14px;padding:24px;box-sizing:border-box">
+      <div style="display:flex;align-items:center;gap:12px"><img src="assets/logo-animated.svg" alt="Carregando" style="width:36px;height:36px"><span style="font-size:14px;color:var(--c-muted)">Abrindo o quadro…</span></div>
+      <sc-for list="{{ skel }}" as="s" hint-placeholder-count="3">
+        <div style="display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:6px;background:var(--c-panel)">
+          <span style="display:block;height:8px;width:64px;border-radius:2px;background:var(--c-raised)"></span>
+          <span style="display:block;height:10px;width:{{ s }};border-radius:2px;background:var(--c-raised)"></span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div data-screen-label="Erro" style="width:460px;background:var(--c-bg);border:1px solid var(--c-line);border-radius:10px;padding:20px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px">
+      <span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted);letter-spacing:.08em">FAILURECARD · NA LINHA DO TEMPO</span>
+      <section role="alert" style="border:1px solid var(--c-danger);border-radius:10px;background:var(--c-panel);overflow:hidden">
+        <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:13px"><span style="color:var(--c-danger);font-family:var(--font-mono)">✕</span><span style="font-weight:600;color:var(--c-danger)">A run falhou</span><span style="flex:1"></span><span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">OWL-131 · 02:41</span></div>
+          <div style="display:grid;grid-template-columns:72px 1fr;gap:6px 10px;font-size:13px;line-height:1.5">
+            <span style="color:var(--c-muted)">Causa</span><span>O adaptador <span style="font-family:var(--font-mono);font-size:12px">codex-cli</span> não respondeu em 120 s.</span>
+            <span style="color:var(--c-muted)">Sugestão</span><span>Tentar de novo com <span style="font-family:var(--font-mono);font-size:12px">claude-cli</span>, ou aumentar o tempo limite do ticket.</span>
+          </div>
+          <div style="font-family:var(--font-mono);font-size:11px;background:var(--c-bg);border-radius:4px;padding:8px 10px;color:var(--c-muted);line-height:1.5">Error: timeout after 120000ms (adapter=codex-cli, step=executar)</div>
+        </div>
+        <div style="display:flex;gap:8px;padding:10px 16px;border-top:1px solid var(--c-line)">
+          <span style="height:32px;padding:0 14px;display:flex;align-items:center;gap:6px;border-radius:6px;background:var(--c-accent);color:var(--c-accent-fg);font-weight:600;font-size:13px"><i class="icon-rotate-ccw"></i>Tentar com claude-cli</span>
+          <span style="height:32px;padding:0 12px;display:flex;align-items:center;border-radius:6px;border:1px solid var(--c-line);font-size:13px">Ver log</span>
+        </div>
+      </section>
+      <div role="alert" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--c-line);border-radius:6px;background:var(--c-panel);font-size:13px"><i class="icon-wifi-off" style="color:var(--c-danger)"></i>Sem conexão com o servidor local.<span style="flex:1"></span><span style="color:var(--c-accent)">Tentar de novo</span></div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap">
+    <div data-screen-label="Celular · Aprovações" style="width:390px;height:844px;background:var(--c-bg);border:1px solid var(--c-line);border-radius:28px;overflow:hidden;display:flex;flex-direction:column;flex:none">
+      <div style="height:52px;flex:none"></div>
+      <header style="display:flex;align-items:center;gap:10px;padding:8px 16px 14px;border-bottom:1px solid var(--c-line)">
+        <img src="assets/logo-mark.svg" alt="OWL" style="width:28px;height:28px">
+        <span style="font-size:20px;font-weight:600">Aprovações</span>
+        <span style="font-family:var(--font-mono);font-size:13px;color:var(--c-accent)">{{ pendingCount }}</span>
+        <span style="flex:1"></span>
+        <span style="display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">{{ eyes }}2 rodando</span>
+      </header>
+      <div style="flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px">
+        <sc-for list="{{ gates }}" as="g" hint-placeholder-count="2">
+          <section style="border:1px solid {{ g.edge }};border-radius:10px;background:var(--c-panel);overflow:hidden">
+            <div style="padding:14px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:center;gap:8px;font-size:13px"><i class="{{ g.icon }}" style="color:{{ g.color }}"></i><span style="font-weight:600;color:{{ g.color }}">{{ g.kind }}</span><span style="color:var(--c-muted)">{{ g.statusTxt }}</span><span style="flex:1"></span><span style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">{{ g.ticket }}</span></div>
+              <div style="font-size:16px;font-weight:600;line-height:1.3">{{ g.title }}</div>
+              <div style="font-family:var(--font-mono);font-size:12px;background:var(--c-bg);border-radius:4px;padding:8px 10px;word-break:break-all;line-height:1.5"><span style="color:var(--c-muted)">$ </span>{{ g.cmd }}</div>
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted)">{{ g.who }} · risco {{ g.risk }}</div>
+            </div>
+            <sc-if value="{{ g.pending }}">
+              <div style="display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--c-line)">
+                <button onClick="{{ g.approve }}" style="flex:1;height:48px;border-radius:6px;border:0;background:var(--c-accent);color:var(--c-accent-fg);font:600 15px var(--font-sans);display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer"><i class="icon-check"></i>Aprovar</button>
+                <button onClick="{{ g.reject }}" style="flex:1;height:48px;border-radius:6px;border:1px solid var(--c-line);background:transparent;color:var(--c-fg);font:500 15px var(--font-sans);cursor:pointer">Reprovar…</button>
+              </div>
+            </sc-if>
+          </section>
+        </sc-for>
+      </div>
+      <div style="height:34px;flex:none"></div>
+    </div>
+
+    <div data-screen-label="Celular · Pareamento" style="width:390px;height:844px;background:var(--c-bg);border:1px solid var(--c-line);border-radius:28px;overflow:hidden;display:flex;flex-direction:column;flex:none;padding:96px 20px 34px;box-sizing:border-box;gap:18px">
+      <img src="assets/logo-animated.svg" alt="" style="width:48px;height:48px">
+      <h2 style="margin:0;font-size:26px;font-weight:600;line-height:1.2">Parear este celular</h2>
+      <p style="margin:0;font-size:15px;line-height:1.55;color:var(--c-muted)">Digite o código que o servidor mostrou no terminal. Ele vale uma vez.</p>
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px">
+        <sc-for list="{{ mcode }}" as="c"><span style="height:54px;display:grid;place-items:center;border-radius:6px;border:1px solid {{ c.bd }};background:var(--c-raised);font:500 22px var(--font-mono)">{{ c.c }}</span></sc-for>
+      </div>
+      <span style="height:48px;border-radius:6px;background:var(--c-accent);color:var(--c-accent-fg);font-weight:600;font-size:15px;display:grid;place-items:center">Parear</span>
+      <span style="flex:1"></span>
+      <span style="font-size:12px;color:var(--c-muted);text-align:center;line-height:1.5">Só o que pede você aparece aqui: aprovações e o estado das runs.</span>
+    </div>
+
+    <div style="max-width:420px;display:flex;flex-direction:column;gap:10px;font-size:14px;line-height:1.6;color:var(--c-muted)">
+      <span style="font-family:var(--font-mono);font-size:11px;letter-spacing:.08em">REGRAS DA VARIAÇÃO ESTREITA</span>
+      <span><b style="color:var(--c-fg)">≥ 1280:</b> barra de execução à direita fixa (380px).</span>
+      <span><b style="color:var(--c-fg)">768–1279:</b> execução vira gaveta sobre o chat; o Quadro empilha “Com você” no topo e as outras zonas abaixo.</span>
+      <span><b style="color:var(--c-fg)">~390:</b> só aprovações e pareamento. Barra de navegação some e os botões crescem para 48px.</span>
+    </div>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { g: { a: 'pendente', b: 'pendente' } };
+  renderVals() {
+    const h = React.createElement;
+    const dot = { width: 4, height: 4, borderRadius: '50%', background: 'var(--c-status-running)', display: 'block', animation: 'owl-eyes 3.2s ease-in-out infinite' };
+    const eyes = h('span', { 'aria-hidden': true, style: { display: 'inline-flex', gap: 2 } }, h('span', { style: dot }), h('span', { style: dot }));
+    const D = [
+      { k: 'a', kind: 'Push', icon: 'icon-git-branch', ticket: 'OWL-138', title: 'Gate de push com diff resumido', cmd: 'git push origin owl/OWL-138-gate-diff', who: 'dev-back', risk: 'médio' },
+      { k: 'b', kind: 'Exclusão', icon: 'icon-trash-2', ticket: 'OWL-147', title: 'Excluir worktrees mesclados há 30 dias', cmd: 'git worktree remove ×7', who: 'dev-back', risk: 'alto' },
+    ];
+    const gates = D.map(d => { const st = this.state.g[d.k]; const p = st === 'pendente';
+      return { ...d, pending: p, statusTxt: st, edge: p ? 'var(--c-accent)' : 'var(--c-line)',
+        color: p ? (d.kind === 'Exclusão' ? 'var(--c-danger)' : 'var(--c-accent)') : st === 'aprovado' ? 'var(--c-ok)' : 'var(--c-danger)',
+        approve: () => this.setState(s => ({ g: { ...s.g, [d.k]: 'aprovado' } })), reject: () => this.setState(s => ({ g: { ...s.g, [d.k]: 'rejeitado' } })) }; });
+    return { eyes, gates, pendingCount: gates.filter(g => g.pending).length, skel: ['80%', '62%', '71%'],
+      mcode: ['K', '7', 'Q', '', '', ''].map((c, i) => ({ c, bd: i === 3 ? 'var(--c-accent)' : 'var(--c-line)' })) };
+  }
+}
+</script>
+</body>
+</html>

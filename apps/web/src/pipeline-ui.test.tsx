@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
@@ -73,7 +73,7 @@ const sentMessage = () => calls.find((c) => c.path === '/sessions/s1/messages')?
 async function open() {
   const user = userEvent.setup();
   render(<App />);
-  await user.click(await screen.findByRole('button', { name: 'Conversa' }));
+  await user.click(await within(await screen.findByRole('region', { name: 'Lista de conversas' })).findByRole('button', { name: 'Conversa' }));
   await screen.findByLabelText('Mensagem');
   return user;
 }
@@ -85,24 +85,24 @@ describe('composer options', () => {
     await waitFor(() => expect(sentMessage()).toEqual({ texto: 'oi', provider: 'claude-cli' }));
   });
 
-  it('"Editar antes" and the refiner picker only exist while "Melhorar prompt" is checked', async () => {
+  it('"Editar antes" and the refiner picker only exist while "Refinar prompt" is checked', async () => {
     const user = await open();
     expect(screen.queryByLabelText('Editar antes de executar')).toBeNull();
-    await user.click(screen.getByLabelText('Melhorar prompt'));
+    await user.click(screen.getByLabelText('Refinar prompt'));
     expect(screen.getByLabelText('Editar antes de executar')).toBeInTheDocument();
     expect(screen.getByLabelText('Refinador')).toHaveDisplayValue('codex-cli (padrão)');
   });
 
   it('checked: sends melhorarPrompt; the default refiner sends no override', async () => {
     const user = await open();
-    await user.click(screen.getByLabelText('Melhorar prompt'));
+    await user.click(screen.getByLabelText('Refinar prompt'));
     await user.type(screen.getByLabelText('Mensagem'), 'faça X{Enter}');
     await waitFor(() => expect(sentMessage()).toEqual({ texto: 'faça X', provider: 'claude-cli', melhorarPrompt: true, editarAntes: false }));
   });
 
   it('review + haiku: sends editarAntes and the chosen refiner', async () => {
     const user = await open();
-    await user.click(screen.getByLabelText('Melhorar prompt'));
+    await user.click(screen.getByLabelText('Refinar prompt'));
     await user.click(screen.getByLabelText('Editar antes de executar'));
     await user.selectOptions(screen.getByLabelText('Refinador'), 'haiku');
     await user.type(screen.getByLabelText('Mensagem'), 'faça X{Enter}');

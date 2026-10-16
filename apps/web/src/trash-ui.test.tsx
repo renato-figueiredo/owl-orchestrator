@@ -67,6 +67,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const rail = async (user: ReturnType<typeof userEvent.setup>) => user.click(await screen.findByRole('button', { name: 'Lixeira e armazenamento' }));
+
 describe('trash', () => {
   it('moves a conversation to the trash and lists it there', async () => {
     const user = userEvent.setup();
@@ -74,14 +76,14 @@ describe('trash', () => {
     await user.click(await screen.findByRole('button', { name: /Mover para a lixeira: Conversa viva/ }));
     await waitFor(() => expect(screen.queryByText('Conversa viva')).not.toBeInTheDocument());
     expect(calls).toContainEqual({ method: 'DELETE', path: '/sessions/s1' });
-    await user.click(screen.getByText('Lixeira'));
+    await rail(user);
     expect(await screen.findByText('Conversa viva')).toBeInTheDocument();
   });
 
   it('restores from the trash', async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByText('Lixeira'));
+    await user.click(await screen.findByRole('button', { name: 'Lixeira e armazenamento' }));
     await user.click(await screen.findByRole('button', { name: 'Restaurar' }));
     expect(await screen.findByRole('button', { name: 'Conversa velha' })).toBeInTheDocument();
   });
@@ -90,7 +92,7 @@ describe('trash', () => {
     purgeResult = { sessionId: 't1', blobsRemoved: 0, cliSession: { provider: 'claude-cli', id: 'abc' } };
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByText('Lixeira'));
+    await rail(user);
     await user.click(await screen.findByRole('button', { name: 'Excluir de vez' }));
     expect(calls.some((c) => c.method === 'DELETE' && c.path === '/trash/t1')).toBe(false);
     await user.click(screen.getByRole('button', { name: /Confirmar: excluir para sempre/ }));
@@ -101,7 +103,7 @@ describe('trash', () => {
   it('empties the trash only after confirmation', async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByText('Lixeira'));
+    await rail(user);
     await user.click(await screen.findByRole('button', { name: 'Esvaziar lixeira' }));
     expect(calls.some((c) => c.path === '/trash?confirmar=1' && c.method === 'DELETE')).toBe(false);
     await user.click(screen.getByRole('button', { name: /Confirmar: esvaziar/ }));
@@ -119,7 +121,7 @@ describe('storage settings', () => {
       return orig(input, init);
     })(vi.mocked(fetch).getMockImplementation()!) as typeof fetch);
     render(<App />);
-    await user.click(await screen.findByText('Armazenamento e backup'));
+    await user.click(await screen.findByRole('button', { name: 'Lixeira e armazenamento' }));
     const days = await screen.findByLabelText('Guardar por (dias)');
     await user.clear(days);
     await user.type(days, '7');
