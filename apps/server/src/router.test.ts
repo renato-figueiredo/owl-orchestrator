@@ -200,6 +200,33 @@ describe('phase 2: a small model, only when the rules do not decide', () => {
   });
 });
 
+describe('the classifier answer is kept per ticket', () => {
+  it('a rework reuses it (no second classifier call) until /reclassify asks again', async () => {
+    classifier = '{"complexidade":"media","confianca":0.9,"motivo":"alguns arquivos"}';
+    qa = 'Faltou o caso de erro.\nVEREDITO: reprovado';
+    const id = await ticket(await mkProject(), 'Filtro por data', { descricao: MEDIUM });
+    expect(requests.filter(isClassifier)).toHaveLength(1);
+    const gate = repos.approvals.pendingByTicket(id).find((a) => a.tipo === 'reprovacao')!;
+    qa = 'Agora sim.\nVEREDITO: aprovado';
+    await post(`/approvals/${gate.id}/decide`, { decisao: 'aprovado' });
+    await settle();
+    expect(requests.filter(isClassifier)).toHaveLength(1); // reused; only escalated on top
+    expect(ownRuns(id).filter((r) => r.etapa === 'quadro:dev').map((r) => r.modelo)).toEqual(['sonnet', 'opus']);
+
+    expect((await post(`/tickets/${id}/reclassify`)).status).toBe(204);
+    await post(`/tickets/${id}/run`, { agente: 'analista' });
+    await settle();
+    expect(requests.filter(isClassifier)).toHaveLength(2);
+    expect((await post('/tickets/nao-existe/reclassify')).status).toBe(404);
+  });
+
+  it('a failed classifier answer is not kept', async () => {
+    classifier = 'acho que é média';
+    const id = await ticket(await mkProject(), 'Filtro por data', { descricao: MEDIUM });
+    expect(repos.settings.get(`roteador.decisao.${id}`)).toBeUndefined();
+  });
+});
+
 describe('escalation', () => {
   it('a rejected review sends the rework to the next tier', async () => {
     qa = 'Faltou o caso de erro.\nVEREDITO: reprovado';

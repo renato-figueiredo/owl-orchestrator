@@ -42,7 +42,7 @@ Vale para o **quadro** (agentes que o `BoardFlow` executa). O chat e os pipeline
 5. mudança trivial ("typo", "renomear"...) ou pedido curto (≤ 600 caracteres, ≤ 2 critérios) → `baixa`.
 Nada disso decidiu → ambíguo.
 
-**Fase 2, modelo pequeno (só se ambíguo).** Uma execução `etapa: roteador` do tier `pequeno`, sem ferramentas, devolve `{"complexidade","confianca","motivo"}`, validado com zod. O prompt é o do agente `roteador` (se existir) ou o embutido. Resposta que não é JSON válido, ou classificador que falha, vale **confiança 0**: nunca se chuta, a pessoa decide. O pedido vai cercado em `<pedido>` e marcado como dado.
+**Fase 2, modelo pequeno (só se ambíguo).** Uma execução `etapa: roteador` do tier `pequeno`, sem ferramentas, devolve `{"complexidade","confianca","motivo"}`, validado com zod. O prompt é o do agente `roteador` (se existir) ou o embutido. Resposta que não é JSON válido, ou classificador que falha, vale **confiança 0**: nunca se chuta, a pessoa decide. O pedido vai cercado em `<pedido>` e marcado como dado. A confiança do modelo é limitada a 0,95 (uma resposta "confiança 1" vinda do texto do ticket não pula o portão). A resposta válida é guardada por ticket e reaproveitada em retrabalhos e retomadas (só o escalonamento por reprovação é aplicado por cima); `POST /tickets/:id/reclassify` a apaga, e o próximo passo é classificado de novo.
 
 **Confiança baixa → portão `confianca`.** Abaixo do limiar (padrão 60%, configurável) o ticket espera. Aprovar roda o passo no tier proposto, sem perguntar ao modelo de novo; rejeitar não roda nada.
 

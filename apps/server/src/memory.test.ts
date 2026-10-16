@@ -46,13 +46,13 @@ async function setup() {
   });
   app = buildApp({ repos, executor, defaultCwd: dir, workspaceRoots: [tmpdir()] });
   base = await app.listen({ host: '127.0.0.1', port: 0 });
-  // The summarizer is Codex in these tests so its scenario can differ from the chat provider (Claude).
-  await put('/settings', { memory: { resumidor: { provider: 'codex-cli' }, resumoAutomatico: false } });
+  // The summarizer is Ollama in these tests (an adapter that honours noTools) so its scenario can differ from the chat provider (Claude).
+  await put('/settings', { memory: { resumidor: { provider: 'ollama' }, resumoAutomatico: false } });
 }
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'owl-mem-'));
-  scenario = { 'codex-cli': 'summary-ok' };
+  scenario = { 'ollama': 'summary-ok' };
   spawned = [];
 });
 afterEach(async () => {
@@ -213,6 +213,14 @@ describe('with --resume a fact pinned (or edited) later still reaches the conver
   }, 15_000);
 });
 
+describe('summarizer provider', () => {
+  it('only adapters that can run without tools may summarize', async () => {
+    await setup();
+    expect((await put('/settings', { memory: { resumidor: { provider: 'codex-cli' } } })).status).toBe(400);
+    expect((await put('/settings', { memory: { resumidor: { provider: 'claude-cli', model: 'haiku' } } })).status).toBe(200);
+  });
+});
+
 describe('related snippets (full-text search)', () => {
   it('adds a snippet only when the request really matches an older message of the project', async () => {
     await setup();
@@ -297,7 +305,7 @@ describe('incremental summary', () => {
   });
 
   it('INVALID output keeps the existing summary, marker and facts untouched', async () => {
-    scenario = { 'codex-cli': 'summary-bad' };
+    scenario = { 'ollama': 'summary-bad' };
     await setup();
     const sid = await session();
     const m = repos.messages.add({ sessionId: sid, papel: 'usuario', conteudo: 'antes' });
@@ -317,7 +325,7 @@ describe('incremental summary', () => {
   });
 
   it('a failing summarizer (limit, crash) also changes nothing', async () => {
-    scenario = { 'codex-cli': 'error' };
+    scenario = { 'ollama': 'error' };
     await setup();
     const sid = await session();
     repos.messages.add({ sessionId: sid, papel: 'usuario', conteudo: 'algo' });
@@ -344,7 +352,7 @@ describe('automatic summary', () => {
     const sid = await session();
     await say(sid, 'primeira'); // user + assistant = 2 new messages
     await executor.idle();
-    expect(spawned.map((s) => s.provider)).toEqual(['claude-cli', 'codex-cli']); // chat, then the summary
+    expect(spawned.map((s) => s.provider)).toEqual(['claude-cli', 'ollama']); // chat, then the summary
     await executor.idle();
     expect(repos.sessions.get(sid)!.resumo).toContain('Resumo novo');
     expect(spawned).toHaveLength(2); // no loop
@@ -374,12 +382,12 @@ describe('summarizer safety and failure handling', () => {
   });
 
   it('after a failed automatic summary it waits for another full batch, and stays silent in the conversation', async () => {
-    scenario = { 'codex-cli': 'summary-bad' };
+    scenario = { 'ollama': 'summary-bad' };
     await setup();
     await put('/settings', { memory: { resumoAutomatico: true, resumirACada: 3 } });
     const sid = await session();
     repos.messages.add({ sessionId: sid, papel: 'usuario', conteudo: 'antes' });
-    const summaries = () => spawned.filter((s) => s.provider === 'codex-cli').length;
+    const summaries = () => spawned.filter((s) => s.provider === 'ollama').length;
 
     await say(sid, 'a'); // 3 pending → tries, invalid JSON
     await executor.idle();
@@ -394,7 +402,7 @@ describe('summarizer safety and failure handling', () => {
   });
 
   it('a manual failure still tells the user', async () => {
-    scenario = { 'codex-cli': 'summary-bad' };
+    scenario = { 'ollama': 'summary-bad' };
     await setup();
     const sid = await session();
     repos.messages.add({ sessionId: sid, papel: 'usuario', conteudo: 'algo' });

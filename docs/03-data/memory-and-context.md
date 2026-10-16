@@ -73,7 +73,7 @@ A CLI cuida de cache e compactação. Guardar `cli_session_id` na sessão.
 - **Quando entra no prompt**: sem sessão nativa para retomar (conversa nova ou troca de provedor) vai o bloco completo.
   Com `--resume` vão só os fatos fixados criados desde a última run que **falou com a conversa da CLI**: runs de resumo,
   do refinador e runs que não terminaram `ok` não contam (`runs.sem_estado`, `RunsRepo.previousStart`).
-- **Resumidor** (`apps/server/src/memory.ts`): modelo barato, sem estado, em uma pasta temporária própria
+- **Resumidor** (`apps/server/src/memory.ts`): modelo barato, sem estado, só `claude-cli` ou `ollama` (rodam sem ferramentas; o Codex não tem como, e o resumidor lê mensagens não confiáveis), em uma pasta temporária própria
   (`mkdtemp`) e **sem nenhuma ferramenta** (`--tools ""`), porque lê texto não confiável da conversa. JSON inválido ou
   falha da CLI nunca sobrescrevem o resumo anterior.
 - **Backoff**: depois de uma tentativa automática que falhou, só tenta de novo com mais `resumirACada` mensagens novas.

@@ -43,13 +43,13 @@ async function setup(maxAttachmentBytes?: number) {
   });
   app = buildApp({ repos, executor, defaultCwd: dir, workspaceRoots: [tmpdir()], attachmentsDir: store, ...(maxAttachmentBytes ? { maxAttachmentBytes } : {}) });
   base = await app.listen({ host: '127.0.0.1', port: 0 });
-  await fetch(`${base}/settings`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ memory: { resumidor: { provider: 'codex-cli' }, resumoAutomatico: false } }) });
+  await fetch(`${base}/settings`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ memory: { resumidor: { provider: 'ollama' }, resumoAutomatico: false } }) });
 }
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'owl-att-'));
   store = join(dir, 'attachments');
-  scenario = { 'codex-cli': 'describe-ok' };
+  scenario = { 'ollama': 'describe-ok' };
   spawned = [];
 });
 afterEach(async () => {
@@ -173,7 +173,7 @@ describe('sending images to the model', () => {
 
     await say(sid, { texto: 'o que diz o print?', anexos: [{ hash, nome: 'erro.png' }] });
     // run 0: the chat (sees the file), run 1: the describer (also sees it)
-    expect(spawned.map((s) => s.provider)).toEqual(['claude-cli', 'codex-cli']);
+    expect(spawned.map((s) => s.provider)).toEqual(['claude-cli', 'ollama']);
     const first = rec(0);
     const file = join(store, hash.slice(0, 2), `${hash}.webp`);
     expect(first.argv).toContain(`--add-dir=${join(store, hash.slice(0, 2))}`);
@@ -193,7 +193,7 @@ describe('sending images to the model', () => {
   });
 
   it('a failed description is retried on the next use, and the description run never records a message', async () => {
-    scenario = { 'codex-cli': 'summary-bad' };
+    scenario = { 'ollama': 'summary-bad' };
     await setup();
     const { hash } = (await upload(await png())).body.attachment;
     const sid = await session();

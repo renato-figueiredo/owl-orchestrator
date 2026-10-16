@@ -40,6 +40,15 @@ const leadOutput = z.object({
 const bullets = (v: string | string[] | undefined): string | undefined =>
   v === undefined ? undefined : Array.isArray(v) ? v.map((x) => `- ${x.replace(/^[-*]\s*/, '')}`).join('\n') : v;
 
+const decisionKey = (ticketId: string) => `roteador.decisao.${ticketId}`;
+const routeDecisionSchema = z.object({
+  complexidade: z.enum(['baixa', 'media', 'alta']),
+  tier: z.enum(['pequeno', 'medio', 'forte']),
+  confianca: z.number().min(0).max(1),
+  motivo: z.string(),
+  origem: z.enum(['regra', 'modelo', 'escalonamento', 'manual']),
+});
+
 /** The last fenced ```json block, else the outermost {...} of the text. Undefined when neither parses. */
 export function extractJson(text: string): unknown {
   const fences = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map((m) => m[1] ?? '');
@@ -294,7 +303,7 @@ export class BoardFlow {
       // A person already chose this tier at the gate: no rules, no model, no escalation on top.
       return { decision: { complexidade: complexityOf(opts.tier), tier: opts.tier, confianca: 1, motivo: 'aprovado por uma pessoa', origem: 'manual' }, falhas: a.falhas };
     }
-    let base = opts.decision;
+    let base = opts.decision ?? this.storedDecision(ticket.id);
     if (!base) {
       const stat = ['qa', 'revisor'].includes(a.role) ? worktrees.diffStat(ticket, a.project) : undefined;
       const request = this.requestText(ticket, a.tarefa);
@@ -373,9 +382,22 @@ export class BoardFlow {
           motivo: outcome.status === 'ok' ? 'o classificador não devolveu um JSON válido' : `o classificador falhou: ${outcome.error ?? outcome.status}`,
           origem: 'modelo',
         };
+        // Keep a real answer (not a failure) so a rework or a resumed gate does not pay for the classifier again.
+        if (parsed) this.deps.repos.settings.set(decisionKey(a.ticket.id), parsed);
         this.run(a.ticket.id, a.agente, a.tarefa, { ...a.opts, decision });
       },
     });
+  }
+
+  /** The classifier's last answer for this ticket, before any escalation. Undefined after `reclassify`. */
+  private storedDecision(ticketId: string): RouteDecision | undefined {
+    const parsed = routeDecisionSchema.safeParse(this.deps.repos.settings.get(decisionKey(ticketId)));
+    return parsed.success ? parsed.data : undefined;
+  }
+
+  /** Forgets the stored classification: the next routed step asks the classifier again (e.g. a monitor saw the ticket grow). */
+  reclassify(ticketId: string): void {
+    this.deps.repos.settings.set(decisionKey(ticketId), null);
   }
 
   /** Continues after a person decided a gate: resumes the paused step, or re-runs the author after a rejection. */

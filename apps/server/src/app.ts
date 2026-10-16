@@ -25,6 +25,9 @@ import { FolderError, registerGuards, resolveWorkspace } from './security.js';
 
 type Repos = ReturnType<typeof createRepos>;
 
+/** Adapters that honour `noTools` (the summarizer and classifier run with none). */
+const NO_TOOLS_PROVIDERS = ['claude-cli', 'ollama'];
+
 export interface AppDeps {
   repos: Repos;
   executor: Executor;
@@ -503,6 +506,10 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const provider = patch.memory?.resumidor?.provider;
     if (provider && !listAdapters().some((a) => a.id === provider)) {
       throw new HttpError(400, 'unknown_provider', `Unknown provider: ${provider}`);
+    }
+    // The summarizer reads old (untrusted) messages, so it must run with no tools; only these adapters can.
+    if (provider && !NO_TOOLS_PROVIDERS.includes(provider)) {
+      throw new HttpError(400, 'summarizer_needs_no_tools', `${provider} cannot run without tools; use claude-cli or ollama as the summarizer`);
     }
     if (patch.lixeira) needs(deps.cleanup, 'The trash settings').saveSettings(patch.lixeira);
     if (patch.backup) needs(deps.backup, 'Backup').saveSettings(patch.backup);

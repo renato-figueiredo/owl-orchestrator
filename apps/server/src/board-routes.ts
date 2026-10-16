@@ -196,6 +196,14 @@ export function registerBoardRoutes(
     return reply.status(r.allowed ? 200 : 202).send({ permitido: r.allowed, ...(r.approval ? { aprovacao: r.approval } : {}) });
   });
 
+  /** Drops the stored router classification, so the next step of an `auto` agent is classified again. */
+  app.post('/tickets/:id/reclassify', async (req, reply) => {
+    const { id: tid } = id.parse(req.params);
+    ticket(tid);
+    flow.reclassify(tid);
+    return reply.status(204).send();
+  });
+
   app.post('/tickets/:id/run', async (req, reply) => {
     const { id: tid } = id.parse(req.params);
     const body = runBody.parse(req.body ?? {});
