@@ -26,6 +26,22 @@ NVIDIA users: use the default image with the NVIDIA container toolkit. Always pu
 - Without Ollama the adapter reports `available: false` and everything else works unchanged.
 - Router: with `localPequeno.ativo` (default off: opt-in) the tier `pequeno` goes to Ollama when the last check (startup, every 30 s, and when the settings screen opens) found it up with a model, **only for steps without tools** (the classifier, tool-less agents). Steps with tools keep the tier's configured provider. The model is the one chosen in the settings if installed, else `OLLAMA_MODEL`, else the first installed. If Ollama dies between checks, or the step fails before any text (images attached, unreachable), the executor marks the local model down, reruns the step on the tier's configured provider and records it (system message, run provider). Requests never follow redirects, a reply is capped (4 MiB of text) and a server silent for 120 s is cut. Local runs still count in the daily token budget (see the roadmap).
 
+## Measured notes on local models (2026-10-15)
+
+One 16 GB-VRAM AMD GPU, 32 GB RAM, `think:false`, the example refiner and router agents (`examples/agents`). Small sample (4 refiner requests, 3 router requests per model): take it as a starting point, not a benchmark.
+
+| Model | Speed | Refiner | Router |
+|---|---|---|---|
+| `gemma4:26b` (MoE, q4_K_M, 18 GB) | ~59 tok/s | Best: follows the rules, asks about gaps | 3/3, clean JSON |
+| `gemma4:e2b` | ~129 tok/s | Correct, terse | 3/3 |
+| `ministral-3:3b` | ~123 tok/s | **Not recommended**: invents requirements the user never asked for | Right classes, but returned the key `confiança` (accented), which the parser rejects |
+| `qwen2.5-coder:7b` | ~90 tok/s | **Not recommended**: often returns only the objective, drops the other sections | **Not recommended**: rated a multi-tenant migration "media" instead of "alta" |
+
+Pitfalls found:
+- A model larger than the VRAM (the 18 GB one) hangs or crawls with the default mmap loading (~3 tok/s prompt processing, requests over 5 minutes). Set `OLLAMA_USE_MMAP=0`.
+- Pick the model per role: a small fast one for classification and monitoring, a larger one for rewriting prompts.
+- A loaded model keeps its VRAM until the server's keep-alive expires (5 minutes by default).
+
 ## Original plan
 - Adapter `ollama` implementing `ProviderAdapter` over the local HTTP API (see `build/prompts/18-ollama.md`).
 - Router tier `pequeno` prefers Ollama when reachable; falls back to a small hosted model otherwise.
