@@ -163,6 +163,9 @@ export const api = {
   /** Opens a gate to merge the ticket branch into the base branch, or to discard it. Nothing happens until it is approved. */
   requestBranchAction: (ticketId: string, acao: 'merge' | 'descartar') =>
     call<unknown>('POST', `/tickets/${encodeURIComponent(ticketId)}/branch/${acao}`),
+  monitor: () => call<MonitorStatus>('GET', '/monitor'),
+  monitorStop: () => call<MonitorStatus>('POST', '/monitor/stop'),
+  monitorStart: () => call<MonitorStatus>('POST', '/monitor/start'),
   router: () => call<{ router: RouterSettings; dia: DayUsage; local?: LocalStatus }>('GET', '/router'),
   saveRouter: (patch: { tiers?: Partial<RouterSettings['tiers']>; localPequeno?: RouterSettings['localPequeno']; limiarConfianca?: number; orcamentoDiaTokens?: number | null }) =>
     call<{ router: RouterSettings; dia: DayUsage; local?: LocalStatus }>('PUT', '/router', patch),
@@ -182,3 +185,9 @@ export const pipelinesApi = () =>
 
 /** Whether the server asks browsers to pair and whether this one already is (for the "Pareamento" screen). */
 export const authStatusApi = () => call<{ required: boolean; authenticated: boolean }>('GET', '/auth/status');
+
+export interface MonitorStatus {
+  config: { ativo: boolean; intervaloMin: number; avisoPct: number; paradaPct: number };
+  estado: { ultimoCiclo: string | null; parado: string | null; iniciados: number; avisos: Array<{ em: string; nivel: 'aviso' | 'parada' | 'info'; texto: string }> };
+  dia: { limite: number | null; usado: number; percentual: number | null };
+}

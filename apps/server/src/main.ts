@@ -48,6 +48,7 @@ const localModels = ollama ? new LocalModels(ollama, process.env.OLLAMA_MODEL) :
 localModels?.start();
 clearStaleMcpConfigs(resolve(config.dataDir, 'mcp'));
 const app = buildApp({
+  startMonitor: true,
   auth,
   ...(localModels ? { localModels } : {}),
   mcpMemory: {

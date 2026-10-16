@@ -11,6 +11,7 @@ import { BoardFlow } from './board-flow.js';
 import { registerBoardRoutes } from './board-routes.js';
 import type { LocalModels } from './local-models.js';
 import { RouterService } from './router.js';
+import { Monitor, monitorPatchSchema } from './monitor.js';
 import { registerRouterRoutes } from './router-routes.js';
 import { BackupService, backupSettingsPatchSchema } from './backup.js';
 import { CleanupService, NotInTrashError, SessionBusyError, trashSettingsPatchSchema } from './cleanup.js';
@@ -57,6 +58,8 @@ export interface AppDeps {
   mcpMemory?: McpMemoryLaunch;
   /** Last known state of the local model server; lets the router send `pequeno` steps to it. Without it the router never does. */
   localModels?: LocalModels;
+  /** Run the backlog monitor's periodic cycle (the server does; tests call `POST /monitor/tick`). */
+  startMonitor?: boolean;
   /** When set, every route but /health and /auth/* needs a paired browser session (see `SessionAuth`). */
   auth?: SessionAuth;
 }
@@ -248,6 +251,32 @@ export function buildApp(deps: AppDeps): FastifyInstance {
 
   registerBoardRoutes(app, { repos, board, flow, library, worktrees });
   registerRouterRoutes(app, { repos, router });
+  const monitor = new Monitor({ repos, board, flow, router });
+  if (deps.startMonitor) {
+    app.addHook('onReady', async () => monitor.start());
+    app.addHook('onClose', async () => monitor.stop());
+  }
+  app.get('/monitor', async () => monitor.status());
+  app.put('/monitor', async (req) => {
+    const patch = monitorPatchSchema.parse(req.body);
+    try {
+      monitor.save(patch);
+    } catch (e) {
+      if (e instanceof ZodError) throw e;
+      throw new HttpError(400, 'invalid_monitor', e instanceof Error ? e.message : String(e));
+    }
+    return monitor.status();
+  });
+  /** The stop button: off at once; a cycle already running finishes, nothing new starts. */
+  app.post('/monitor/stop', async () => {
+    monitor.save({ ativo: false });
+    return monitor.status();
+  });
+  app.post('/monitor/start', async () => {
+    monitor.save({ ativo: true });
+    return monitor.status();
+  });
+  app.post('/monitor/tick', async () => ({ iniciados: await monitor.tick(), ...monitor.status() }));
   registerProjectRoutes(app, {
     repos,
     worktrees,

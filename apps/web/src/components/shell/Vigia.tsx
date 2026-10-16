@@ -3,6 +3,7 @@ import { ChevronsUpDown, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { fmtClock } from '../../lib/format';
 import { useNow } from '../../lib/useNow';
 import { Logo } from '../Logo';
+import { MonitorToggle } from './MonitorToggle';
 
 export interface LiveRun {
   id: string;
@@ -62,6 +63,7 @@ export function Vigia({ project, onOpenSwitcher, switcherOpen, live, pending, on
           </button>
         ))}
       </div>
+      <MonitorToggle />
       {pending > 0 ? (
         <button
           type="button"
