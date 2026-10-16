@@ -1,11 +1,12 @@
 import { AgentTag, Button, ListAnimated, OwlEyes } from '@owl/ui';
 import { ArrowLeft, GitBranch, GitMerge, Play, Send, Trash2 } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../lib/api';
 import { fmtCompact, fmtUsd } from '../lib/format';
 import type { BoardData, BranchInfo, TicketDetail, TicketRun, TicketStatus } from '../lib/types';
 import { ApprovalGate } from './ApprovalGate';
 import { LabelChip, OrganizePanel } from './BoardExtras';
+import { Markdown } from './Markdown';
 
 const message = (e: unknown) => (e instanceof Error ? e.message : 'Algo deu errado');
 
@@ -64,6 +65,29 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       <h2 className="owl-label m-0 font-medium">{title}</h2>
       {children}
     </section>
+  );
+}
+
+/** Long text (ticket descriptions, agent comments) folds to a few lines with a toggle, so the page stays readable. */
+function Clamp({ children, lines = 8 }: { children: ReactNode; lines?: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [long, setLong] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (el) setLong(el.scrollHeight > lines * 24 + 8);
+  }, [children, lines]);
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <div ref={ref} className="w-full overflow-hidden" style={open || !long ? undefined : { maxHeight: `${lines * 1.5}rem` }}>
+        {children}
+      </div>
+      {long && (
+        <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="font-mono text-[11px] text-muted underline hover:text-fg">
+          {open ? 'ver menos' : 'ver mais'}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -144,7 +168,7 @@ export function TicketScreen({ ticketId, busy, onBack, onOpen, act, version }: P
             {prio && <span className={prio === 'P1' ? 'text-fg' : ''}>{prio}</span>}
             {running && <span className="font-sans">agente trabalhando…</span>}
           </div>
-          <h1 className="m-0 max-w-[760px] text-[28px] font-semibold leading-tight">{t.titulo}</h1>
+          <h1 className="m-0 max-w-[760px] text-[22px] font-semibold leading-snug">{t.titulo}</h1>
           {d.parent && (
             <p className="m-0 text-xs text-muted">
               Parte de{' '}
@@ -179,14 +203,14 @@ export function TicketScreen({ ticketId, busy, onBack, onOpen, act, version }: P
 
         <Section title="Descrição">
           {t.descricao ? (
-            <p className="m-0 whitespace-pre-wrap break-words text-sm leading-relaxed">{t.descricao}</p>
+            <Clamp lines={10}><div className="text-[13px] leading-relaxed"><Markdown>{t.descricao}</Markdown></div></Clamp>
           ) : (
             <p className="m-0 text-[13px] text-muted">Sem descrição.</p>
           )}
           {criteria.length > 0 && (
             <>
               <h3 className="m-0 mt-2 text-[13px] font-semibold">Critérios de aceite</h3>
-              <ul className="m-0 flex flex-col gap-1 pl-[18px] text-sm leading-normal">
+              <ul className="m-0 flex flex-col gap-1 pl-[18px] text-[13px] leading-normal">
                 {criteria.map((c, i) => (
                   <li key={i}>{c}</li>
                 ))}
@@ -196,7 +220,7 @@ export function TicketScreen({ ticketId, busy, onBack, onOpen, act, version }: P
           {t.resumo && (
             <>
               <h3 className="m-0 mt-2 text-[13px] font-semibold">Resumo</h3>
-              <p className="m-0 whitespace-pre-wrap break-words text-sm leading-relaxed">{t.resumo}</p>
+              <Clamp lines={6}><div className="text-[13px] leading-relaxed"><Markdown>{t.resumo}</Markdown></div></Clamp>
             </>
           )}
         </Section>
@@ -258,7 +282,7 @@ export function TicketScreen({ ticketId, busy, onBack, onOpen, act, version }: P
                   <span className="font-mono text-fg">{c.autor}</span>
                   {c.autorTipo === 'agente' ? ' (agente)' : ''} · <span className="font-mono">{fmtTime(c.criadoEm)}</span>
                 </p>
-                <p className="m-0 whitespace-pre-wrap break-words text-[13px] leading-normal">{c.texto}</p>
+                <Clamp lines={6}><div className="text-[13px] leading-normal"><Markdown>{c.texto}</Markdown></div></Clamp>
               </li>
             ))}
           </ListAnimated>
