@@ -58,6 +58,11 @@ describe('Monitor triage', () => {
     expect(repos.quadro.labels.ofTicket(b.id).map((l) => l.nome)).toContain('frontend');
     expect(repos.tickets.events(a.id).some((e) => e.detalhe?.startsWith('Triagem do monitor'))).toBe(true);
     expect(repos.quadro.cycles.list(project.id)).toHaveLength(1);
+    // the monitor leaves its mark: a label on the tickets it touched and a trail of where it looked
+    expect(repos.quadro.labels.ofTicket(a.id).map((l) => l.nome)).toContain('monitor');
+    const st = monitor.status().estado;
+    expect(st.atividade.some((x) => x.ticket === a.identificador && x.acao.startsWith('triagem'))).toBe(true);
+    expect(st.olhando).not.toBeNull();
   });
 });
 

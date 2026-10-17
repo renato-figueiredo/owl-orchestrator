@@ -191,7 +191,14 @@ export const authStatusApi = () => call<{ required: boolean; authenticated: bool
 
 export interface MonitorStatus {
   config: { ativo: boolean; intervaloMin: number; avisoPct: number; paradaPct: number };
-  estado: { ultimoCiclo: string | null; parado: string | null; iniciados: number; avisos: Array<{ em: string; nivel: 'aviso' | 'parada' | 'info'; texto: string }> };
+  estado: { ultimoCiclo: string | null; parado: string | null; iniciados: number; planoErro?: string | null; planoLidoEm?: string | null; olhando?: MonitorActivity | null; atividade?: MonitorActivity[]; avisos: Array<{ em: string; nivel: 'aviso' | 'parada' | 'info'; texto: string }> };
   dia: { limite: number | null; usado: number; percentual: number | null };
-  plano?: { sessao: number; semana: number };
+  plano?: { sessao: number; semana: number } | null;
+}
+
+export interface MonitorActivity {
+  em: string;
+  projeto: string;
+  ticket: string | null;
+  acao: string;
 }

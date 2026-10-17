@@ -13,6 +13,9 @@ type Repos = ReturnType<typeof createRepos>;
 const KEY = 'monitor';
 const STATE_KEY = 'monitor_estado';
 const MAX_NOTICES = 30;
+const MAX_ACTIVITY = 40;
+/** Tickets the monitor touched wear this label, so the board shows where it has been. */
+export const MONITOR_LABEL = 'monitor';
 /** A run this old with no end is reported (the executor has its own idle limit; this is the person-facing alarm). */
 const STALE_MS = 45 * 60_000;
 /** A ticket whose runs failed this many times is left for a person: retrying by itself would only burn tokens. */
@@ -41,9 +44,10 @@ export function parsePlanUsage(text: string): PlanUsage | undefined {
 /** `claude -p /usage` is answered by the CLI itself: it spends no tokens. */
 export function readPlanUsage(): Promise<PlanUsage | undefined> {
   return new Promise((resolve) => {
-    execFile(process.env.OWL_CLAUDE_BIN || 'claude', ['-p', '/usage'], { cwd: tmpdir(), timeout: 30_000, maxBuffer: 1 << 20 }, (err, stdout) => {
+    const child = execFile(process.env.OWL_CLAUDE_BIN || 'claude', ['-p', '/usage'], { cwd: tmpdir(), timeout: 30_000, maxBuffer: 1 << 20 }, (err, stdout) => {
       resolve(err ? undefined : parsePlanUsage(stdout));
     });
+    child.stdin?.end(); // otherwise the CLI waits 3 s for input that never comes
   });
 }
 
@@ -71,7 +75,19 @@ export interface MonitorNotice {
   nivel: 'aviso' | 'parada' | 'info';
   texto: string;
 }
+export interface MonitorActivity {
+  em: string;
+  projeto: string;
+  /** Ticket identifier, or null for a note about the whole project. */
+  ticket: string | null;
+  acao: string;
+}
 interface MonitorState {
+  /** Where the monitor looked last (project, ticket, what it did), kept after the cycle ends. */
+  olhando: MonitorActivity | null;
+  atividade: MonitorActivity[];
+  planoLidoEm: string | null;
+  planoErro: string | null;
   ultimoCiclo: string | null;
   parado: string | null;
   avisoDia: string | null;
@@ -120,7 +136,7 @@ export class Monitor {
   }
 
   private state(): MonitorState {
-    return { ultimoCiclo: null, parado: null, avisoDia: null, avisos: [], iniciados: 0, ...((this.deps.repos.settings.get(STATE_KEY) as Partial<MonitorState> | undefined) ?? {}) };
+    return { olhando: null, atividade: [], planoLidoEm: null, planoErro: null, ultimoCiclo: null, parado: null, avisoDia: null, avisos: [], iniciados: 0, ...((this.deps.repos.settings.get(STATE_KEY) as Partial<MonitorState> | undefined) ?? {}) };
   }
 
   private setState(patch: Partial<MonitorState>): MonitorState {
@@ -134,13 +150,27 @@ export class Monitor {
     this.setState({ avisos: [{ em: stamp(now), nivel, texto }, ...this.state().avisos].slice(0, MAX_NOTICES) });
   }
 
+  private see(projeto: string, ticket: string | null, acao: string, now: Date): void {
+    const a: MonitorActivity = { em: stamp(now), projeto, ticket, acao };
+    this.setState({ olhando: a, atividade: [a, ...this.state().atividade].slice(0, MAX_ACTIVITY) });
+  }
+
+  /** Marks the ticket as touched by the monitor (a project label, created on first use). */
+  private tag(projectId: string, ticketId: string): void {
+    const { repos, board } = this.deps;
+    const label = repos.quadro.labels.byName(projectId, MONITOR_LABEL) ?? board.createLabel(projectId, MONITOR_LABEL, '#e0a43a');
+    board.addLabel(ticketId, label.id, SYSTEM);
+  }
+
   status() {
-    return { config: this.config(), estado: this.state(), plano: this.plan, dia: this.deps.router.dayUsage(this.deps.now?.() ?? new Date()), rodando: this.timer !== undefined };
+    return { config: this.config(), estado: this.state(), plano: this.plan ?? null, dia: this.deps.router.dayUsage(this.deps.now?.() ?? new Date()), rodando: this.timer !== undefined };
   }
 
   /** Starts the periodic cycle (the server does, tests call `tick`). */
   start(): void {
     this.schedule();
+    // The first reading should not wait a whole interval: the status shows the plan right after the server starts.
+    void this.tick().catch((e: unknown) => console.error('owl monitor failed', e instanceof Error ? e.message : e));
   }
 
   stop(): void {
@@ -160,6 +190,8 @@ export class Monitor {
     this.busy = true;
     try {
       this.plan = await (this.deps.planUsage ?? readPlanUsage)();
+      const at = stamp(this.deps.now?.() ?? new Date());
+      this.setState(this.plan ? { planoLidoEm: at, planoErro: null } : { planoErro: `Não consegui ler \`claude -p /usage\` às ${at}` });
       return this.cycle();
     } finally {
       this.busy = false;
@@ -188,7 +220,8 @@ export class Monitor {
 
     const projects = repos.projects.list().filter((p) => cfg.projetos.length === 0 || cfg.projetos.includes(p.id));
     for (const project of projects) {
-      const tickets = repos.tickets.list(project.id);
+      let tickets = repos.tickets.list(project.id);
+      if (cfg.ativo) this.see(project.nome, null, `examinando ${tickets.filter((t) => t.status === 'backlog' || t.status === 'pronto').length} ticket(s) do backlog`, now);
       for (const t of tickets) {
         for (const r of repos.tickets.runs(t.id)) {
           if (r.status === 'rodando' && now.getTime() - parseDb(r.inicio) > STALE_MS) {
@@ -198,7 +231,10 @@ export class Monitor {
         }
       }
       if (!cfg.ativo) continue;
-      if (cfg.triagem) this.triageProject(project.id, tickets, now);
+      if (cfg.triagem) {
+        this.triageProject(project.id, tickets, now);
+        tickets = repos.tickets.list(project.id); // the triage changed assignees and cycles
+      }
 
       // Without a reading of the plan, only an explicit token budget can vouch for it; with neither, nothing starts.
       if (planPct === undefined && usage.limite === null) {
@@ -216,10 +252,16 @@ export class Monitor {
       if (this.state().parado) this.setState({ parado: null });
 
       const gates = repos.approvals.pendingByProject(project.id).length;
-      if (gates >= cfg.maxPortoesPendentes) continue;
+      if (gates >= cfg.maxPortoesPendentes) {
+        this.see(project.nome, null, `não inicia nada: ${gates} portão(ões) esperando você`, now);
+        continue;
+      }
       const live = tickets.filter((t) => repos.tickets.runs(t.id).some((r) => r.status === 'rodando')).length;
       const room = (repos.projects.get(project.id)?.maxConcorrencia ?? 1) - live;
-      if (room <= 0) continue;
+      if (room <= 0) {
+        this.see(project.nome, null, 'não inicia nada: limite de execuções simultâneas do projeto', now);
+        continue;
+      }
 
       const ready = tickets
         .filter((t) => (t.status === 'pronto' || t.status === 'backlog') && t.responsavel)
@@ -233,6 +275,8 @@ export class Monitor {
         const run = flow.run(t.id, t.responsavel!, TASK);
         if (run) {
           started.push(t.identificador);
+          this.tag(project.id, t.id);
+          this.see(project.nome, t.identificador, `iniciou ${t.responsavel}`, now);
           repos.tickets.addEvent({ ticketId: t.id, ator: SYSTEM, tipo: 'aviso', detalhe: 'Iniciado pelo monitor' });
         }
       }
@@ -270,7 +314,7 @@ export class Monitor {
           changes.push(`responsável ${plan.agente}`);
         }
       }
-      if (repos.quadro.labels.ofTicket(t.id).length === 0) {
+      if (repos.quadro.labels.ofTicket(t.id).filter((l) => l.nome !== MONITOR_LABEL).length === 0) {
         for (const nome of plan.etiquetas) {
           const label = repos.quadro.labels.byName(projectId, nome) ?? board.createLabel(projectId, nome, LABEL_COLORS[nome] ?? '#8b8b99');
           board.addLabel(t.id, label.id, SYSTEM);
@@ -284,6 +328,8 @@ export class Monitor {
       }
       if (changes.length) {
         touched++;
+        this.tag(projectId, t.id);
+        this.see(repos.projects.get(projectId)?.nome ?? projectId, t.identificador, `triagem: ${changes.join(', ')}`, now);
         repos.tickets.addEvent({ ticketId: t.id, ator: SYSTEM, tipo: 'aviso', detalhe: `Triagem do monitor: ${changes.join(', ')}` });
       }
     }
