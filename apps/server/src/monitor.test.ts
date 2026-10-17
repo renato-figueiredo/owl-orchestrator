@@ -40,6 +40,18 @@ function setup(limit: number | null = 1000) {
   return { setPlan, db, repos, project, router, monitor, flow, blockers, ticket, used };
 }
 
+describe('Monitor parents', () => {
+  it('never starts a ticket that has subtasks', async () => {
+    const { monitor, ticket, repos, flow, project } = setup(null);
+    const parent = ticket('pai');
+    repos.tickets.create({ projectId: project.id, titulo: 'filha', status: 'bloqueado', parentId: parent.id } as never, { tipo: 'humano', nome: 'x' } as never);
+    (monitor as unknown as { deps: { planUsage: () => Promise<unknown> } }).deps.planUsage = async () => ({ sessao: 0.1, semana: 0.1 });
+    monitor.save({ ativo: true });
+    expect(await monitor.tick()).toEqual([]);
+    expect(flow.run).not.toHaveBeenCalled();
+  });
+});
+
 describe('Monitor idle ticket', () => {
   it('opens one ticket asking to proceed when nothing runs and the gates are full; authorization lifts the gate limit; activity retracts it', async () => {
     const { monitor, ticket, repos, project, flow } = setup(null);

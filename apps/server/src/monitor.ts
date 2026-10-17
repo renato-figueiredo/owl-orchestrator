@@ -282,6 +282,7 @@ export class Monitor {
       const ready = tickets
         .filter((t) => (t.status === 'pronto' || t.status === 'backlog') && t.responsavel && t.titulo !== IDLE_TITLE)
         .filter((t) => repos.approvals.pendingByTicket(t.id).length === 0)
+        .filter((t) => repos.tickets.children(t.id).length === 0) // a parent is carried by its subtasks, not run itself
         .filter((t) => board.openBlockers(t.id).length === 0)
         .filter((t) => repos.tickets.runs(t.id).filter((r) => r.status === 'erro').length < MAX_FAILED_RUNS)
         .filter((t) => !repos.tickets.runs(t.id).some((r) => r.status === 'rodando'))
