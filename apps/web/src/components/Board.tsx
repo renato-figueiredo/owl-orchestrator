@@ -3,6 +3,7 @@ import { Button, Input, LayoutGroup, motion, Switch, TicketCard, useMotionPrefer
 import { Plus, Settings, Target } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
+import { hashOf, parseHash } from '../lib/nav';
 import { fmtDay, applyFilters, cycleName, FilterBar, FIELD, NO_FILTER, type Filters } from './BoardExtras';
 import { Logo } from './Logo';
 import { GATE_KIND_LABEL } from './ApprovalGate';
@@ -71,6 +72,23 @@ export function dropTarget(tickets: Ticket[], dragged: string, over: string): { 
 export function Board({ project, onOpenProject, pollMs = 3000 }: Props) {
   const [data, setData] = useState<BoardData | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  // A ticket is a history entry, so the browser's Back closes it instead of leaving the board.
+  const openTicket = useCallback((id: string) => {
+    setOpenId(id);
+    history.pushState({ owl: 'ticket' }, '', hashOf('board', id));
+  }, []);
+  const closeTicket = useCallback(() => {
+    setOpenId(null);
+    if ((history.state as { owl?: string } | null)?.owl === 'ticket') history.back();
+  }, []);
+  useEffect(() => {
+    const onPop = () => {
+      const h = parseHash();
+      setOpenId(h.view === 'board' ? h.ticketId : null);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState<'ticket' | 'goal' | null>(null);
   const [needsApproval, setNeedsApproval] = useState(true);
@@ -161,7 +179,7 @@ export function Board({ project, onOpenProject, pollMs = 3000 }: Props) {
         status: 'pronto',
       });
       setCreating(null);
-      setOpenId(t.id);
+      openTicket(t.id);
     });
   };
   const submitGoal = (e: FormEvent<HTMLFormElement>) => {
@@ -187,7 +205,7 @@ export function Board({ project, onOpenProject, pollMs = 3000 }: Props) {
     return (
       <section aria-label={`Quadro de ${project.nome}`} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {errorBanner}
-        <TicketScreen key={openId} ticketId={openId} busy={busy} onBack={() => setOpenId(null)} onOpen={setOpenId} act={act} version={data} />
+        <TicketScreen key={openId} ticketId={openId} busy={busy} onBack={closeTicket} onOpen={openTicket} act={act} version={data} />
       </section>
     );
 
@@ -275,7 +293,7 @@ export function Board({ project, onOpenProject, pollMs = 3000 }: Props) {
                       <span className="font-mono text-[11px] tabular-nums text-muted">{count}</span>
                     </div>
                     {z.key === 'feito' ? (
-                      <DoneColumn tickets={byStatus.get('concluido') ?? []} onOpen={setOpenId} />
+                      <DoneColumn tickets={byStatus.get('concluido') ?? []} onOpen={openTicket} />
                     ) : (
                       <div className="flex min-h-0 flex-1 gap-2.5">
                         {z.cols.map((c) => (
@@ -287,7 +305,7 @@ export function Board({ project, onOpenProject, pollMs = 3000 }: Props) {
                             byId={byId}
                             gates={gates}
                             subtasks={subtasks}
-                            onOpen={setOpenId}
+                            onOpen={openTicket}
                           />
                         ))}
                       </div>

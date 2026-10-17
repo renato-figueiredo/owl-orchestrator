@@ -34,6 +34,7 @@ let data: BoardData;
 let detail: TicketDetail;
 
 beforeEach(() => {
+  history.replaceState(null, '', '#/board'); // a ticket opened by an earlier test must not be what Back returns to
   calls = [];
   data = { estados: [], tickets: [ticket('1'), ticket('2', { status: 'em_andamento', uso: { runs: 1, tokensIn: 100, tokensOut: 50, custoEstimado: 0.01 } })], aprovacoes: [], etiquetas: [], ciclos: [] };
   detail = {
@@ -163,6 +164,24 @@ describe('board', () => {
     await user.type(await screen.findByRole('textbox', { name: 'Novo comentário' }), 'ok, segue');
     await user.click(screen.getByRole('button', { name: 'Comentar' }));
     await waitFor(() => expect(calls.find((c) => c.path === '/tickets/2/comments')?.body).toEqual({ texto: 'ok, segue' }));
+  });
+
+  it('lists comments newest first, five per page, and the browser Back closes the ticket', async () => {
+    detail.comments = Array.from({ length: 7 }, (_, i) => ({ id: `c${i + 1}`, autor: 'dev-back', autorTipo: 'agente' as const, texto: `Comentário número ${i + 1}`, criadoEm: `2026-10-15 10:0${i}:00` }));
+    const user = userEvent.setup();
+    open();
+    await user.click(await screen.findByRole('button', { name: card('2') }));
+    await screen.findByText('Comentário número 7');
+    expect(screen.queryByText('Comentário número 2')).toBeNull(); // 7 comments, 5 per page: the two oldest are on page 2
+    const items = screen.getAllByText(/Comentário número \d/).map((e) => e.textContent);
+    expect(items[0]).toBe('Comentário número 7');
+    await user.click(screen.getByRole('button', { name: /mais antigos/ }));
+    expect(await screen.findByText('Comentário número 1')).toBeInTheDocument();
+
+    expect(location.hash).toBe('#/board/ticket/2');
+    history.back();
+    await waitFor(() => expect(screen.queryByRole('region', { name: /Ticket/ })).toBeNull());
+    expect(await screen.findByRole('button', { name: card('2') })).toBeInTheDocument();
   });
 
   it('creates a ticket and starts a goal', async () => {

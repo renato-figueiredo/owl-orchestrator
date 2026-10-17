@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { parseHash, pushView } from './lib/nav';
 import { AgentLibrary } from './components/AgentLibrary';
 import { Board } from './components/Board';
 import { Pairing } from './components/Pairing';
@@ -51,6 +52,13 @@ function Workspace() {
   const [memMessage, setMemMessage] = useState<string | null>(null);
   const [trashVersion, setTrashVersion] = useState(0);
   const [view, setView] = useState<View>('chat');
+  // The browser's Back/Forward walk the screens: each change of view is a history entry, and a pop sets the view from the address.
+  useEffect(() => pushView(view), [view]);
+  useEffect(() => {
+    const onPop = () => setView(parseHash().view ?? 'chat');
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
   /** The open project (null = "Sem projeto"). Conversations, board, team and memory all follow it. */
   const [boardProjectId, setBoardProjectId] = useState<string | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);

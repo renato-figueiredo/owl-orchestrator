@@ -61,7 +61,7 @@ const usage = (tokens: number, cost: number) => `${fmtCompact(tokens)} tok · ${
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="flex max-w-[760px] flex-none flex-col gap-2.5">
+    <section className="flex max-w-[820px] flex-none flex-col gap-2.5">
       <h2 className="owl-label m-0 font-medium">{title}</h2>
       {children}
     </section>
@@ -149,16 +149,20 @@ export function TicketScreen({ ticketId, busy, onBack, onOpen, act, version }: P
   const criteria = t.criteriosAceite ? lines(t.criteriosAceite) : [];
   const provOf = (r: TicketRun) => r.provedor;
 
+  const runsDesc = [...d.runs].reverse();
+  const commentsDesc = [...d.comments].reverse();
+  const eventsDesc = [...d.events].reverse();
+
   return (
     <div role="region" aria-label={`Ticket ${t.identificador}`} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto xl:flex-row xl:overflow-hidden">
-      <div className="flex min-w-0 flex-1 flex-col gap-6 px-6 pb-10 pt-5 xl:overflow-auto xl:px-10">
+      <div className="flex min-w-0 flex-1 flex-col gap-5 px-6 pb-10 pt-4 xl:overflow-auto xl:px-8">
         <div className="flex items-center gap-2 text-xs text-muted">
           {back}
           <span>/</span>
           <span className="font-mono">{t.identificador}</span>
         </div>
 
-        <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2.5 font-mono text-xs text-muted">
             <span className="rounded-sm border border-line px-1.5 py-0.5">{t.identificador}</span>
             <span role="status" className="flex h-[22px] items-center gap-1.5 rounded-sm bg-raised px-2 font-sans text-xs text-fg">
@@ -168,7 +172,7 @@ export function TicketScreen({ ticketId, busy, onBack, onOpen, act, version }: P
             {prio && <span className={prio === 'P1' ? 'text-fg' : ''}>{prio}</span>}
             {running && <span className="font-sans">agente trabalhando…</span>}
           </div>
-          <h1 className="m-0 max-w-[760px] text-[22px] font-semibold leading-snug">{t.titulo}</h1>
+          <h1 className="m-0 max-w-[820px] text-xl font-semibold leading-snug">{t.titulo}</h1>
           {d.parent && (
             <p className="m-0 text-xs text-muted">
               Parte de{' '}
@@ -181,13 +185,13 @@ export function TicketScreen({ ticketId, busy, onBack, onOpen, act, version }: P
         </div>
 
         {err && (
-          <p role="alert" className="m-0 max-w-[760px] rounded-md border border-danger bg-danger-wash p-2.5 text-[13px] text-danger">
+          <p role="alert" className="m-0 max-w-[820px] rounded-md border border-danger bg-danger-wash p-2.5 text-[13px] text-danger">
             {err}
           </p>
         )}
 
         {pending.length > 0 && (
-          <div className="flex max-w-[760px] flex-none flex-col gap-3">
+          <div className="flex max-w-[820px] flex-none flex-col gap-3">
             {pending.map((a) => (
               <ApprovalGate
                 key={a.id}
@@ -195,15 +199,52 @@ export function TicketScreen({ ticketId, busy, onBack, onOpen, act, version }: P
                 {...(gateStats ? { stats: gateStats } : {})}
                 requester={t.responsavel}
                 provider={provider}
-                onDecide={(dec, c) => act(() => api.decideApproval(a.id, dec, c))}
+                onDecide={(dec, c, conf) => act(() => api.decideApproval(a.id, dec, c, conf))}
               />
             ))}
           </div>
         )}
 
+        <section aria-label="Ações" className="flex max-w-[820px] flex-none flex-col gap-2 rounded-lg border border-line bg-panel p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="sr-only" htmlFor="run-agent">
+              Agente a executar
+            </label>
+            <input id="run-agent" value={agent} onChange={(e) => setAgent(e.target.value)} placeholder={t.responsavel ?? 'nome do agente'} className="h-8 w-40 rounded-md border border-line bg-raised px-2.5 font-mono text-xs hover:border-line-strong" />
+            <Button icon={Play} disabled={busy || running || pending.length > 0 || !(agent.trim() || t.responsavel)} onClick={() => void act(() => api.runTicket(t.id, agent.trim() || undefined))}>
+              Executar agente
+            </Button>
+            <span className="flex-1" />
+            <span className="font-mono text-[11px] tabular-nums text-muted" aria-label="Custo do ticket">
+              {d.uso.runs} {d.uso.runs === 1 ? 'execução' : 'execuções'} · {usage(d.uso.tokensIn + d.uso.tokensOut, d.uso.custoEstimado)}
+              {t.orcamentoTokens ? ` · teto ${fmtCompact(t.orcamentoTokens)} tok` : ''}
+            </span>
+          </div>
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const texto = comment.trim();
+              if (texto) void act(() => api.commentTicket(t.id, texto)).then(() => setComment(''));
+            }}
+          >
+            <label className="sr-only" htmlFor="new-comment">
+              Novo comentário
+            </label>
+            <input id="new-comment" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comentar como você" className="h-8 min-w-0 flex-1 rounded-md border border-line bg-raised px-2.5 text-[13px] hover:border-line-strong" />
+            <Button type="submit" variant="primary" icon={Send} disabled={busy || !comment.trim()}>
+              Comentar
+            </Button>
+          </form>
+        </section>
+
         <Section title="Descrição">
           {t.descricao ? (
-            <Clamp lines={10}><div className="text-[13px] leading-relaxed"><Markdown>{t.descricao}</Markdown></div></Clamp>
+            <Clamp lines={10}>
+              <div className="text-[13px] leading-relaxed">
+                <Markdown>{t.descricao}</Markdown>
+              </div>
+            </Clamp>
           ) : (
             <p className="m-0 text-[13px] text-muted">Sem descrição.</p>
           )}
@@ -220,7 +261,11 @@ export function TicketScreen({ ticketId, busy, onBack, onOpen, act, version }: P
           {t.resumo && (
             <>
               <h3 className="m-0 mt-2 text-[13px] font-semibold">Resumo</h3>
-              <Clamp lines={6}><div className="text-[13px] leading-relaxed"><Markdown>{t.resumo}</Markdown></div></Clamp>
+              <Clamp lines={6}>
+                <div className="text-[13px] leading-relaxed">
+                  <Markdown>{t.resumo}</Markdown>
+                </div>
+              </Clamp>
             </>
           )}
         </Section>
@@ -242,91 +287,82 @@ export function TicketScreen({ ticketId, busy, onBack, onOpen, act, version }: P
           </Section>
         )}
 
-        <Section title="Execuções">
-          {d.runs.length === 0 && <p className="m-0 text-[13px] text-muted">Nenhuma execução ainda.</p>}
-          {d.runs.map((r) => {
-            const st = RUN_STATE[r.status] ?? { glyph: '', label: r.status, cls: 'text-muted' };
-            return (
-              <div key={r.id} title={r.erro ?? undefined} className="grid grid-cols-[110px_1fr_auto_auto] items-center gap-4 rounded-md border border-line bg-panel px-3 py-2 font-mono text-xs">
-                <AgentTag name={r.agente ?? '–'} provider={provOf(r)} />
-                <span className="truncate text-muted">{r.etapa ?? r.modelo ?? ''}</span>
-                <span className="tabular-nums text-muted">{r.tokensIn == null && r.tokensOut == null ? '–' : usage((r.tokensIn ?? 0) + (r.tokensOut ?? 0), r.custoEstimado ?? 0)}</span>
-                <span className={`flex items-center gap-1.5 ${st.cls}`}>
-                  {r.status === 'rodando' ? <OwlEyes /> : st.glyph}
-                  {st.label}
-                </span>
-              </div>
-            );
-          })}
-          <p className="m-0 font-mono text-[11px] tabular-nums text-muted" aria-label="Custo do ticket">
-            {d.uso.runs} {d.uso.runs === 1 ? 'execução' : 'execuções'} · {usage(d.uso.tokensIn + d.uso.tokensOut, d.uso.custoEstimado)}
-            {t.orcamentoTokens ? ` · teto ${fmtCompact(t.orcamentoTokens)} tok` : ''}
-          </p>
-          <div className="flex items-center gap-2">
-            <label className="sr-only" htmlFor="run-agent">
-              Agente a executar
-            </label>
-            <input id="run-agent" value={agent} onChange={(e) => setAgent(e.target.value)} placeholder={t.responsavel ?? 'nome do agente'} className="h-8 rounded-md border border-line bg-raised px-2.5 font-mono text-xs hover:border-line-strong" />
-            <Button icon={Play} disabled={busy || running || pending.length > 0 || !(agent.trim() || t.responsavel)} onClick={() => void act(() => api.runTicket(t.id, agent.trim() || undefined))}>
-              Executar agente
-            </Button>
-          </div>
+        <Section title={`Comentários (${d.comments.length})`}>
+          <Paged items={commentsDesc} size={5} label="comentários" empty="Nenhum comentário.">
+            {(list) => (
+              <ListAnimated className="m-0 flex list-none flex-col gap-2 p-0">
+                {list.map((c) => (
+                  <li key={c.id} className="rounded-md border border-line bg-panel p-3">
+                    <p className="m-0 mb-1 text-xs text-muted">
+                      <span className="font-mono text-fg">{c.autor}</span>
+                      {c.autorTipo === 'agente' ? ' (agente)' : ''} · <span className="font-mono">{fmtTime(c.criadoEm)}</span>
+                    </p>
+                    <Clamp lines={6}>
+                      <div className="text-[13px] leading-normal">
+                        <Markdown>{c.texto}</Markdown>
+                      </div>
+                    </Clamp>
+                  </li>
+                ))}
+              </ListAnimated>
+            )}
+          </Paged>
         </Section>
 
-        <Section title="Comentários">
-          <ListAnimated className="m-0 flex list-none flex-col gap-2 p-0">
-            {d.comments.length === 0 && <li className="text-[13px] text-muted">Nenhum comentário.</li>}
-            {d.comments.map((c) => (
-              <li key={c.id} className="rounded-md border border-line bg-panel p-3">
-                <p className="m-0 mb-1 text-xs text-muted">
-                  <span className="font-mono text-fg">{c.autor}</span>
-                  {c.autorTipo === 'agente' ? ' (agente)' : ''} · <span className="font-mono">{fmtTime(c.criadoEm)}</span>
-                </p>
-                <Clamp lines={6}><div className="text-[13px] leading-normal"><Markdown>{c.texto}</Markdown></div></Clamp>
-              </li>
-            ))}
-          </ListAnimated>
-          <form
-            className="flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const texto = comment.trim();
-              if (texto) void act(() => api.commentTicket(t.id, texto)).then(() => setComment(''));
-            }}
-          >
-            <label className="sr-only" htmlFor="new-comment">
-              Novo comentário
-            </label>
-            <input id="new-comment" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comentar como você" className="h-8 min-w-0 flex-1 rounded-md border border-line bg-raised px-2.5 text-[13px] hover:border-line-strong" />
-            <Button type="submit" variant="primary" icon={Send} disabled={busy || !comment.trim()}>
-              Comentar
-            </Button>
-          </form>
-        </Section>
-
-        <section className="flex max-w-[760px] flex-none flex-col">
-          <h2 className="owl-label m-0 mb-2.5 font-medium">Atividade</h2>
-          <ol aria-label="Atividade" className="m-0 flex list-none flex-col p-0">
-            {d.events.length === 0 && <li className="border-t border-line py-1.5 text-[13px] text-muted">Nada ainda.</li>}
-            {d.events.map((e) => (
-              <li key={e.id} className="grid grid-cols-[52px_1fr] gap-3 border-t border-line py-1.5 text-[13px] leading-normal">
-                <span className="pt-0.5 font-mono text-[11px] text-muted">{fmtTime(e.criadoEm)}</span>
-                <span>
-                  <span className="font-mono text-xs">{e.autor}</span>{' '}
-                  <span className="text-muted">
-                    {EVENT_LABEL[e.tipo] ?? e.tipo}
-                    {e.de || e.para ? ` ${e.de ? `${STATUS_LABEL[e.de as TicketStatus]?.toLowerCase() ?? e.de} → ` : ''}${STATUS_LABEL[e.para as TicketStatus]?.toLowerCase() ?? e.para ?? ''}` : ''}
-                    {e.detalhe ? ` — ${e.detalhe}` : ''}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ol>
+        <section className="flex max-w-[820px] flex-none flex-col gap-2.5">
+          <h2 className="owl-label m-0 font-medium">Atividade</h2>
+          <Paged items={eventsDesc} size={8} label="eventos" empty="Nada ainda.">
+            {(list) => (
+              <ol aria-label="Atividade" className="m-0 flex list-none flex-col p-0">
+                {list.map((e) => (
+                  <li key={e.id} className="grid grid-cols-[52px_1fr] gap-3 border-t border-line py-1.5 text-[13px] leading-normal">
+                    <span className="pt-0.5 font-mono text-[11px] text-muted">{fmtTime(e.criadoEm)}</span>
+                    <span>
+                      <span className="font-mono text-xs">{e.autor}</span>{' '}
+                      <span className="text-muted">
+                        {EVENT_LABEL[e.tipo] ?? e.tipo}
+                        {e.de || e.para ? ` ${e.de ? `${STATUS_LABEL[e.de as TicketStatus]?.toLowerCase() ?? e.de} → ` : ''}${STATUS_LABEL[e.para as TicketStatus]?.toLowerCase() ?? e.para ?? ''}` : ''}
+                        {e.detalhe ? ` — ${e.detalhe}` : ''}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </Paged>
         </section>
       </div>
 
-      <aside aria-label="Propriedades do ticket" className="flex w-full flex-none flex-col gap-4 border-t border-line bg-panel px-[18px] py-5 xl:w-[280px] xl:overflow-auto xl:border-l xl:border-t-0">
-        <div className="grid grid-cols-[88px_1fr] items-center gap-x-2 gap-y-2.5 text-xs">
+      <aside aria-label="Propriedades do ticket" className="flex w-full flex-none flex-col gap-4 border-t border-line bg-panel px-[18px] py-5 xl:w-[340px] xl:overflow-auto xl:border-l xl:border-t-0">
+        <div className="flex flex-col gap-2">
+          <h2 className="owl-label m-0 font-medium">Execuções</h2>
+          <Paged items={runsDesc} size={5} label="execuções" empty="Nenhuma execução ainda.">
+            {(list) => (
+              <div className="flex flex-col gap-1.5">
+                {list.map((r) => {
+                  const st = RUN_STATE[r.status] ?? { glyph: '', label: r.status, cls: 'text-muted' };
+                  return (
+                    <div key={r.id} title={r.erro ?? undefined} className="flex flex-col gap-1 rounded-md border border-line bg-bg px-2.5 py-2 font-mono text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <AgentTag name={r.agente ?? '–'} provider={provOf(r)} />
+                        <span className={`flex items-center gap-1.5 ${st.cls}`}>
+                          {r.status === 'rodando' ? <OwlEyes /> : st.glyph}
+                          {st.label}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-muted">
+                        <span className="truncate">{r.etapa ?? r.modelo ?? ''}</span>
+                        <span className="tabular-nums">{r.tokensIn == null && r.tokensOut == null ? '–' : usage((r.tokensIn ?? 0) + (r.tokensOut ?? 0), r.custoEstimado ?? 0)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Paged>
+        </div>
+
+        <div className="grid grid-cols-[88px_1fr] items-center gap-x-2 gap-y-2.5 border-t border-line pt-4 text-xs">
           <span className="text-muted">Responsável</span>
           {t.responsavel ? <AgentTag name={t.responsavel} provider={provider} running={running} /> : <span className="font-mono text-[11px] text-muted">sem responsável</span>}
           <span className="text-muted">Prioridade</span>
@@ -351,6 +387,32 @@ export function TicketScreen({ ticketId, busy, onBack, onOpen, act, version }: P
 
         <OrganizePanel detail={d} board={version} busy={busy} act={act} onOpen={onOpen} />
       </aside>
+    </div>
+  );
+}
+
+/** Newest first, a few at a time: the list stays short however long the history is. */
+function Paged<T>({ items, size, label, empty, children }: { items: T[]; size: number; label: string; empty: string; children: (page: T[]) => ReactNode }) {
+  const [page, setPage] = useState(0);
+  const pages = Math.max(1, Math.ceil(items.length / size));
+  const at = Math.min(page, pages - 1);
+  if (items.length === 0) return <p className="m-0 text-[13px] text-muted">{empty}</p>;
+  return (
+    <div className="flex flex-col gap-2">
+      {children(items.slice(at * size, at * size + size))}
+      {pages > 1 && (
+        <nav aria-label={`Páginas de ${label}`} className="flex items-center gap-2 font-mono text-[11px] text-muted">
+          <button type="button" disabled={at === 0} onClick={() => setPage(at - 1)} className="rounded-sm border border-line px-2 py-0.5 enabled:hover:text-fg disabled:opacity-40">
+            ← mais novos
+          </button>
+          <span className="tabular-nums">
+            {at + 1} / {pages}
+          </span>
+          <button type="button" disabled={at >= pages - 1} onClick={() => setPage(at + 1)} className="rounded-sm border border-line px-2 py-0.5 enabled:hover:text-fg disabled:opacity-40">
+            mais antigos →
+          </button>
+        </nav>
+      )}
     </div>
   );
 }
