@@ -2,7 +2,7 @@ import { LocalBoard } from '@owl/board';
 import { createRepos, migrate, openDb } from '@owl/db';
 import { describe, expect, it, vi } from 'vitest';
 import type { BoardFlow } from './board-flow.js';
-import { Monitor, parsePlanUsage, type PlanUsage } from './monitor.js';
+import { IDLE_TITLE, Monitor, parsePlanUsage, type PlanUsage } from './monitor.js';
 import { RouterService } from './router.js';
 
 function setup(limit: number | null = 1000) {
@@ -22,6 +22,7 @@ function setup(limit: number | null = 1000) {
     addLabel: real.addLabel.bind(real),
     createLabel: real.createLabel.bind(real),
     assign: real.assign.bind(real),
+    createTicket: real.createTicket.bind(real),
     createCycle: real.createCycle.bind(real),
     assignCycle: real.assignCycle.bind(real),
   };
@@ -37,6 +38,29 @@ function setup(limit: number | null = 1000) {
   const setPlan = (p: PlanUsage | undefined) => (plan = p);
   return { setPlan, db, repos, project, router, monitor, flow, blockers, ticket, used };
 }
+
+describe('Monitor idle ticket', () => {
+  it('opens one ticket asking to proceed when nothing runs and the gates are full; authorization lifts the gate limit; activity retracts it', async () => {
+    const { monitor, ticket, repos, project, flow } = setup(null);
+    for (let i = 0; i < 3; i++) repos.approvals.create({ ticketId: ticket(`g${i}`).id, motivo: 'm', tipo: 'entrega' });
+    ticket('livre'); // work that could start once the gate limit is lifted
+    monitor.save({ ativo: true });
+    // a plan reading is needed to start anything
+    (monitor as unknown as { deps: { planUsage: () => Promise<unknown> } }).deps.planUsage = async () => ({ sessao: 0.1, semana: 0.1 });
+    await monitor.tick();
+    await monitor.tick();
+    const idle = () => repos.tickets.list(project.id).filter((t) => t.titulo === IDLE_TITLE);
+    expect(idle()).toHaveLength(1);
+    expect(idle()[0]!.status).toBe('bloqueado');
+    expect(flow.run).not.toHaveBeenCalled();
+    // the person moves it on: the monitor starts a ticket despite the gates, and takes the ticket back
+    repos.tickets.setStatus(idle()[0]!.id, 'pronto');
+    const started = await monitor.tick();
+    expect(started.length).toBeGreaterThan(0);
+    expect(idle()).toHaveLength(0);
+    expect(monitor.status().estado.autorizados).toEqual([]);
+  });
+});
 
 describe('Monitor triage', () => {
   it('fills labels, priority, estimate, cycle and assignee only where empty, and says so in the history', async () => {

@@ -22,6 +22,8 @@ const STALE_MS = 45 * 60_000;
 const MAX_FAILED_RUNS = 2;
 const CYCLE_DAYS = 14;
 const LABEL_COLORS: Record<string, string> = { frontend: '#6d8cff', backend: '#4fb286', banco: '#d49a3a', núcleo: '#a78bfa', memória: '#e08aa8', roteador: '#5ab4c5', ollama: '#9aa86a', segurança: '#e5605a', docs: '#8b8b99', testes: '#c7a14a' };
+/** Title of the ticket the monitor opens when it sits idle; the triage and the starter leave it alone. */
+export const IDLE_TITLE = 'Monitor ocioso: autorizar para prosseguir';
 const TASK = 'Trabalhe neste ticket conforme a descrição e os critérios de aceite.';
 
 export interface PlanUsage {
@@ -90,6 +92,8 @@ interface MonitorState {
   planoErro: string | null;
   ultimoCiclo: string | null;
   parado: string | null;
+  /** Projects where a person authorized the monitor to go on despite a full queue of gates. */
+  autorizados: string[];
   avisoDia: string | null;
   avisos: MonitorNotice[];
   iniciados: number;
@@ -136,7 +140,7 @@ export class Monitor {
   }
 
   private state(): MonitorState {
-    return { olhando: null, atividade: [], planoLidoEm: null, planoErro: null, ultimoCiclo: null, parado: null, avisoDia: null, avisos: [], iniciados: 0, ...((this.deps.repos.settings.get(STATE_KEY) as Partial<MonitorState> | undefined) ?? {}) };
+    return { olhando: null, atividade: [], planoLidoEm: null, planoErro: null, ultimoCiclo: null, parado: null, autorizados: [], avisoDia: null, avisos: [], iniciados: 0, ...((this.deps.repos.settings.get(STATE_KEY) as Partial<MonitorState> | undefined) ?? {}) };
   }
 
   private setState(patch: Partial<MonitorState>): MonitorState {
@@ -252,11 +256,22 @@ export class Monitor {
       if (this.state().parado) this.setState({ parado: null });
 
       const gates = repos.approvals.pendingByProject(project.id).length;
-      if (gates >= cfg.maxPortoesPendentes) {
+      const idleTicket = tickets.find((t) => t.titulo === IDLE_TITLE && t.status !== 'concluido');
+      const authorized = this.state().autorizados.includes(project.id);
+      const live = tickets.filter((t) => repos.tickets.runs(t.id).some((r) => r.status === 'rodando')).length;
+      const working = live > 0 || tickets.some((t) => t.status === 'em_andamento' || t.status === 'em_revisao');
+      // A person answered the idle ticket (moved it on): that is the authorization to go on past a full queue of gates.
+      if (idleTicket && idleTicket.status !== 'bloqueado' && !authorized) {
+        this.setState({ autorizados: [...this.state().autorizados, project.id] });
+        this.see(project.nome, idleTicket.identificador, 'autorizado por você a prosseguir', now);
+      }
+      if (working) this.retract(project.id, now); // activity is back: the ticket is no longer needed
+      const go = this.state().autorizados.includes(project.id);
+      if (gates >= cfg.maxPortoesPendentes && !go) {
         this.see(project.nome, null, `não inicia nada: ${gates} portão(ões) esperando você`, now);
+        if (!working) this.askToProceed(project.id, tickets, `${gates} portão(ões) esperando decisão`, now);
         continue;
       }
-      const live = tickets.filter((t) => repos.tickets.runs(t.id).some((r) => r.status === 'rodando')).length;
       const room = (repos.projects.get(project.id)?.maxConcorrencia ?? 1) - live;
       if (room <= 0) {
         this.see(project.nome, null, 'não inicia nada: limite de execuções simultâneas do projeto', now);
@@ -264,17 +279,19 @@ export class Monitor {
       }
 
       const ready = tickets
-        .filter((t) => (t.status === 'pronto' || t.status === 'backlog') && t.responsavel)
+        .filter((t) => (t.status === 'pronto' || t.status === 'backlog') && t.responsavel && t.titulo !== IDLE_TITLE)
         .filter((t) => repos.approvals.pendingByTicket(t.id).length === 0)
         .filter((t) => board.openBlockers(t.id).length === 0)
         .filter((t) => repos.tickets.runs(t.id).filter((r) => r.status === 'erro').length < MAX_FAILED_RUNS)
         .filter((t) => !repos.tickets.runs(t.id).some((r) => r.status === 'rodando'))
         .sort((a, b) => b.prioridade - a.prioridade || a.ordem - b.ordem);
+      if (ready.length === 0 && !working) this.askToProceed(project.id, tickets, 'nenhum ticket livre para iniciar (todos bloqueados, com erro repetido ou sem responsável)', now);
       for (const t of ready.slice(0, room)) {
         if (router.overDaily(0, now)) break;
         const run = flow.run(t.id, t.responsavel!, TASK);
         if (run) {
           started.push(t.identificador);
+          this.retract(project.id, now);
           this.tag(project.id, t.id);
           this.see(project.nome, t.identificador, `iniciou ${t.responsavel}`, now);
           repos.tickets.addEvent({ ticketId: t.id, ator: SYSTEM, tipo: 'aviso', detalhe: 'Iniciado pelo monitor' });
@@ -291,7 +308,7 @@ export class Monitor {
   /** Fills only what is empty, and says so in each ticket's history. */
   private triageProject(projectId: string, tickets: Ticket[], now: Date): void {
     const { repos, board } = this.deps;
-    const open = tickets.filter((t) => t.status === 'backlog' || t.status === 'pronto');
+    const open = tickets.filter((t) => (t.status === 'backlog' || t.status === 'pronto') && t.titulo !== IDLE_TITLE);
     if (open.length === 0) return;
     const today = localDay(now);
     let cycle = repos.quadro.cycles.list(projectId).find((c) => c.inicio <= today && today <= c.fim);
@@ -334,6 +351,41 @@ export class Monitor {
       }
     }
     if (touched) this.notice('info', `Triagem: ${touched} ticket(s) completados com etiquetas, prioridade, estimativa, responsável e ciclo.`);
+  }
+
+  /** Opens (once) the ticket that asks a person to let the monitor go on, so it never sits idle without anyone knowing. */
+  private askToProceed(projectId: string, tickets: Ticket[], motivo: string, now: Date): void {
+    const { repos, board } = this.deps;
+    const project = repos.projects.get(projectId)?.nome ?? projectId;
+    const pending = repos.approvals.pendingByProject(projectId);
+    const lista = pending.slice(0, 10).map((a) => `- ${a.ticketIdentificador}: ${a.ticketTitulo}`).join('\n');
+    const existing = tickets.find((t) => t.titulo === IDLE_TITLE && t.status !== 'concluido');
+    if (existing) return;
+    // Idle with nothing left to do is just done: only ask while open work waits.
+    if (!tickets.some((t) => t.titulo !== IDLE_TITLE && ['backlog', 'pronto', 'bloqueado', 'aguardando_aprovacao'].includes(t.status))) return;
+    const t = board.createTicket(
+      {
+        projectId,
+        titulo: IDLE_TITLE,
+        descricao: `Nada está em andamento: ${motivo}.\n\n${lista ? `Esperando você:\n${lista}\n\n` : ''}**Para prosseguir:** decida os portões acima, ou mova este ticket para "Pronto" para autorizar o monitor a seguir mesmo com portões abertos. Se algo voltar a andar, o monitor retira este ticket sozinho.`,
+        status: 'bloqueado',
+      },
+      SYSTEM,
+    );
+    this.tag(projectId, t.id);
+    this.see(project, t.identificador, `abriu ticket pedindo autorização: ${motivo}`, now);
+    this.notice('aviso', `Monitor ocioso em ${project}: ${motivo}. Abri ${t.identificador} pedindo autorização.`);
+  }
+
+  /** Removes the idle ticket (and the authorization it carried) once the monitor has work again. */
+  private retract(projectId: string, now: Date): void {
+    const { repos } = this.deps;
+    const idle = repos.tickets.list(projectId).find((t) => t.titulo === IDLE_TITLE);
+    if (idle) {
+      repos.tickets.delete(idle.id);
+      this.see(repos.projects.get(projectId)?.nome ?? projectId, idle.identificador, 'retirou o ticket de autorização: voltou a ter atividade', now);
+    }
+    if (this.state().autorizados.includes(projectId)) this.setState({ autorizados: this.state().autorizados.filter((p) => p !== projectId) });
   }
 
   private stopAuto(motivo: string, texto: string): void {
