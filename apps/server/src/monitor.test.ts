@@ -1,3 +1,4 @@
+import { LocalBoard } from '@owl/board';
 import { createRepos, migrate, openDb } from '@owl/db';
 import { describe, expect, it, vi } from 'vitest';
 import type { BoardFlow } from './board-flow.js';
@@ -15,7 +16,15 @@ function setup(limit: number | null = 1000) {
   const router = new RouterService({ repos });
   if (limit !== null) router.save({ orcamentoDiaTokens: limit });
   const blockers = new Map<string, unknown[]>();
-  const board = { openBlockers: (id: string) => blockers.get(id) ?? [] };
+  const real = new LocalBoard(repos);
+  const board = {
+    openBlockers: (id: string) => blockers.get(id) ?? [],
+    addLabel: real.addLabel.bind(real),
+    createLabel: real.createLabel.bind(real),
+    assign: real.assign.bind(real),
+    createCycle: real.createCycle.bind(real),
+    assignCycle: real.assignCycle.bind(real),
+  };
   const flow = { run: vi.fn(() => ({ id: 'run' })) };
   let plan: PlanUsage | undefined;
   const monitor = new Monitor({ repos, router, board: board as never, flow: flow as unknown as BoardFlow, planUsage: async () => plan });
@@ -27,6 +36,33 @@ function setup(limit: number | null = 1000) {
   const used = (tokens: number) => db.prepare("INSERT INTO runs (id, provedor, status, tokens_in, tokens_out, inicio) VALUES (?, 'x', 'ok', ?, 0, datetime('now'))").run(`u${tokens}${Math.random()}`, tokens);
   const setPlan = (p: PlanUsage | undefined) => (plan = p);
   return { setPlan, db, repos, project, router, monitor, flow, blockers, ticket, used };
+}
+
+describe('Monitor triage', () => {
+  it('fills labels, priority, estimate, cycle and assignee only where empty, and says so in the history', async () => {
+    const { monitor, ticket, repos, project } = setup(null);
+    const a = ticket('Corrigir vazamento na rota', { descricao: 'Em apps/server/src/app.ts a rota vaza dados de outro projeto.', criteriosAceite: 'Responde 404' });
+    const b = ticket('Botão novo na tela', { descricao: 'Em apps/web/src/components/Board.tsx' });
+    repos.tickets.update(b.id, { prioridade: 1, estimativa: 8 });
+    setPlanFor(monitor);
+    monitor.save({ ativo: true });
+    await monitor.tick();
+    const A = repos.tickets.get(a.id)!;
+    expect(A.prioridade).toBe(4);
+    expect(A.estimativa).not.toBeNull();
+    expect(A.cicloId).toBeTruthy();
+    expect(repos.quadro.labels.ofTicket(a.id).map((l) => l.nome)).toEqual(expect.arrayContaining(['backend', 'segurança']));
+    const B = repos.tickets.get(b.id)!;
+    expect(B.prioridade).toBe(1);
+    expect(B.estimativa).toBe(8);
+    expect(repos.quadro.labels.ofTicket(b.id).map((l) => l.nome)).toContain('frontend');
+    expect(repos.tickets.events(a.id).some((e) => e.detalhe?.startsWith('Triagem do monitor'))).toBe(true);
+    expect(repos.quadro.cycles.list(project.id)).toHaveLength(1);
+  });
+});
+
+function setPlanFor(m: Monitor) {
+  (m as unknown as { plan: unknown }).plan = { sessao: 0.1, semana: 0.1 };
 }
 
 describe('Monitor', () => {

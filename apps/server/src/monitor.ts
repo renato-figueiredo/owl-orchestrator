@@ -1,10 +1,11 @@
 import { execFile } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { SYSTEM } from '@owl/board';
-import type { createRepos } from '@owl/db';
+import type { createRepos, Ticket } from '@owl/db';
 import { z } from 'zod';
 import type { BoardFlow } from './board-flow.js';
 import type { RouterService } from './router.js';
+import { triage } from './triage.js';
 import type { LocalBoard } from '@owl/board';
 
 type Repos = ReturnType<typeof createRepos>;
@@ -16,6 +17,8 @@ const MAX_NOTICES = 30;
 const STALE_MS = 45 * 60_000;
 /** A ticket whose runs failed this many times is left for a person: retrying by itself would only burn tokens. */
 const MAX_FAILED_RUNS = 2;
+const CYCLE_DAYS = 14;
+const LABEL_COLORS: Record<string, string> = { frontend: '#6d8cff', backend: '#4fb286', banco: '#d49a3a', núcleo: '#a78bfa', memória: '#e08aa8', roteador: '#5ab4c5', ollama: '#9aa86a', segurança: '#e5605a', docs: '#8b8b99', testes: '#c7a14a' };
 const TASK = 'Trabalhe neste ticket conforme a descrição e os critérios de aceite.';
 
 export interface PlanUsage {
@@ -48,6 +51,8 @@ export const monitorSchema = z.strictObject({
   /** The kill switch: off, the monitor starts nothing (it may still be asked for a status). */
   ativo: z.boolean(),
   intervaloMin: z.number().int().min(1).max(120),
+  /** Fill in missing labels, priority, estimate, assignee and cycle of backlog tickets (never overwrites what is set). */
+  triagem: z.boolean(),
   /** Share of the daily budget at which a warning is raised (the board keeps working). */
   avisoPct: z.number().min(0.1).max(1),
   /** Share of the daily budget at which the monitor stops starting tickets by itself. */
@@ -58,7 +63,7 @@ export const monitorSchema = z.strictObject({
   projetos: z.array(z.string()).max(100),
 });
 export type MonitorConfig = z.infer<typeof monitorSchema>;
-export const DEFAULT_MONITOR: MonitorConfig = { ativo: false, intervaloMin: 5, avisoPct: 0.7, paradaPct: 0.9, maxPortoesPendentes: 3, projetos: [] };
+export const DEFAULT_MONITOR: MonitorConfig = { ativo: false, intervaloMin: 5, triagem: true, avisoPct: 0.7, paradaPct: 0.9, maxPortoesPendentes: 3, projetos: [] };
 export const monitorPatchSchema = monitorSchema.partial();
 
 export interface MonitorNotice {
@@ -193,6 +198,7 @@ export class Monitor {
         }
       }
       if (!cfg.ativo) continue;
+      if (cfg.triagem) this.triageProject(project.id, tickets, now);
 
       // Without a reading of the plan, only an explicit token budget can vouch for it; with neither, nothing starts.
       if (planPct === undefined && usage.limite === null) {
@@ -236,6 +242,52 @@ export class Monitor {
       this.notice('info', `Iniciou: ${started.join(', ')}.`);
     }
     return started;
+  }
+
+  /** Fills only what is empty, and says so in each ticket's history. */
+  private triageProject(projectId: string, tickets: Ticket[], now: Date): void {
+    const { repos, board } = this.deps;
+    const open = tickets.filter((t) => t.status === 'backlog' || t.status === 'pronto');
+    if (open.length === 0) return;
+    const today = localDay(now);
+    let cycle = repos.quadro.cycles.list(projectId).find((c) => c.inicio <= today && today <= c.fim);
+    let touched = 0;
+    for (const t of open) {
+      const changes: string[] = [];
+      const plan = triage(t);
+      if (t.prioridade === 0) {
+        repos.tickets.update(t.id, { prioridade: plan.prioridade });
+        changes.push(`prioridade ${plan.prioridade}`);
+      }
+      if (t.estimativa === null) {
+        repos.tickets.update(t.id, { estimativa: plan.estimativa });
+        changes.push(`estimativa ${plan.estimativa}`);
+      }
+      if (!t.responsavelAgentId) {
+        const agent = repos.agents.byName(plan.agente);
+        if (agent) {
+          board.assign(t.id, agent.id, SYSTEM);
+          changes.push(`responsável ${plan.agente}`);
+        }
+      }
+      if (repos.quadro.labels.ofTicket(t.id).length === 0) {
+        for (const nome of plan.etiquetas) {
+          const label = repos.quadro.labels.byName(projectId, nome) ?? board.createLabel(projectId, nome, LABEL_COLORS[nome] ?? '#8b8b99');
+          board.addLabel(t.id, label.id, SYSTEM);
+          changes.push(`#${nome}`);
+        }
+      }
+      if (!t.cicloId) {
+        cycle ??= board.createCycle(projectId, { inicio: today, fim: localDay(new Date(now.getTime() + (CYCLE_DAYS - 1) * 86_400_000)) });
+        board.assignCycle(t.id, cycle.id, SYSTEM);
+        changes.push(`Ciclo ${cycle.numero}`);
+      }
+      if (changes.length) {
+        touched++;
+        repos.tickets.addEvent({ ticketId: t.id, ator: SYSTEM, tipo: 'aviso', detalhe: `Triagem do monitor: ${changes.join(', ')}` });
+      }
+    }
+    if (touched) this.notice('info', `Triagem: ${touched} ticket(s) completados com etiquetas, prioridade, estimativa, responsável e ciclo.`);
   }
 
   private stopAuto(motivo: string, texto: string): void {

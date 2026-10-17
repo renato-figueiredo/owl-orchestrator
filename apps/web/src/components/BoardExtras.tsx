@@ -26,14 +26,26 @@ export function LabelChip({ label }: { label: Label }) {
 }
 
 export interface Filters {
-  etiqueta: string;
+  etiqueta: string; // '' = all, 'none' = tickets without a label
   ciclo: string; // '' = all, 'none' = tickets without a cycle
+  busca: string; // text in the title or the identifier
+  responsavel: string; // '' = all, 'none' = unassigned, else the agent name
+  prioridade: string; // '' = all, 'none' = not set, else 1..4
+  situacao: string; // '' = all, 'livre' = nothing blocks it, 'bloqueado' = an open ticket blocks it, 'sem-estimativa'
 }
-export const NO_FILTER: Filters = { etiqueta: '', ciclo: '' };
+export const NO_FILTER: Filters = { etiqueta: '', ciclo: '', busca: '', responsavel: '', prioridade: '', situacao: '' };
 
 export function applyFilters(tickets: Ticket[], f: Filters): Ticket[] {
+  const q = (f.busca ?? '').trim().toLowerCase();
   return tickets.filter(
-    (t) => (!f.etiqueta || (t.etiquetas ?? []).some((l) => l.id === f.etiqueta)) && (!f.ciclo || (f.ciclo === 'none' ? !t.cicloId : t.cicloId === f.ciclo)),
+    (t) =>
+      (!f.etiqueta || (f.etiqueta === 'none' ? (t.etiquetas ?? []).length === 0 : (t.etiquetas ?? []).some((l) => l.id === f.etiqueta))) &&
+      (!f.ciclo || (f.ciclo === 'none' ? !t.cicloId : t.cicloId === f.ciclo)) &&
+      (!q || t.titulo.toLowerCase().includes(q) || t.identificador.toLowerCase().includes(q)) &&
+      (!f.responsavel || (f.responsavel === 'none' ? !t.responsavel : t.responsavel === f.responsavel)) &&
+      (!f.prioridade || (f.prioridade === 'none' ? t.prioridade === 0 : t.prioridade === Number(f.prioridade))) &&
+      (!f.situacao ||
+        (f.situacao === 'livre' ? (t.bloqueadoPor ?? []).length === 0 : f.situacao === 'bloqueado' ? (t.bloqueadoPor ?? []).length > 0 : t.estimativa == null)),
   );
 }
 
@@ -74,6 +86,7 @@ export function FilterBar({ projectId, data, filters, onChange, busy, act }: { p
           Etiqueta
           <select value={filters.etiqueta} onChange={(e) => onChange({ ...filters, etiqueta: e.target.value })} className={`${FIELD} text-fg`}>
             <option value="">todas</option>
+            <option value="none">sem etiqueta</option>
             {data.etiquetas.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.nome}
@@ -92,6 +105,42 @@ export function FilterBar({ projectId, data, filters, onChange, busy, act }: { p
               </option>
             ))}
           </select>
+        </label>
+        <label className="flex items-center gap-2 text-muted">
+          Responsável
+          <select value={filters.responsavel} onChange={(e) => onChange({ ...filters, responsavel: e.target.value })} className={`${FIELD} text-fg`}>
+            <option value="">todos</option>
+            <option value="none">sem responsável</option>
+            {[...new Set(data.tickets.map((t) => t.responsavel).filter((r): r is string => !!r))].sort().map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-muted">
+          Prioridade
+          <select value={filters.prioridade} onChange={(e) => onChange({ ...filters, prioridade: e.target.value })} className={`${FIELD} text-fg`}>
+            <option value="">todas</option>
+            <option value="4">P1 urgente</option>
+            <option value="3">P2</option>
+            <option value="2">P3</option>
+            <option value="1">P3 baixa</option>
+            <option value="none">sem prioridade</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-muted">
+          Situação
+          <select value={filters.situacao} onChange={(e) => onChange({ ...filters, situacao: e.target.value })} className={`${FIELD} text-fg`}>
+            <option value="">todas</option>
+            <option value="livre">livres (nada bloqueia)</option>
+            <option value="bloqueado">bloqueados por outro ticket</option>
+            <option value="sem-estimativa">sem estimativa</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-muted">
+          <span className="sr-only">Buscar</span>
+          <input type="search" value={filters.busca} onChange={(e) => onChange({ ...filters, busca: e.target.value })} placeholder="Buscar título ou SEL-12" className={`${FIELD} w-48 text-fg`} />
         </label>
         {cycle && (
           <span className="font-mono text-[11px] tabular-nums text-muted" aria-label="Progresso do ciclo">
