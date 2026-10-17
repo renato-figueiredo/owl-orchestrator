@@ -235,6 +235,7 @@ export class Monitor {
         }
       }
       if (!cfg.ativo) continue;
+      if (this.releaseBlocked(project.nome, tickets, now)) tickets = repos.tickets.list(project.id);
       if (cfg.triagem) {
         this.triageProject(project.id, tickets, now);
         tickets = repos.tickets.list(project.id); // the triage changed assignees and cycles
@@ -351,6 +352,25 @@ export class Monitor {
       }
     }
     if (touched) this.notice('info', `Triagem: ${touched} ticket(s) completados com etiquetas, prioridade, estimativa, responsável e ciclo.`);
+  }
+
+  /**
+   * A ticket parked in "bloqueado" only because an earlier run was refused for open blockers goes back to "pronto" once
+   * none is left. Any other reason (agent missing, tool refused, server restart) stays with a person.
+   */
+  private releaseBlocked(projeto: string, tickets: Ticket[], now: Date): boolean {
+    const { repos, board } = this.deps;
+    let moved = false;
+    for (const t of tickets) {
+      if (t.status !== 'bloqueado' || t.titulo === IDLE_TITLE || !t.responsavelAgentId) continue;
+      const last = repos.tickets.comments(t.id).at(-1);
+      if (!last || last.autor !== SYSTEM.nome || !/^Falha ao executar .*bloqueado por /.test(last.texto)) continue;
+      if (board.openBlockers(t.id).length > 0 || repos.approvals.pendingByTicket(t.id).length > 0) continue;
+      board.updateStatus(t.id, 'pronto', SYSTEM, { comentario: 'Os bloqueadores terminaram: o monitor devolveu o ticket para Pronto.' });
+      this.see(projeto, t.identificador, 'devolveu para Pronto: bloqueadores terminaram', now);
+      moved = true;
+    }
+    return moved;
   }
 
   /** Opens (once) the ticket that asks a person to let the monitor go on, so it never sits idle without anyone knowing. */

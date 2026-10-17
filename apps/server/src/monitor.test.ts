@@ -19,6 +19,7 @@ function setup(limit: number | null = 1000) {
   const real = new LocalBoard(repos);
   const board = {
     openBlockers: (id: string) => blockers.get(id) ?? [],
+    updateStatus: real.updateStatus.bind(real),
     addLabel: real.addLabel.bind(real),
     createLabel: real.createLabel.bind(real),
     assign: real.assign.bind(real),
@@ -59,6 +60,26 @@ describe('Monitor idle ticket', () => {
     expect(started.length).toBeGreaterThan(0);
     expect(idle()).toHaveLength(0);
     expect(monitor.status().estado.autorizados).toEqual([]);
+  });
+});
+
+describe('Monitor release of blocked tickets', () => {
+  it('returns to Pronto only the tickets parked by open blockers, once those are gone', async () => {
+    const { monitor, ticket, repos, blockers, db } = setup(null);
+    const a = ticket('esperava');
+    const b = ticket('quebrou');
+    const say = (id: string, texto: string) => repos.tickets.addComment({ ticketId: id, ator: { nome: 'sistema', tipo: 'sistema' }, texto });
+    say(a.id, 'Falha ao executar "dev-back": bloqueado por SEL-1 (em_andamento); termine-o antes');
+    say(b.id, 'Falha ao executar "dev-back": ferramentas do agente não são permitidas');
+    db.prepare("UPDATE tickets SET status = 'bloqueado' WHERE id IN (?, ?)").run(a.id, b.id);
+    blockers.set(a.id, [{ identificador: 'SEL-1' }]);
+    monitor.save({ ativo: true });
+    await monitor.tick();
+    expect(repos.tickets.get(a.id)!.status).toBe('bloqueado');
+    blockers.clear();
+    await monitor.tick();
+    expect(repos.tickets.get(a.id)!.status).not.toBe('bloqueado');
+    expect(repos.tickets.get(b.id)!.status).toBe('bloqueado');
   });
 });
 
