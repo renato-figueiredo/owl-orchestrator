@@ -18,6 +18,8 @@ export interface ResumeInfo {
   acao?: 'merge' | 'descartar';
   /** Exact tool rules (`Bash(<command>)`) a `permissao` approval lets the resumed step use, for that step only. */
   ferramentas?: string[];
+  /** A dangerous command: approving needs the person to type it exactly (`confirmacao` on the decision). */
+  confirmar?: string;
 }
 
 export interface Approval {

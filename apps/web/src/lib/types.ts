@@ -279,6 +279,8 @@ export interface TicketApproval {
   status: 'pendente' | 'aprovado' | 'rejeitado';
   comentario: string | null;
   criadoEm: string | null;
+  /** What approving resumes; `confirmar` is a dangerous command the person must type to approve. */
+  retomar?: { confirmar?: string } | null;
   ticketIdentificador?: string;
   ticketTitulo?: string;
 }

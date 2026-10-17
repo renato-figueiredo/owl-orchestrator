@@ -1,5 +1,5 @@
 import { agentActor, BoardError, type Decision, HUMAN, LocalBoard, SYSTEM, ticketBrief, ticketContext, estimateTokens } from '@owl/board';
-import { analyzeTools, isDestructive, CLASSIFIER_PROMPT, complexityOf, fromClassification, needsApproval, routeByRules, withEscalation, type AgentDefinition, type RouteDecision, type Tier } from '@owl/core';
+import { analyzeTools, isDangerous, CLASSIFIER_PROMPT, complexityOf, fromClassification, needsApproval, routeByRules, withEscalation, type AgentDefinition, type RouteDecision, type Tier } from '@owl/core';
 import type { Actor, createRepos, Project, Run, Ticket } from '@owl/db';
 import { z } from 'zod';
 import type { Executor, StepOutcome } from './executor.js';
@@ -605,14 +605,24 @@ export class BoardFlow {
     // A rule is `Bash(<exact command>)`: a command with parentheses or line breaks cannot be written as one, so it is not offered.
     const offered = [...new Map(asked.filter((d) => !/[()\n\r\0]/.test(d.command!)).map((d) => [d.command!, d])).values()];
     if (offered.length === 0) return false;
-    const lines = offered.map((d) => `${isDestructive(d.command!) ? '⚠ ' : ''}${d.command}${d.descricao ? ` — ${d.descricao}` : ''}`);
+    // A dangerous command (install, publish, sudo, remote code...) is asked for alone and approved only by typing it: the
+    // others come back as their own request if the agent still needs them.
+    const risky = offered.find((d) => isDangerous(d.command!));
+    const shown = risky ? [risky] : offered;
+    const lines = shown.map((d) => `${d.command}${d.descricao ? ` — ${d.descricao}` : ''}`);
     board.requestGate(
       ticket.id,
       {
         tipo: 'permissao',
-        motivo: `${agente} pede permissão para rodar:\n${lines.join('\n')}`.slice(0, 1500),
+        motivo: `${risky ? '⚠ COMANDO PERIGOSO. ' : ''}${agente} pede permissão para rodar:\n${lines.join('\n')}`.slice(0, 1500),
         runId: outcome.run.id,
-        retomar: { agente, tarefa, statusAnterior: ticket.status === 'aguardando_aprovacao' ? 'em_andamento' : ticket.status, ferramentas: offered.map((d) => `Bash(${d.command})`) },
+        retomar: {
+          agente,
+          tarefa,
+          statusAnterior: ticket.status === 'aguardando_aprovacao' ? 'em_andamento' : ticket.status,
+          ferramentas: shown.map((d) => `Bash(${d.command})`),
+          ...(risky ? { confirmar: risky.command! } : {}),
+        },
       },
       agentActor(agente),
     );

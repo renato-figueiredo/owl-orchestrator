@@ -1,3 +1,4 @@
+import { DangerGate, needsTyping } from './DangerGate';
 import { Button, GateCard } from '@owl/ui';
 import { Check, ShieldAlert, X } from 'lucide-react';
 import { useState } from 'react';
@@ -46,7 +47,7 @@ export function fmtAgo(criadoEm: string | null | undefined, now = Date.now()): s
   return `há ${Math.floor(min / 1440)} d`;
 }
 
-export type Decide = (decisao: 'aprovado' | 'rejeitado', comentario?: string) => Promise<unknown> | void;
+export type Decide = (decisao: 'aprovado' | 'rejeitado', comentario?: string, confirmacao?: string) => Promise<unknown> | void;
 
 interface Props {
   approval: TicketApproval;
@@ -59,6 +60,7 @@ interface Props {
 /** Compact gate inside a ticket. A "reprovacao" gate has its own two answers (the author redoes it either way). */
 export function ApprovalGate({ approval: a, stats, requester, provider, onDecide }: Props) {
   if (a.tipo === 'reprovacao') return <ReworkGate approval={a} onDecide={onDecide} />;
+  if (needsTyping(a)) return <DangerGate approval={a} onDecide={onDecide} />;
   const action = gateAction(a);
   return (
     <GateCard

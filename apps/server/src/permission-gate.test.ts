@@ -119,6 +119,36 @@ describe('permission requests and questions', () => {
     expect(requests[1]!.prompt).toContain('Sim, mantenha.');
   });
 
+  it('a dangerous command is asked for alone and is approved only with the command typed exactly', async () => {
+    const id = await start();
+    script = [{ type: 'end', result: 'Preciso instalar.', denied: [{ name: 'Bash', command: 'pnpm vitest run' }, { name: 'Bash', command: 'pnpm add left-pad', descricao: 'Instalar a dependência' }] }];
+    await call('POST', `/tickets/${id}/run`, { agente: 'dev-back' });
+    await settle();
+    const gate = pendingOf(id)[0]!;
+    expect(gate.motivo).toContain('COMANDO PERIGOSO');
+    expect(gate.motivo).toContain('pnpm add left-pad');
+    expect(gate.motivo).not.toContain('pnpm vitest run');
+    expect(gate.retomar).toMatchObject({ confirmar: 'pnpm add left-pad', ferramentas: ['Bash(pnpm add left-pad)'] });
+
+    const no = (b: object) => call('POST', `/approvals/${gate.id}/decide`, { decisao: 'aprovado', ...b });
+    expect((await no({})).status).toBe(400);
+    expect((await no({ confirmacao: 'pnpm add left-pa' })).status).toBe(400);
+    expect(pendingOf(id)).toHaveLength(1); // nothing was decided, nothing ran
+    expect(requests).toHaveLength(1);
+    expect((await no({ confirmacao: 'pnpm add left-pad' })).status).toBe(200);
+    await settle();
+    expect(requests[1]!.allowedTools).toContain('Bash(pnpm add left-pad)');
+  });
+
+  it('refusing a dangerous command needs no typing', async () => {
+    const id = await start();
+    script = [{ type: 'end', result: 'x', denied: [{ name: 'Bash', command: 'sudo rm -rf /tmp/x' }] }];
+    await call('POST', `/tickets/${id}/run`, { agente: 'dev-back' });
+    await settle();
+    const gate = pendingOf(id)[0]!;
+    expect((await call('POST', `/approvals/${gate.id}/decide`, { decisao: 'rejeitado', comentario: 'não' })).status).toBe(200);
+  });
+
   it('every board agent is told how to ask (permission and question protocol)', async () => {
     const id = await start();
     await call('POST', `/tickets/${id}/run`, { agente: 'dev-back' });

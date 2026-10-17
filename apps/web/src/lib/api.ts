@@ -140,8 +140,8 @@ export const api = {
   /** Pending ticket approvals (gates) of one project. */
   projectApprovals: (projectId: string) =>
     call<{ aprovacoes: TicketApproval[] }>('GET', `/projects/${encodeURIComponent(projectId)}/approvals`).then((r) => r.aprovacoes),
-  decideApproval: (id: string, decisao: 'aprovado' | 'rejeitado', comentario?: string) =>
-    call<unknown>('POST', `/approvals/${encodeURIComponent(id)}/decide`, { decisao, ...(comentario ? { comentario } : {}) }),
+  decideApproval: (id: string, decisao: 'aprovado' | 'rejeitado', comentario?: string, confirmacao?: string) =>
+    call<unknown>('POST', `/approvals/${encodeURIComponent(id)}/decide`, { decisao, ...(comentario ? { comentario } : {}), ...(confirmacao ? { confirmacao } : {}) }),
   projectView: (id: string) => call<ProjectView>('GET', `/projects/${encodeURIComponent(id)}`),
   updateProject: (id: string, patch: { nome?: string; instrucoes?: string | null; maxConcorrencia?: number | null; branchBase?: string | null }) =>
     call<{ project: Project }>('PATCH', `/projects/${encodeURIComponent(id)}`, patch).then((r) => r.project),

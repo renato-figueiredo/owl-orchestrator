@@ -1,3 +1,4 @@
+import { DangerGate, needsTyping, type DangerDecide } from '../components/DangerGate';
 import { AgentTag, Button, ProviderDot } from '@owl/ui';
 import { Check, Coins, Gauge, KeyRound, MessageCircleQuestion, PackageCheck, RotateCcw, ShieldAlert, Trash2, X, type LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -107,11 +108,11 @@ export function ApprovalsQueue({ projects, currentId, onChanged, pollMs = 4000 }
   const selPending = sel && !selDecided ? pending.find((a) => a.id === sel.id) : undefined;
 
   const decide = useCallback(
-    async (a: Item, decisao: 'aprovado' | 'rejeitado', comentario?: string) => {
+    async (a: Item, decisao: 'aprovado' | 'rejeitado', comentario?: string, confirmacao?: string) => {
       setBusy(true);
       setError(null);
       try {
-        await api.decideApproval(a.id, decisao, comentario);
+        await api.decideApproval(a.id, decisao, comentario, confirmacao);
         const next = pending.find((p) => p.id !== a.id);
         setHistory((h) => [{ ...a, decisao, nota: comentario ?? null, em: Date.now() }, ...h.filter((x) => x.id !== a.id)]);
         setItems((cur) => (cur ?? []).filter((p) => p.id !== a.id));
@@ -145,7 +146,7 @@ export function ApprovalsQueue({ projects, currentId, onChanged, pollMs = 4000 }
         const i = pending.findIndex((a) => a.id === sel?.id);
         const n = pending[Math.min(pending.length - 1, Math.max(0, i + (k === 'j' ? 1 : -1)))];
         if (n) setSelId(n.id);
-      } else if (selPending && selPending.tipo !== 'reprovacao' && !busy) {
+      } else if (selPending && selPending.tipo !== 'reprovacao' && !needsTyping(selPending) && !busy) {
         if (k === 'a') void decide(selPending, 'aprovado');
         if (k === 'r') setRejecting(true);
       }
@@ -195,7 +196,7 @@ export function ApprovalsQueue({ projects, currentId, onChanged, pollMs = 4000 }
         <div className="flex flex-1 flex-col gap-3 overflow-auto p-3.5">
           {!items && <p className="m-0 text-[13px] text-muted">Carregando…</p>}
           {pending.map((a) => (
-            <MobileGate key={a.id} item={a} busy={busy} pulse={fresh.has(a.id)} onDecide={(d, c) => decide(a, d, c)} />
+            <MobileGate key={a.id} item={a} busy={busy} pulse={fresh.has(a.id)} onDecide={(d, c, conf) => decide(a, d, c, conf)} />
           ))}
           {history3.length > 0 && <History items={history3} selId={null} onSelect={() => {}} />}
         </div>
@@ -253,7 +254,7 @@ export function ApprovalsQueue({ projects, currentId, onChanged, pollMs = 4000 }
           reason={reason}
           setReason={setReason}
           fresh={fresh.has(sel.id)}
-          onDecide={(d, c) => decide(sel, d, c)}
+          onDecide={(d, c, conf) => decide(sel, d, c, conf)}
         />
       )}
     </main>
@@ -327,7 +328,7 @@ function Detail({
   reason: string;
   setReason: (v: string) => void;
   fresh: boolean;
-  onDecide: (d: 'aprovado' | 'rejeitado', c?: string) => Promise<unknown>;
+  onDecide: DangerDecide;
 }) {
   const d = useTicketDetail(a.ticketId);
   const Icon = iconOf(a);
@@ -394,7 +395,8 @@ function Detail({
           <ReworkGate approval={a} large onDecide={onDecide} />
         </div>
       )}
-      {!decided && a.tipo !== 'reprovacao' && (
+      {!decided && needsTyping(a) && <DangerGate approval={a} busy={busy} onDecide={onDecide} />}
+      {!decided && a.tipo !== 'reprovacao' && !needsTyping(a) && (
         <div className="sticky bottom-0 flex max-w-[820px] flex-none flex-col gap-2.5 border-t border-line bg-bg pb-1 pt-3">
           {rejecting && (
             <textarea
@@ -446,7 +448,7 @@ function Detail({
 }
 
 /** Narrow screens: the whole gate on one card, 48px buttons. Reprovar asks for the reason in place. */
-function MobileGate({ item: a, busy, pulse, onDecide }: { item: Item; busy: boolean; pulse: boolean; onDecide: (d: 'aprovado' | 'rejeitado', c?: string) => Promise<unknown> }) {
+function MobileGate({ item: a, busy, pulse, onDecide }: { item: Item; busy: boolean; pulse: boolean; onDecide: DangerDecide }) {
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
   const [comment, setComment] = useState('');
@@ -497,7 +499,8 @@ function MobileGate({ item: a, busy, pulse, onDecide }: { item: Item; busy: bool
             className="resize-y rounded-md border border-line-strong bg-raised px-3 py-2.5 text-[15px]"
           />
         )}
-        <div className="flex gap-2">
+        {needsTyping(a) && <DangerGate approval={a} busy={busy} onDecide={onDecide} />}
+        <div className={needsTyping(a) ? 'hidden' : 'flex gap-2'}>
           {rework ? (
             <>
               <Button variant="primary" icon={Check} disabled={busy} style={big} onClick={() => void onDecide('aprovado', comment.trim() || undefined)}>

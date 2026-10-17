@@ -60,7 +60,7 @@ const runBody = z.object({
 });
 const goal = z.object({ objetivo: z.string().trim().min(1).max(20_000) });
 const asAgentBody = z.object(asAgent);
-const decide = z.object({ decisao: z.enum(['aprovado', 'rejeitado']), comentario: z.string().trim().max(20_000).optional() });
+const decide = z.object({ decisao: z.enum(['aprovado', 'rejeitado']), comentario: z.string().trim().max(20_000).optional(), confirmacao: z.string().max(2000).optional() });
 
 /** Routes of the local board (prompt 13). Everything is scoped by project; the board is the agents' message bus. */
 export function registerBoardRoutes(
@@ -297,6 +297,11 @@ export function registerBoardRoutes(
   app.post('/approvals/:id/decide', async (req) => {
     const { id: aid } = id.parse(req.params);
     const body = decide.parse(req.body);
+    // A dangerous command is released only by typing it exactly; the check is here, not just in the screen.
+    const needed = body.decisao === 'aprovado' ? repos.approvals.get(aid)?.retomar?.confirmar : undefined;
+    if (needed !== undefined && body.confirmacao?.trim() !== needed.trim()) {
+      throw new BoardError(400, 'confirmation_required', 'Este comando é perigoso: digite-o exatamente como aparece para aprovar');
+    }
     const decision = board.decide(aid, body.decisao, body.comentario, HUMAN);
     const run = flow.onDecision(decision, body.decisao);
     return { aprovacao: decision.approval, ticket: repos.tickets.get(decision.ticket.id), runId: run?.id ?? null };
