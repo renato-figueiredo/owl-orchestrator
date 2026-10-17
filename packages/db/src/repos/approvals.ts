@@ -4,7 +4,7 @@ import type { Db } from '../connection.js';
 export type ApprovalStatus = 'pendente' | 'aprovado' | 'rejeitado';
 
 /** Why a ticket waits for a human (docs/04-agents-and-board/agents-teams-board.md). Pipeline pauses have no kind. */
-export type GateKind = 'entrega' | 'custo' | 'destrutiva' | 'reprovacao' | 'confianca';
+export type GateKind = 'entrega' | 'custo' | 'destrutiva' | 'reprovacao' | 'confianca' | 'permissao' | 'pergunta';
 
 /** What to do once a gate is approved: the agent step to resume and the status the ticket had. */
 export interface ResumeInfo {
@@ -16,6 +16,8 @@ export interface ResumeInfo {
   tier?: string;
   /** A server-side action the approval releases (prompt 14): merge the ticket branch, or discard its worktree and branch. */
   acao?: 'merge' | 'descartar';
+  /** Exact tool rules (`Bash(<command>)`) a `permissao` approval lets the resumed step use, for that step only. */
+  ferramentas?: string[];
 }
 
 export interface Approval {

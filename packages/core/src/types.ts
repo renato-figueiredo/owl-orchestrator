@@ -1,9 +1,18 @@
+/** A tool call the CLI refused for lack of permission, with the reason the model gave for it. */
+export interface DeniedTool {
+  name: string;
+  /** The Bash command, when the refused tool was Bash. */
+  command?: string;
+  /** What the model said the call was for. */
+  descricao?: string;
+}
+
 export type RunEvent =
   | { type: 'start'; runId: string; provider: string; model?: string }
   | { type: 'text'; delta: string }
   | { type: 'tool'; name: string; input?: unknown }
   | { type: 'usage'; inputTokens?: number; outputTokens?: number; costUsd?: number }
-  | { type: 'end'; result?: string; cliSessionId?: string }
+  | { type: 'end'; result?: string; cliSessionId?: string; denied?: DeniedTool[] }
   | { type: 'error'; message: string }
   | { type: 'cancelled' };
 

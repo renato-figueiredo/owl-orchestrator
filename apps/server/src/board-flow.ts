@@ -1,5 +1,5 @@
 import { agentActor, BoardError, type Decision, HUMAN, LocalBoard, SYSTEM, ticketBrief, ticketContext, estimateTokens } from '@owl/board';
-import { analyzeTools, CLASSIFIER_PROMPT, complexityOf, fromClassification, needsApproval, routeByRules, withEscalation, type AgentDefinition, type RouteDecision, type Tier } from '@owl/core';
+import { analyzeTools, isDestructive, CLASSIFIER_PROMPT, complexityOf, fromClassification, needsApproval, routeByRules, withEscalation, type AgentDefinition, type RouteDecision, type Tier } from '@owl/core';
 import type { Actor, createRepos, Project, Run, Ticket } from '@owl/db';
 import { z } from 'zod';
 import type { Executor, StepOutcome } from './executor.js';
@@ -144,6 +144,8 @@ interface RunOptions {
   ignorarBloqueio?: boolean;
   tier?: Tier;
   decision?: RouteDecision;
+  /** Exact `Bash(<command>)` rules a person approved for this step only. */
+  ferramentasExtras?: string[];
 }
 
 type Role = 'po' | 'techlead' | 'dev' | 'qa' | 'revisor' | 'memoria' | string;
@@ -157,6 +159,15 @@ type Role = 'po' | 'techlead' | 'dev' | 'qa' | 'revisor' | 'memoria' | string;
  * Example flow: objective → `po` writes the ticket → `tech-lead` splits it → `dev-*` execute each sub-task → `qa`
  * verifies → delivery gate (person approves) → `memoria` summarizes and records facts.
  */
+/** How agents reach the person without a failed run: a denied command becomes a request, a question ends the reply. */
+const AGENT_PROTOCOL = `
+
+## Quando precisar de algo que só a pessoa pode dar
+- Se um comando for recusado por falta de permissão, **não tente contornar**: diga qual comando precisa e por quê, em uma frase, e pare. O OWL mostra o pedido à pessoa; se ela aprovar, você roda de novo com o comando liberado.
+- Se tiver uma dúvida que só a pessoa resolve (escopo, decisão de produto, algo ambíguo), termine a resposta com uma linha \`PERGUNTA: <a pergunta>\` e pare. A resposta dela volta como comentário do ticket.`;
+const QUESTION = /^\s*PERGUNTA:\s*([\s\S]{3,1500})$/m;
+const MAX_PERMISSION_GATES = 5;
+
 export class BoardFlow {
   private readonly names: Required<NonNullable<BoardFlowDeps['agentes']>>;
 
@@ -182,7 +193,7 @@ export class BoardFlow {
     let systemAppend: string;
     try {
       def = this.deps.library.agent(agente);
-      systemAppend = this.deps.library.systemPrompt(def);
+      systemAppend = this.deps.library.systemPrompt(def) + AGENT_PROTOCOL;
     } catch (e) {
       this.fail(ticket, agente, e instanceof Error ? e.message : String(e));
       return undefined;
@@ -309,10 +320,10 @@ export class BoardFlow {
       stateless: true,
       recordUserMessage: false,
       storeAs: false,
-      ...(def.ferramentas.length ? { allowedTools: def.ferramentas } : {}),
+      ...(def.ferramentas.length ? { allowedTools: [...def.ferramentas, ...(opts.ferramentasExtras ?? [])] } : {}),
       noTools: def.ferramentas.length === 0,
       confineReads: true,
-      after: (outcome) => this.afterRun(ticketId, agente, role, expected, outcome, tools.writes),
+      after: (outcome) => this.afterRun(ticketId, agente, role, expected, outcome, tools.writes, tarefa),
     });
   }
 
@@ -441,7 +452,7 @@ export class BoardFlow {
       // The paused step goes on; an approved cost gate lets exactly this step past the ceiling.
       if (r?.agente && r.tarefa) {
         const tier = approval.tipo === 'confianca' && TIER_NAMES.has(r.tier ?? '') ? (r.tier as Tier) : undefined;
-        return this.run(ticket.id, r.agente, r.tarefa, { force: approval.tipo === 'custo', ignorarBloqueio: true, ...(tier ? { tier } : {}) });
+        return this.run(ticket.id, r.agente, r.tarefa, { force: approval.tipo === 'custo', ignorarBloqueio: true, ...(tier ? { tier } : {}), ...(approval.tipo === 'permissao' && r.ferramentas?.length ? { ferramentasExtras: r.ferramentas } : {}) });
       }
       // A reproval the person confirmed: the author reworks it.
       if (approval.tipo === 'reprovacao') return this.rework(ticket);
@@ -449,6 +460,11 @@ export class BoardFlow {
     }
     // Rejected delivery or reproval: the ticket is back in progress with the person's comment on it, and the
     // responsible agent tries again. Rejecting a cost, destructive or low-confidence gate means "do not": nothing runs.
+    // A refused permission or a question the person declined to answer: the same agent goes on, told what was said.
+    if ((approval.tipo === 'permissao' || approval.tipo === 'pergunta') && approval.retomar?.agente && approval.retomar.tarefa) {
+      const note = approval.tipo === 'permissao' ? 'A permissão pedida foi recusada (veja o último comentário): siga sem esse comando e diga o que não pôde verificar.' : 'A pessoa não respondeu à pergunta como esperado (veja o último comentário): siga com a melhor suposição e diga qual foi.';
+      return this.run(ticket.id, approval.retomar.agente, `${approval.retomar.tarefa}\n\n${note}`, { ignorarBloqueio: true });
+    }
     return approval.tipo === 'entrega' || approval.tipo === 'reprovacao' ? this.rework(ticket) : undefined;
   }
 
@@ -517,7 +533,7 @@ export class BoardFlow {
     return this.run(t.id, t.responsavel, 'A entrega foi devolvida. Leia os últimos comentários, corrija o que foi apontado e responda com a versão revisada.');
   }
 
-  private afterRun(ticketId: string, agente: string, role: Role, expected: string, outcome: StepOutcome, wrote: boolean): void {
+  private afterRun(ticketId: string, agente: string, role: Role, expected: string, outcome: StepOutcome, wrote: boolean, tarefa: string): void {
     const { repos, board } = this.deps;
     const ticket = repos.tickets.get(ticketId);
     if (!ticket) return;
@@ -543,6 +559,23 @@ export class BoardFlow {
     // A person may have moved the card while the agent worked: then the answer is only a comment.
     if (ticket.status !== expected) return;
 
+    // A refused command becomes a request to the person, and a question ends the step at a gate: neither is a failure.
+    if (this.askPermission(ticket, agente, tarefa, outcome)) return;
+    const question = QUESTION.exec(text)?.[1]?.trim();
+    if (question) {
+      board.requestGate(
+        ticketId,
+        {
+          tipo: 'pergunta',
+          motivo: question.slice(0, 1500),
+          runId: outcome.run.id,
+          retomar: { agente, tarefa: `${tarefa}\n\nA pessoa respondeu à sua pergunta nos últimos comentários do ticket; continue a partir da resposta.`, statusAnterior: ticket.status === 'aguardando_aprovacao' ? 'em_andamento' : ticket.status },
+        },
+        who,
+      );
+      return;
+    }
+
     switch (role) {
       case 'po':
         return this.afterPo(ticket, text, who);
@@ -558,6 +591,32 @@ export class BoardFlow {
         board.updateStatus(ticketId, 'em_revisao', who);
         this.run(ticketId, this.names.qa, QA_TASK);
     }
+  }
+
+  /**
+   * Bash commands the CLI refused become one gate: what to run and why. Approving runs the same step again with exactly
+   * those commands allowed; refusing sends the agent on without them. Returns whether a gate was opened.
+   */
+  private askPermission(ticket: Ticket, agente: string, tarefa: string, outcome: StepOutcome): boolean {
+    const { repos, board } = this.deps;
+    const asked = (outcome.denied ?? []).filter((d) => d.name === 'Bash' && d.command);
+    if (asked.length === 0) return false;
+    if (repos.approvals.byTicket(ticket.id).filter((a) => a.tipo === 'permissao').length >= MAX_PERMISSION_GATES) return false;
+    // A rule is `Bash(<exact command>)`: a command with parentheses or line breaks cannot be written as one, so it is not offered.
+    const offered = [...new Map(asked.filter((d) => !/[()\n\r\0]/.test(d.command!)).map((d) => [d.command!, d])).values()];
+    if (offered.length === 0) return false;
+    const lines = offered.map((d) => `${isDestructive(d.command!) ? '⚠ ' : ''}${d.command}${d.descricao ? ` — ${d.descricao}` : ''}`);
+    board.requestGate(
+      ticket.id,
+      {
+        tipo: 'permissao',
+        motivo: `${agente} pede permissão para rodar:\n${lines.join('\n')}`.slice(0, 1500),
+        runId: outcome.run.id,
+        retomar: { agente, tarefa, statusAnterior: ticket.status === 'aguardando_aprovacao' ? 'em_andamento' : ticket.status, ferramentas: offered.map((d) => `Bash(${d.command})`) },
+      },
+      agentActor(agente),
+    );
+    return true;
   }
 
   private afterPo(ticket: Ticket, text: string, who: Actor): void {

@@ -270,7 +270,7 @@ export interface Cycle {
   fim: string;
   progresso?: CycleProgress;
 }
-export type GateKind = 'entrega' | 'custo' | 'destrutiva' | 'reprovacao' | 'confianca';
+export type GateKind = 'entrega' | 'custo' | 'destrutiva' | 'reprovacao' | 'confianca' | 'permissao' | 'pergunta';
 export interface TicketApproval {
   id: string;
   ticketId: string;

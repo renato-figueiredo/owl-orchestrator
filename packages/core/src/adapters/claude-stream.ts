@@ -1,8 +1,24 @@
-import type { RunEvent } from '../types.js';
+import type { DeniedTool, RunEvent } from '../types.js';
 
 type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
 const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
+
+/** `permission_denials` of the CLI's result: what the model tried and was not allowed to run. */
+function deniedTools(v: unknown): DeniedTool[] {
+  if (!Array.isArray(v)) return [];
+  const out: DeniedTool[] = [];
+  for (const d of v) {
+    if (!isObj(d) || typeof d.tool_name !== 'string') continue;
+    const input = isObj(d.tool_input) ? d.tool_input : {};
+    out.push({
+      name: d.tool_name,
+      ...(typeof input.command === 'string' ? { command: input.command.slice(0, 1000) } : {}),
+      ...(typeof input.description === 'string' ? { descricao: input.description.slice(0, 300) } : {}),
+    });
+  }
+  return out;
+}
 
 /**
  * Translates `claude -p --output-format stream-json --verbose --include-partial-messages` lines into RunEvents.
@@ -91,8 +107,10 @@ export class ClaudeStreamParser {
     if (raw.is_error === true || (typeof raw.subtype === 'string' && raw.subtype.startsWith('error'))) {
       out.push({ type: 'error', message: text ?? `claude finished with ${String(raw.subtype ?? 'an error')}` });
     } else {
+      const denied = deniedTools(raw.permission_denials);
       out.push({
         type: 'end',
+        ...(denied.length ? { denied } : {}),
         ...(text !== undefined ? { result: text } : {}),
         ...(typeof raw.session_id === 'string' ? { cliSessionId: raw.session_id } : {}),
       });

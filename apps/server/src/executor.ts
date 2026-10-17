@@ -1,4 +1,4 @@
-import { getAdapter, keepAliveFor, type LocalMemoria, type ProviderAdapter, type RunEvent } from '@owl/core';
+import { getAdapter, keepAliveFor, type DeniedTool, type LocalMemoria, type ProviderAdapter, type RunEvent } from '@owl/core';
 import type { createRepos, Run, RunStatus } from '@owl/db';
 
 type Repos = ReturnType<typeof createRepos>;
@@ -10,6 +10,8 @@ export interface StepOutcome {
   /** The reply as stored (last message for Codex, full text for Claude). */
   result: string;
   error?: string;
+  /** Tool calls the provider refused for lack of permission (the board turns Bash ones into a request to the person). */
+  denied?: DeniedTool[];
 }
 
 /** Supplies the memory block for a run (see `MemoryService`). */
@@ -373,8 +375,10 @@ export class Executor {
     let status: Exclude<RunStatus, 'rodando'>;
     let erro: string | undefined;
     let result = '';
+    let denied: DeniedTool[] | undefined;
     if (terminal.type === 'end') {
       status = 'ok';
+      denied = terminal.denied;
       result = terminal.result ?? text;
       // An empty reply is not a message: nothing to show, and a pipeline treats it as a failed step.
       if (result.trim() && input.storeAs !== false) {
@@ -400,17 +404,17 @@ export class Executor {
       ...(erro !== undefined ? { erro } : {}),
     });
     if (Object.keys(memoryCalls).length) repos.runs.setMemoryCalls(run.id, memoryCalls);
-    this.runAfter(entry, status, result, erro);
+    this.runAfter(entry, status, result, erro, denied);
     // Persist first, announce after: a client that reacts to the terminal event must find the final state.
     this.emit(entry, terminal);
     this.settle(entry);
   }
 
-  private runAfter(entry: Entry, status: Exclude<RunStatus, 'rodando'>, result: string, erro: string | undefined): void {
+  private runAfter(entry: Entry, status: Exclude<RunStatus, 'rodando'>, result: string, erro: string | undefined, denied?: DeniedTool[]): void {
     const { after } = entry.input;
     if (!after && !this.afterRun && !this.attachments) return;
     try {
-      const outcome: StepOutcome = { run: this.repos.runs.get(entry.run.id)!, status, result, ...(erro !== undefined ? { error: erro } : {}) };
+      const outcome: StepOutcome = { run: this.repos.runs.get(entry.run.id)!, status, result, ...(erro !== undefined ? { error: erro } : {}), ...(denied?.length ? { denied } : {}) };
       after?.(outcome);
       this.attachments?.afterRun({ status, input: entry.input });
       this.afterRun?.({ ...outcome, input: entry.input });

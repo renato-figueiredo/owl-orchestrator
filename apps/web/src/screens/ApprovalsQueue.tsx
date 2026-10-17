@@ -1,5 +1,5 @@
 import { AgentTag, Button, ProviderDot } from '@owl/ui';
-import { Check, Coins, Gauge, PackageCheck, RotateCcw, ShieldAlert, Trash2, X, type LucideIcon } from 'lucide-react';
+import { Check, Coins, Gauge, KeyRound, MessageCircleQuestion, PackageCheck, RotateCcw, ShieldAlert, Trash2, X, type LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { GATE_KIND_HINT, gateAction, fmtAgo, kindLabel, kindRisk, ReworkGate } from '../components/ApprovalGate';
 import { api } from '../lib/api';
@@ -8,7 +8,7 @@ import type { GateKind, Project, TicketApproval, TicketDetail } from '../lib/typ
 
 const message = (e: unknown) => (e instanceof Error ? e.message : 'Algo deu errado');
 
-const KIND_ICON: Record<GateKind, LucideIcon> = { entrega: PackageCheck, custo: Coins, destrutiva: Trash2, reprovacao: RotateCcw, confianca: Gauge };
+const KIND_ICON: Record<GateKind, LucideIcon> = { entrega: PackageCheck, custo: Coins, destrutiva: Trash2, reprovacao: RotateCcw, confianca: Gauge, permissao: KeyRound, pergunta: MessageCircleQuestion };
 const iconOf = (a: Pick<TicketApproval, 'tipo'>): LucideIcon => (a.tipo ? KIND_ICON[a.tipo] : ShieldAlert);
 
 /** A pending gate with the project it belongs to. */
@@ -349,7 +349,7 @@ function Detail({
           <span className="rounded-sm border border-line px-1.5 py-0.5 font-mono text-[11px] text-muted">{a.ticketIdentificador}</span>
         </div>
         <h2 className="m-0 text-2xl font-semibold leading-tight">{a.ticketTitulo ?? a.motivo}</h2>
-        <p className="m-0 text-sm leading-relaxed text-muted">{a.motivo}</p>
+        <p className="m-0 whitespace-pre-wrap break-words text-sm leading-relaxed text-muted">{a.motivo}</p>
         {a.tipo && <p className="m-0 text-xs text-muted">{GATE_KIND_HINT[a.tipo]}</p>}
       </div>
 

@@ -25,6 +25,8 @@ export const GATE_LABEL: Record<GateKind, string> = {
   destrutiva: 'Ação destrutiva',
   reprovacao: 'Reprovação do revisor',
   confianca: 'Baixa confiança do roteador',
+  permissao: 'Pedido de permissão',
+  pergunta: 'Pergunta do agente',
 };
 
 export { isDestructive } from '@owl/core';

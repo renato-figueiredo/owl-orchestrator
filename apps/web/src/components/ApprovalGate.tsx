@@ -10,6 +10,8 @@ export const GATE_KIND_LABEL: Record<GateKind, string> = {
   destrutiva: 'Ação destrutiva',
   reprovacao: 'Reprovação',
   confianca: 'Baixa confiança',
+  permissao: 'Pedido de permissão',
+  pergunta: 'Pergunta do agente',
 };
 /** What each kind means, one sentence, for the detail view. */
 export const GATE_KIND_HINT: Record<GateKind, string> = {
@@ -18,9 +20,11 @@ export const GATE_KIND_HINT: Record<GateKind, string> = {
   destrutiva: 'Uma ação que apaga, mescla ou publica espera sua decisão.',
   reprovacao: 'O revisor reprovou a entrega; o autor refaz de qualquer jeito.',
   confianca: 'O roteador não teve confiança na escolha do modelo.',
+  permissao: 'O agente precisa rodar um comando que não está liberado. Aprovar libera só esse comando, nesta tentativa; recusar manda o agente seguir sem ele.',
+  pergunta: 'O agente parou porque precisa de uma resposta sua. Escreva a resposta no comentário; ele continua a partir dela.',
 };
 /** Risk bars by kind. The backend has no risk score, so this is a fixed reading of the kind. */
-export const GATE_RISK: Record<GateKind, 'baixo' | 'médio' | 'alto'> = { entrega: 'médio', custo: 'médio', destrutiva: 'alto', reprovacao: 'baixo', confianca: 'baixo' };
+export const GATE_RISK: Record<GateKind, 'baixo' | 'médio' | 'alto'> = { entrega: 'médio', custo: 'médio', destrutiva: 'alto', reprovacao: 'baixo', confianca: 'baixo', permissao: 'alto', pergunta: 'baixo' };
 
 export const kindLabel = (a: Pick<TicketApproval, 'tipo'>) => (a.tipo ? GATE_KIND_LABEL[a.tipo] : 'Aprovação');
 export const kindRisk = (a: Pick<TicketApproval, 'tipo'>) => (a.tipo ? GATE_RISK[a.tipo] : 'médio');
