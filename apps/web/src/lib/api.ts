@@ -193,4 +193,5 @@ export interface MonitorStatus {
   config: { ativo: boolean; intervaloMin: number; avisoPct: number; paradaPct: number };
   estado: { ultimoCiclo: string | null; parado: string | null; iniciados: number; avisos: Array<{ em: string; nivel: 'aviso' | 'parada' | 'info'; texto: string }> };
   dia: { limite: number | null; usado: number; percentual: number | null };
+  plano?: { sessao: number; semana: number };
 }

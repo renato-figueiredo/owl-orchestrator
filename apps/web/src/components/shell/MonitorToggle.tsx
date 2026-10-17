@@ -21,12 +21,15 @@ export function MonitorToggle() {
   }, []);
   if (!s) return null;
   const on = s.config.ativo;
-  const pct = s.dia.percentual;
-  const warn = pct !== null && pct >= s.config.avisoPct;
+  const pct = s.dia.percentual ?? null;
+  const plan = s.plano ? Math.max(s.plano.sessao, s.plano.semana) : null;
+  const shown = plan ?? pct;
+  const warn = shown !== null && shown >= s.config.avisoPct;
   const last = s.estado.avisos[0];
   const detail = [
     on ? (s.estado.parado ? `parado: ${s.estado.parado}` : 'vigiando o backlog') : 'desligado',
-    pct !== null ? `uso do dia ${Math.floor(pct * 100)}%` : null,
+    s.plano ? `plano: sessão ${Math.floor(s.plano.sessao * 100)}%, semana ${Math.floor(s.plano.semana * 100)}%` : null,
+    pct !== null ? `orçamento de tokens do dia ${Math.floor(pct * 100)}%` : null,
     last ? last.texto : null,
   ]
     .filter(Boolean)
@@ -42,7 +45,7 @@ export function MonitorToggle() {
     >
       {on ? <Pause size={12} aria-hidden="true" /> : <Play size={12} aria-hidden="true" />}
       Monitor {on ? (s.estado.parado ? 'parado' : 'ligado') : 'off'}
-      {warn && pct !== null && <span>{Math.floor(pct * 100)}%</span>}
+      {shown !== null && <span>{Math.floor(shown * 100)}%</span>}
     </button>
   );
 }

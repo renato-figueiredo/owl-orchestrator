@@ -1,3 +1,5 @@
+import { execFile } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { SYSTEM } from '@owl/board';
 import type { createRepos } from '@owl/db';
 import { z } from 'zod';
@@ -15,6 +17,32 @@ const STALE_MS = 45 * 60_000;
 /** A ticket whose runs failed this many times is left for a person: retrying by itself would only burn tokens. */
 const MAX_FAILED_RUNS = 2;
 const TASK = 'Trabalhe neste ticket conforme a descrição e os critérios de aceite.';
+
+export interface PlanUsage {
+  /** Share (0..1) of the current session and of the week, as `claude -p /usage` prints them. */
+  sessao: number;
+  semana: number;
+}
+
+/** Reads "Current session: 40% used" and "Current week (all models): 61% used"; undefined when the text has another shape. */
+export function parsePlanUsage(text: string): PlanUsage | undefined {
+  const pct = (re: RegExp) => {
+    const m = re.exec(text);
+    return m ? Number(m[1]) / 100 : undefined;
+  };
+  const sessao = pct(/Current session:\s*(\d{1,3})%/i);
+  const semana = pct(/Current week \(all models\):\s*(\d{1,3})%/i);
+  return sessao === undefined || semana === undefined ? undefined : { sessao, semana };
+}
+
+/** `claude -p /usage` is answered by the CLI itself: it spends no tokens. */
+export function readPlanUsage(): Promise<PlanUsage | undefined> {
+  return new Promise((resolve) => {
+    execFile(process.env.OWL_CLAUDE_BIN || 'claude', ['-p', '/usage'], { cwd: tmpdir(), timeout: 30_000, maxBuffer: 1 << 20 }, (err, stdout) => {
+      resolve(err ? undefined : parsePlanUsage(stdout));
+    });
+  });
+}
 
 export const monitorSchema = z.strictObject({
   /** The kill switch: off, the monitor starts nothing (it may still be asked for a status). */
@@ -56,6 +84,8 @@ export interface MonitorDeps {
   flow: BoardFlow;
   router: RouterService;
   now?: () => Date;
+  /** How the plan's usage is read; defaults to `claude -p /usage`. */
+  planUsage?: () => Promise<PlanUsage | undefined>;
 }
 
 /**
@@ -66,6 +96,7 @@ export interface MonitorDeps {
 export class Monitor {
   private timer: NodeJS.Timeout | undefined;
   private busy = false;
+  private plan: PlanUsage | undefined;
 
   constructor(private readonly deps: MonitorDeps) {}
 
@@ -99,7 +130,7 @@ export class Monitor {
   }
 
   status() {
-    return { config: this.config(), estado: this.state(), dia: this.deps.router.dayUsage(this.deps.now?.() ?? new Date()), rodando: this.timer !== undefined };
+    return { config: this.config(), estado: this.state(), plano: this.plan, dia: this.deps.router.dayUsage(this.deps.now?.() ?? new Date()), rodando: this.timer !== undefined };
   }
 
   /** Starts the periodic cycle (the server does, tests call `tick`). */
@@ -123,6 +154,7 @@ export class Monitor {
     if (this.busy) return [];
     this.busy = true;
     try {
+      this.plan = await (this.deps.planUsage ?? readPlanUsage)();
       return this.cycle();
     } finally {
       this.busy = false;
@@ -137,8 +169,14 @@ export class Monitor {
     const started: string[] = [];
 
     const usage = router.dayUsage(now);
+    const plan = this.plan;
+    // The plan is what really limits the person; the token budget is an optional extra ceiling.
+    const planPct = plan ? Math.max(plan.sessao, plan.semana) : undefined;
     const state = this.state();
-    if (usage.percentual !== null && usage.percentual >= cfg.avisoPct && state.avisoDia !== localDay(now)) {
+    if (planPct !== undefined && planPct >= cfg.avisoPct && state.avisoDia !== localDay(now)) {
+      this.notice('aviso', `Plano do Claude em ${Math.floor(planPct * 100)}% (sessão ${Math.floor(plan!.sessao * 100)}%, semana ${Math.floor(plan!.semana * 100)}%).`);
+      this.setState({ avisoDia: localDay(now) });
+    } else if (usage.percentual !== null && usage.percentual >= cfg.avisoPct && state.avisoDia !== localDay(now)) {
       this.notice('aviso', `Uso do dia em ${Math.floor(usage.percentual * 100)}% do orçamento (${usage.usado} de ${usage.limite} tokens).`);
       this.setState({ avisoDia: localDay(now) });
     }
@@ -156,15 +194,20 @@ export class Monitor {
       }
       if (!cfg.ativo) continue;
 
-      if (usage.limite === null) {
-        if (this.state().parado !== 'sem orçamento diário') this.stopAuto('sem orçamento diário', 'Monitor parado: defina o orçamento diário do roteador para ele iniciar tickets sozinho.');
+      // Without a reading of the plan, only an explicit token budget can vouch for it; with neither, nothing starts.
+      if (planPct === undefined && usage.limite === null) {
+        if (this.state().parado !== 'sem medida de uso') this.stopAuto('sem medida de uso', 'Monitor parado: não consegui ler o uso do plano (`claude -p /usage`) e não há orçamento diário definido.');
+        continue;
+      }
+      if (planPct !== undefined && planPct >= cfg.paradaPct) {
+        if (!this.state().parado) this.stopAuto('plano', `Monitor parado: plano do Claude em ${Math.floor(planPct * 100)}%, acima de ${Math.floor(cfg.paradaPct * 100)}%. Religa sozinho quando a sessão renovar ou quando você reativar.`);
         continue;
       }
       if (usage.percentual !== null && usage.percentual >= cfg.paradaPct) {
-        if (!this.state().parado) this.stopAuto('orçamento', `Monitor parado: uso do dia em ${Math.floor(usage.percentual * 100)}%, acima de ${Math.floor(cfg.paradaPct * 100)}%. Religa sozinho amanhã ou quando você reativar.`);
+        if (!this.state().parado) this.stopAuto('orçamento', `Monitor parado: uso do dia em ${Math.floor(usage.percentual * 100)}% do orçamento de tokens, acima de ${Math.floor(cfg.paradaPct * 100)}%.`);
         continue;
       }
-      if (this.state().parado === 'orçamento' || this.state().parado === 'sem orçamento diário') this.setState({ parado: null });
+      if (this.state().parado) this.setState({ parado: null });
 
       const gates = repos.approvals.pendingByProject(project.id).length;
       if (gates >= cfg.maxPortoesPendentes) continue;

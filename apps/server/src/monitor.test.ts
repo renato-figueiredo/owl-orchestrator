@@ -1,7 +1,7 @@
 import { createRepos, migrate, openDb } from '@owl/db';
 import { describe, expect, it, vi } from 'vitest';
 import type { BoardFlow } from './board-flow.js';
-import { Monitor } from './monitor.js';
+import { Monitor, parsePlanUsage, type PlanUsage } from './monitor.js';
 import { RouterService } from './router.js';
 
 function setup(limit: number | null = 1000) {
@@ -17,14 +17,16 @@ function setup(limit: number | null = 1000) {
   const blockers = new Map<string, unknown[]>();
   const board = { openBlockers: (id: string) => blockers.get(id) ?? [] };
   const flow = { run: vi.fn(() => ({ id: 'run' })) };
-  const monitor = new Monitor({ repos, router, board: board as never, flow: flow as unknown as BoardFlow });
+  let plan: PlanUsage | undefined;
+  const monitor = new Monitor({ repos, router, board: board as never, flow: flow as unknown as BoardFlow, planUsage: async () => plan });
   const ticket = (titulo: string, extra: Record<string, unknown> = {}) => {
     const t = repos.tickets.create({ projectId: project.id, titulo, status: 'backlog', ...extra } as never, { tipo: 'humano', nome: 'x' } as never);
     repos.tickets.setAssignee(t.id, agentId);
     return repos.tickets.get(t.id)!;
   };
   const used = (tokens: number) => db.prepare("INSERT INTO runs (id, provedor, status, tokens_in, tokens_out, inicio) VALUES (?, 'x', 'ok', ?, 0, datetime('now'))").run(`u${tokens}${Math.random()}`, tokens);
-  return { db, repos, project, router, monitor, flow, blockers, ticket, used };
+  const setPlan = (p: PlanUsage | undefined) => (plan = p);
+  return { setPlan, db, repos, project, router, monitor, flow, blockers, ticket, used };
 }
 
 describe('Monitor', () => {
@@ -75,12 +77,34 @@ describe('Monitor', () => {
     expect(monitor.status().estado.parado).toBeNull();
   });
 
-  it('without a daily budget it does not start tickets', async () => {
+  it('without a daily budget nor a plan reading it does not start tickets', async () => {
     const { monitor, flow } = setup(null);
     monitor.save({ ativo: true });
     await monitor.tick();
-    expect(monitor.status().estado.parado).toBe('sem orçamento diário');
+    expect(monitor.status().estado.parado).toBe('sem medida de uso');
     expect(flow.run).not.toHaveBeenCalled();
+  });
+
+  it('the real plan usage drives the warning (70%) and the stop (90%), whatever the token budget says', async () => {
+    const { monitor, flow, ticket, setPlan } = setup(null);
+    ticket('a');
+    monitor.save({ ativo: true });
+    setPlan({ sessao: 0.4, semana: 0.72 });
+    expect(await monitor.tick()).toHaveLength(1);
+    expect(monitor.status().estado.avisos.some((a) => a.nivel === 'aviso' && a.texto.includes('72%'))).toBe(true);
+    setPlan({ sessao: 0.4, semana: 0.93 });
+    flow.run.mockClear();
+    ticket('b');
+    expect(await monitor.tick()).toEqual([]);
+    expect(monitor.status().estado.parado).toBe('plano');
+    setPlan({ sessao: 0.1, semana: 0.5 });
+    expect((await monitor.tick()).length).toBeGreaterThan(0);
+    expect(monitor.status().estado.parado).toBeNull();
+  });
+
+  it('parses what `claude -p /usage` prints, and nothing else', () => {
+    expect(parsePlanUsage('Current session: 40% used · resets x\nCurrent week (all models): 61% used · resets y')).toEqual({ sessao: 0.4, semana: 0.61 });
+    expect(parsePlanUsage('uso desconhecido')).toBeUndefined();
   });
 
   it('rejects a stop threshold below the warning threshold', () => {
