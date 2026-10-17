@@ -26,7 +26,9 @@ const CRITICAL = /seguran[çc]a|vazamento|vazar|perde dado|perda de dado|sobresc
 const BUG = /\bbug\b|errad|falha|quebr|incorret|corrig|n[ãa]o (?:pode|deve|funciona)/i;
 const COSMETIC = /cosm[ée]tic|acabamento|renomear|coment[áa]rio|documenta[çc][ãa]o|\bdocs?\b/i;
 
-const text = (t: Pick<Ticket, 'titulo' | 'descricao' | 'criteriosAceite'>) => [t.titulo, t.descricao ?? '', t.criteriosAceite ?? ''].join('\n');
+/** The boilerplate lines every imported ticket carries ("Origem: docs/backlog-dogfood.md…") say nothing about the work. */
+const BOILERPLATE = /^\s*(?:Origem:|Rodar `pnpm).*$/gim;
+const text = (t: Pick<Ticket, 'titulo' | 'descricao' | 'criteriosAceite'>) => [t.titulo, (t.descricao ?? '').replace(BOILERPLATE, ''), t.criteriosAceite ?? ''].join('\n');
 
 export function triage(t: Pick<Ticket, 'titulo' | 'descricao' | 'criteriosAceite'>): Triage {
   const body = text(t);
