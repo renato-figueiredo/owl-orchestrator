@@ -73,6 +73,19 @@ export function MonitorToggle() {
             <span className="text-muted">Iniciou</span>
             <span className="font-mono">{s.estado.iniciados} ticket(s)</span>
           </div>
+          <label className="flex cursor-pointer items-start gap-2 rounded-md border border-line p-2.5">
+            <input
+              type="checkbox"
+              checked={s.config.autoSequencia === true}
+              onChange={(e) => void api.monitorConfig({ autoSequencia: e.target.checked }).then(setS).catch(() => undefined)}
+              className="mt-0.5"
+              aria-label="Auto-sequência"
+            />
+            <span>
+              <span className="font-medium">Auto-sequência</span>
+              <span className="block text-muted">Quando um agente propõe a continuação de um ticket, o monitor a inicia sozinho assim que o ticket anterior fecha. Desligado, ela espera no backlog por você.</span>
+            </span>
+          </label>
           <div>
             <h3 className="owl-label m-0 mb-1.5 font-medium">Onde olhou</h3>
             <ol aria-label="Atividade do monitor" className="m-0 flex list-none flex-col p-0">

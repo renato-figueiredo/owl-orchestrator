@@ -39,6 +39,7 @@ export {
   type SummaryOutput,
 } from './memory/summary.js';
 export { isDangerous, isDestructive } from './destructive.js';
+export { askFor, BASELINE_BASH, isRisky, riskWord, rulesFor, splitCommand } from './command-rules.js';
 export { analyzeTools, parseTool, readOnlyTools, type ToolReport } from './tools.js';
 export {
   CLASSIFIER_PROMPT,

@@ -2,7 +2,8 @@ import { LocalBoard } from '@owl/board';
 import { createRepos, migrate, openDb } from '@owl/db';
 import { describe, expect, it, vi } from 'vitest';
 import type { BoardFlow } from './board-flow.js';
-import { IDLE_TITLE, Monitor, parsePlanUsage, type PlanUsage } from './monitor.js';
+import { Grants } from './grants.js';
+import { IDLE_TITLE, Monitor, REVIEW_TITLE, parsePlanUsage, type PlanUsage } from './monitor.js';
 import { RouterService } from './router.js';
 
 function setup(limit: number | null = 1000) {
@@ -26,8 +27,9 @@ function setup(limit: number | null = 1000) {
     createTicket: real.createTicket.bind(real),
     createCycle: real.createCycle.bind(real),
     assignCycle: real.assignCycle.bind(real),
+    requestGate: real.requestGate.bind(real),
   };
-  const flow = { run: vi.fn(() => ({ id: 'run' })) };
+  const flow = { run: vi.fn(() => ({ id: 'run' })), grants: new Grants(repos) };
   let plan: PlanUsage | undefined;
   const monitor = new Monitor({ repos, router, board: board as never, flow: flow as unknown as BoardFlow, planUsage: async () => plan });
   const ticket = (titulo: string, extra: Record<string, unknown> = {}) => {
@@ -215,5 +217,110 @@ describe('Monitor', () => {
     monitor.save({ ativo: true });
     monitor.save({ ativo: false });
     expect(monitor.config().ativo).toBe(false);
+  });
+});
+
+describe('Monitor standing permissions', () => {
+  const approve = (repos: ReturnType<typeof createRepos>, ticketId: string, regra: string) => {
+    const a = repos.approvals.create({ ticketId, motivo: 'm', tipo: 'permissao', retomar: { ferramentas: [regra] } });
+    repos.approvals.decide(a.id, 'aprovado');
+  };
+  const suggestions = (repos: ReturnType<typeof createRepos>, pid: string) => repos.tickets.list(pid).filter((t) => t.titulo.startsWith('Parar de perguntar'));
+
+  it('offers to stop asking about a command approved three times, once, and not again after a refusal', async () => {
+    const { monitor, ticket, repos, project, flow } = setup();
+    const regra = 'Bash(pnpm exec playwright test:*)';
+    const t = ticket('x');
+    approve(repos, t.id, regra);
+    approve(repos, t.id, regra);
+    await monitor.tick();
+    expect(suggestions(repos, project.id)).toHaveLength(0); // twice is not a habit yet
+    approve(repos, t.id, regra);
+    await monitor.tick();
+    await monitor.tick();
+    const [card] = suggestions(repos, project.id);
+    expect(suggestions(repos, project.id)).toHaveLength(1);
+    const gate = repos.approvals.pendingByTicket(card!.id)[0]!;
+    expect(gate.retomar?.conceder?.regra).toBe(regra);
+    expect(flow.grants.covers(project.id, regra)).toBe(false); // the monitor never grants by itself
+    repos.approvals.decide(gate.id, 'rejeitado', 'não');
+    await monitor.tick();
+    expect(suggestions(repos, project.id)).toHaveLength(1);
+  });
+
+  it('does not offer what the baseline or a grant already covers, nor a dangerous command', async () => {
+    const { monitor, ticket, repos, project, flow } = setup();
+    const t = ticket('x');
+    for (let i = 0; i < 3; i++) approve(repos, t.id, 'Bash(pnpm typecheck:*)');
+    flow.grants.add(project.id, 'Bash(make:*)', null, 'pessoa');
+    for (let i = 0; i < 3; i++) approve(repos, t.id, 'Bash(make:*)');
+    await monitor.tick();
+    expect(suggestions(repos, project.id)).toHaveLength(0);
+  });
+});
+
+describe('Monitor watches the board', () => {
+  const ago = (db: ReturnType<typeof setup>['db'], id: string, col: 'atualizado_em' | 'criado_em', hours: number) =>
+    db.prepare(`UPDATE tickets SET ${col} = datetime('now', ?) WHERE id = ?`).run(`-${hours} hours`, id);
+  const notices = (m: Monitor) => m.status().estado.avisos.map((a) => a.texto);
+
+  it('closes a merge ticket whose gate is gone, and reports a merge nobody answers', async () => {
+    const { monitor, ticket, repos, db } = setup();
+    const orphan = ticket('Mesclar owl/sel-1 em main');
+    await monitor.tick();
+    expect(repos.tickets.get(orphan.id)!.status).toBe('concluido');
+
+    const waiting = ticket('Mesclar owl/sel-2 em main');
+    const source = ticket('origem');
+    repos.approvals.create({ ticketId: source.id, motivo: 'm', tipo: 'destrutiva', retomar: { acao: 'merge', acompanha: waiting.id } });
+    ago(db, waiting.id, 'criado_em', 2);
+    await monitor.tick();
+    await monitor.tick();
+    expect(repos.tickets.get(waiting.id)!.status).not.toBe('concluido');
+    expect(notices(monitor).filter((t) => t.includes('mesclagem esperando você'))).toHaveLength(1);
+  });
+
+  it('reports a ticket a loop rule stopped, and a gate waiting for hours, once each', async () => {
+    const { monitor, ticket, repos, db } = setup();
+    const stuck = ticket('travado');
+    repos.tickets.setStatus(stuck.id, 'bloqueado');
+    repos.tickets.addComment({ ticketId: stuck.id, ator: { tipo: 'sistema', nome: 'sistema' }, texto: 'O agente pediu `make x` 3 vezes e continua sem conseguir rodar. Parei de perguntar: veja a resposta dele.' });
+    const gate = repos.approvals.create({ ticketId: ticket('espera').id, motivo: 'm', tipo: 'entrega' });
+    db.prepare("UPDATE approvals SET criado_em = datetime('now', '-5 hours') WHERE id = ?").run(gate.id);
+    await monitor.tick();
+    await monitor.tick();
+    const n = notices(monitor);
+    expect(n.filter((t) => t.includes('travou'))).toHaveLength(1);
+    expect(n.filter((t) => t.includes('esperando você há mais de 4 h'))).toHaveLength(1);
+  });
+
+  it('does not start anything while a merge waits for a decision', async () => {
+    const { monitor, ticket, repos, flow } = setup(null);
+    (monitor as unknown as { deps: { planUsage: () => Promise<unknown> } }).deps.planUsage = async () => ({ sessao: 0.1, semana: 0.1 });
+    monitor.save({ ativo: true });
+    ticket('livre');
+    const merge = ticket('Mesclar owl/sel-3 em main');
+    repos.approvals.create({ ticketId: ticket('origem').id, motivo: 'm', tipo: 'destrutiva', retomar: { acao: 'merge', acompanha: merge.id } });
+    expect(await monitor.tick()).toEqual([]);
+    expect(flow.run).not.toHaveBeenCalled();
+  });
+
+  it('opens one review card for a backlog nobody touched, with a gate that deletes, and leaves recent tickets out', async () => {
+    const { monitor, ticket, repos, db, project } = setup(null);
+    (monitor as unknown as { deps: { planUsage: () => Promise<unknown> } }).deps.planUsage = async () => ({ sessao: 0.1, semana: 0.1 });
+    monitor.save({ ativo: true });
+    const olds = Array.from({ length: 5 }, (_, i) => ticket(`velho ${i}`));
+    for (const o of olds) ago(db, o.id, 'atualizado_em', 24 * 20);
+    const fresh = ticket('recente');
+    await monitor.tick();
+    await monitor.tick();
+    const cards = repos.tickets.list(project.id).filter((t) => t.titulo.startsWith(REVIEW_TITLE));
+    expect(cards).toHaveLength(1);
+    const gate = repos.approvals.pendingByTicket(cards[0]!.id)[0]!;
+    expect(gate).toMatchObject({ tipo: 'destrutiva' });
+    expect(gate.retomar?.acao).toBe('limpar_backlog');
+    expect(gate.retomar?.ids).toHaveLength(5);
+    expect(gate.retomar?.ids).not.toContain(fresh.id);
+    expect(repos.tickets.get(olds[0]!.id)).toBeDefined(); // nothing is deleted without a decision
   });
 });

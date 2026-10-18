@@ -3,6 +3,7 @@ import { listAdapters } from '@owl/core';
 import type { createRepos } from '@owl/db';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import type { OllamaControl } from './ollama-control.js';
 import { routerPatchSchema, type RouterService } from './router.js';
 
 type Repos = ReturnType<typeof createRepos>;
@@ -21,8 +22,17 @@ function localMidnight(date: string, plusDays = 0): string {
 }
 
 /** Router settings and the metrics panel (prompt 15). */
-export function registerRouterRoutes(app: FastifyInstance, deps: { repos: Repos; router: RouterService }): void {
-  const { repos, router } = deps;
+export function registerRouterRoutes(app: FastifyInstance, deps: { repos: Repos; router: RouterService; ollama?: OllamaControl }): void {
+  const { repos, router, ollama } = deps;
+
+  // Why the local model server is down and how OWL can turn it on (the stopped container or the installed program).
+  app.get('/router/ollama', async () => (ollama ? ollama.state() : { disponivel: false, modelos: [], via: null, dica: 'Os modelos locais não estão configurados neste servidor.' }));
+  app.post('/router/ollama/start', async () => {
+    if (!ollama) throw new BoardError(409, 'ollama_not_configured', 'Os modelos locais não estão configurados neste servidor');
+    const state = await ollama.start();
+    await router.refreshLocal();
+    return state;
+  });
 
   app.get('/router', async () => {
     await router.refreshLocal();

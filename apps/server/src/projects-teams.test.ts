@@ -293,6 +293,33 @@ describe('worktrees', () => {
     expect(repos.tickets.get(t)!.status).toBe('concluido');
   });
 
+  it('pedir mesclagem abre um ticket que segura os tickets em andamento até a decisão, e fecha sozinho', async () => {
+    await start();
+    const p = await mkProject('Alfa');
+    onDev = (req) => writeFileSync(join(req.cwd, 'feature.txt'), 'nova função\n');
+    const t = await mkTicket(p.id, 'Função');
+    await post(`/tickets/${t}/run`, {});
+    await settle();
+    // another ticket is mid-work on its own branch; a third is only waiting in the backlog
+    const busy = await mkTicket(p.id, 'Em andamento');
+    repos.tickets.setWorktree(busy, { branch: 'owl/busy', worktree: '/tmp/busy', estado: 'ativo' });
+    repos.tickets.setStatus(busy, 'em_andamento');
+    const waiting = await mkTicket(p.id, 'Esperando');
+
+    const gate = (await json(await post(`/tickets/${t}/branch/merge`))).aprovacoes[0];
+    const tracker = repos.tickets.list(p.id).find((x) => x.titulo.startsWith('Mesclar '))!;
+    expect(tracker.status).toBe('bloqueado');
+    expect(gate.retomar.acompanha).toBe(tracker.id);
+    const held = (id: string) => repos.quadro.relations.openBlockers(id).map((b) => b.id);
+    expect(held(busy)).toEqual([tracker.id]);
+    expect(held(waiting)).toEqual([]); // not in progress: free (the monitor just does not start it meanwhile)
+    expect(held(t)).toEqual([]); // the merged ticket itself is not held
+
+    await post(`/approvals/${gate.id}/decide`, { decisao: 'rejeitado', comentario: 'ainda não' });
+    expect(repos.tickets.get(tracker.id)!.status).toBe('concluido');
+    expect(held(busy)).toEqual([]);
+  });
+
   it('descartar apaga worktree e branch, só depois de aprovado', async () => {
     await start();
     const p = await mkProject('Alfa');

@@ -15,11 +15,21 @@ export interface ResumeInfo {
   /** Tier the router proposed (gate `confianca`): approving it runs the step on this tier without asking the router again. */
   tier?: string;
   /** A server-side action the approval releases (prompt 14): merge the ticket branch, or discard its worktree and branch. */
-  acao?: 'merge' | 'descartar';
+  acao?: 'merge' | 'descartar' | 'limpar_backlog' | 'criar_repo';
+  /** `criar_repo`: the GitHub repository approving creates (as the logged-in `gh` account) and pushes the project's folder to. */
+  repo?: { nome: string; visibilidade: 'privado' | 'publico'; descricao?: string };
+  /** `limpar_backlog`: the stale backlog tickets approving deletes (re-checked when decided). */
+  ids?: string[];
+  /** The ticket that tracks this gate's merge (it blocks the others on the project until the gate is decided). */
+  acompanha?: string;
   /** Exact tool rules (`Bash(<command>)`) a `permissao` approval lets the resumed step use, for that step only. */
   ferramentas?: string[];
   /** A dangerous command: approving needs the person to type it exactly (`confirmacao` on the decision). */
   confirmar?: string;
+  /** Suggested quick answers the agent offered with its question (gate `pergunta`). */
+  opcoes?: string[];
+  /** A suggestion from the monitor: approving lets the project's agents run this tool rule without asking (`lembrar` is the person's choice). */
+  conceder?: { regra: string; lembrar?: 'sessao' | 'projeto' };
 }
 
 export interface Approval {
@@ -78,6 +88,10 @@ export function approvalsRepo(db: Db) {
     setRetomar(id: string, retomar: ResumeInfo): void {
       db.prepare('UPDATE approvals SET retomar_json = ? WHERE id = ?').run(JSON.stringify(retomar), id);
     },
+    /** Rewrites the text of a pending gate (used when a rule change makes its warning out of date). */
+    setMotivo(id: string, motivo: string): void {
+      db.prepare("UPDATE approvals SET motivo = ? WHERE id = ? AND status = 'pendente'").run(motivo, id);
+    },
     /** Pending ticket gates of a project, oldest first (the approvals queue). */
     pendingByProject(projectId: string): Array<Approval & { ticketIdentificador: string; ticketTitulo: string }> {
       const rows = db
@@ -94,6 +108,32 @@ export function approvalsRepo(db: Db) {
         ticketIdentificador: `${prefixo || projetoNome.normalize('NFD').replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 3).padEnd(2, 'X') || 'TKT'}-${numero}`,
         ticketTitulo,
       }));
+    },
+    /** Gates of one kind (any status) on a project's tickets created since `since` (db time), oldest first. */
+    gatesSince(projectId: string, tipo: GateKind, since: string): Approval[] {
+      return (
+        db
+          .prepare(
+            `SELECT a.id, a.ticket_id AS ticketId, a.run_id AS runId, a.motivo, a.status, a.comentario, a.decidido_em AS decididoEm,
+                    a.tipo, a.retomar_json AS retomar, a.criado_em AS criadoEm
+             FROM approvals a JOIN tickets t ON t.id = a.ticket_id
+             WHERE t.project_id = ? AND a.tipo = ? AND a.criado_em >= ? ORDER BY a.rowid`,
+          )
+          .all(projectId, tipo, since) as Row[]
+      ).map(toApproval);
+    },
+    /** Permission requests and suggestions (any status) of a project's tickets created since `since` (db time), oldest first. */
+    permissionsSince(projectId: string, since: string): Approval[] {
+      return (
+        db
+          .prepare(
+            `SELECT a.id, a.ticket_id AS ticketId, a.run_id AS runId, a.motivo, a.status, a.comentario, a.decidido_em AS decididoEm,
+                    a.tipo, a.retomar_json AS retomar, a.criado_em AS criadoEm
+             FROM approvals a JOIN tickets t ON t.id = a.ticket_id
+             WHERE t.project_id = ? AND a.tipo = 'permissao' AND a.criado_em >= ? ORDER BY a.rowid`,
+          )
+          .all(projectId, since) as Row[]
+      ).map(toApproval);
     },
     /** Approvals (any status) of one ticket, oldest first. */
     byTicket(ticketId: string): Approval[] {

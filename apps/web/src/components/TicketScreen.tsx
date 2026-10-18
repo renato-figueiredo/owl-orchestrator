@@ -199,7 +199,7 @@ export function TicketScreen({ ticketId, busy, onBack, onOpen, act, version }: P
                 {...(gateStats ? { stats: gateStats } : {})}
                 requester={t.responsavel}
                 provider={provider}
-                onDecide={(dec, c, conf) => act(() => api.decideApproval(a.id, dec, c, conf))}
+                onDecide={(dec, c, conf, l) => act(() => api.decideApproval(a.id, dec, c, conf, l))}
               />
             ))}
           </div>

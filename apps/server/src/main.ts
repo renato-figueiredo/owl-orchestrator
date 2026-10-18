@@ -1,3 +1,4 @@
+import { upgradePermissionGates } from './gate-upgrade.js';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { LocalBoard } from '@owl/board';
@@ -21,6 +22,7 @@ writeFileSync(pidFile, String(process.pid), { mode: 0o600 });
 const db = openDb(join(config.dataDir, 'owl.sqlite'));
 migrate(db);
 const repos = createRepos(db);
+upgradePermissionGates(repos); // requests opened by an older version follow the current rules
 repos.runs.failInterrupted(); // a run cannot outlive its server; left 'rodando' it would block deleting the conversation
 new LocalBoard(repos).recoverInterrupted(); // their tickets would sit in em_andamento with nothing running
 repos.approvals.expirePendingRunGates(); // pipeline pauses live in memory and do not survive a restart

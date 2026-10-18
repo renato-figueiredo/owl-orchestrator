@@ -1,3 +1,4 @@
+import { OllamaPanel } from './OllamaPanel';
 import { Button, ProviderDot, Switch } from '@owl/ui';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
@@ -224,6 +225,7 @@ export function MetricsPanel({ projects, providers, initialProjectId }: Props) {
                   <option value="economico">Econômico: descarrega após cada uso (recarrega a cada chamada)</option>
                 </select>
               </label>
+              {!local?.disponivel && <OllamaPanel onUp={() => void load()} />}
               <p className="m-0 text-xs leading-normal text-muted">
                 <span aria-hidden="true" className="font-mono">{local?.disponivel ? '✓ ' : '⊘ '}</span>
                 {local?.disponivel ? `Ollama no ar com ${local.modelos.length} modelo(s).` : 'Ollama fora do ar: o tier pequeno usa o provedor configurado acima.'}{' '}

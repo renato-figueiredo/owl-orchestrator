@@ -1,3 +1,4 @@
+import { GitCard } from './GitCard';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Button } from '@owl/ui';
 import { api } from '../lib/api';
@@ -143,6 +144,8 @@ export function ProjectScreen({ projects, projectId, onSwitch, onClose, onChange
             <Button variant="danger" onClick={removeProject}>Remover projeto…</Button>
           </div>
         </form>
+
+        <GitCard projectId={projectId} pasta={p.pasta} />
 
         <section aria-label="Equipes" className="flex flex-col gap-3">
           <Label>EQUIPES · QUEM PODE PEGAR TICKETS DAQUI</Label>

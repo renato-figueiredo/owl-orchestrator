@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import type { Project } from '../lib/types';
 import { field } from './desk/ScreenHeader';
+import { EMPTY_GIT, GitOriginForm, gitReady, type GitOrigin, type GitOriginValue } from './GitOriginForm';
 
 interface Props {
   onClose: () => void;
@@ -14,20 +15,23 @@ interface Props {
 
 const ORIGINS: Array<{ id: 'folder' | 'github' | 'url' | 'empty'; icon: LucideIcon; title: string; text: string; off?: string }> = [
   { id: 'folder', icon: FolderOpen, title: 'Pasta no computador', text: 'Um projeto que já está na sua máquina.' },
-  { id: 'github', icon: GitFork, title: 'GitHub', text: 'Escolher um repositório e clonar.', off: 'Indisponível: o servidor ainda não clona repositórios.' },
-  { id: 'url', icon: Link, title: 'URL git', text: 'GitLab, Bitbucket, servidor próprio.', off: 'Indisponível: o servidor ainda não clona repositórios.' },
-  { id: 'empty', icon: FolderPlus, title: 'Começar vazio', text: 'Pasta nova com git init.', off: 'Indisponível: o servidor ainda não cria pastas.' },
+  { id: 'github', icon: GitFork, title: 'GitHub', text: 'Escolher um repositório e clonar.' },
+  { id: 'url', icon: Link, title: 'URL git', text: 'GitLab, Bitbucket, servidor próprio.' },
+  { id: 'empty', icon: FolderPlus, title: 'Começar vazio', text: 'Pasta nova com git init.' },
 ];
 const STEPS = ['Origem', 'Configurar', 'Pronto'];
 const baseName = (path: string) => path.trim().replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? '';
 const message = (e: unknown) => (e instanceof Error ? e.message : 'Algo deu errado');
 
-/** "Novo projeto" in three steps (design: OWL Projetos). Only the folder path is wired to the server today. */
+/** "Novo projeto" in three steps (design: OWL Projetos): an existing folder, a GitHub repository or git URL to clone, or a new empty folder. */
 export function NewProjectModal({ onClose, onCreated, onOpen }: Props) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [path, setPath] = useState('');
   const [nome, setNome] = useState('');
   const [instrucoes, setInstrucoes] = useState('');
+  const [origin, setOrigin] = useState<'folder' | GitOrigin>('folder');
+  const [git, setGit] = useState<GitOriginValue>(EMPTY_GIT);
+  const [publishNote, setPublishNote] = useState<string | null>(null);
   const [created, setCreated] = useState<Project | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -45,9 +49,30 @@ export function NewProjectModal({ onClose, onCreated, onOpen }: Props) {
   const next = async (e?: FormEvent) => {
     e?.preventDefault();
     if (step === 1) {
-      if (!path.trim()) return;
-      setNome((n) => n || baseName(path));
-      setStep(2);
+      if (origin === 'folder') {
+        if (!path.trim()) return;
+        setNome((n) => n || baseName(path));
+        setStep(2);
+        return;
+      }
+      if (!gitReady(origin, git)) return;
+      setBusy(true);
+      setError(null);
+      try {
+        const made =
+          origin === 'github'
+            ? await api.gitClone({ origem: 'github', repo: git.repo, pasta: git.parent, nome: git.nome })
+            : origin === 'url'
+              ? await api.gitClone({ origem: 'url', url: git.url.trim(), pasta: git.parent, nome: git.nome })
+              : await api.gitInit(git.parent, git.nome);
+        setPath(made.pasta);
+        setNome(made.nome);
+        setStep(2);
+      } catch (err) {
+        setError(message(err));
+      } finally {
+        setBusy(false);
+      }
     } else if (step === 2) {
       if (!nome.trim()) return;
       setBusy(true);
@@ -56,6 +81,15 @@ export function NewProjectModal({ onClose, onCreated, onOpen }: Props) {
         const project = await api.createProject({ nome: nome.trim(), pasta: path.trim(), ...(instrucoes.trim() ? { instrucoes: instrucoes.trim() } : {}) });
         setCreated(project);
         onCreated(project);
+        // A new folder that should also exist on GitHub: only the request is made here; a person approves it.
+        if (origin === 'empty' && git.publicar) {
+          try {
+            const r = await api.projectGitPublish(project.id, { nome: baseName(path), visibilidade: git.visibilidade });
+            setPublishNote(`Pedi a sua aprovação para criar o repositório ${git.visibilidade === 'publico' ? 'público' : 'privado'} no GitHub (${r.ticket.identificador}). Ele só é criado depois que você aprovar.`);
+          } catch (err) {
+            setPublishNote(`O projeto foi criado, mas não consegui pedir a criação no GitHub: ${message(err)}`);
+          }
+        }
         setStep(3);
       } catch (err) {
         setError(message(err));
@@ -65,7 +99,7 @@ export function NewProjectModal({ onClose, onCreated, onOpen }: Props) {
     }
   };
 
-  const disabled = (step === 1 && !path.trim()) || (step === 2 && !nome.trim());
+  const disabled = (step === 1 && (origin === 'folder' ? !path.trim() : !gitReady(origin, git))) || (step === 2 && !nome.trim());
 
   return (
     <div className="fixed inset-0 z-20 grid place-items-center bg-[rgba(0,4,31,0.72)] p-6">
@@ -102,13 +136,17 @@ export function NewProjectModal({ onClose, onCreated, onOpen }: Props) {
                 </div>
                 <div role="group" aria-label="Origem" className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-2">
                   {ORIGINS.map((o) => {
-                    const on = o.id === 'folder';
+                    const on = o.id === origin;
                     return (
                       <button
                         key={o.id}
                         type="button"
                         disabled={!!o.off}
                         aria-pressed={on}
+                        onClick={() => {
+                          setOrigin(o.id);
+                          setError(null);
+                        }}
                         aria-describedby={o.off ? `origin-${o.id}` : undefined}
                         className={`flex flex-col items-start gap-2 rounded-md border p-3 text-left text-fg transition-colors duration-[120ms] enabled:hover:border-line-strong disabled:cursor-not-allowed disabled:opacity-50 ${on ? 'border-accent bg-accent-wash' : 'border-line bg-bg'}`}
                       >
@@ -121,11 +159,20 @@ export function NewProjectModal({ onClose, onCreated, onOpen }: Props) {
                     );
                   })}
                 </div>
-                <label className="flex flex-col gap-1.5 text-xs text-muted">
-                  Caminho da pasta
-                  <input value={path} onChange={(e) => setPath(e.target.value)} placeholder="~/code/meu-projeto" autoComplete="off" spellCheck={false} className={`${field} h-9 bg-bg font-mono`} />
-                  <span>A pasta precisa existir e estar dentro das raízes permitidas. O servidor confere ao criar.</span>
-                </label>
+                {origin === 'folder' ? (
+                  <label className="flex flex-col gap-1.5 text-xs text-muted">
+                    Caminho da pasta
+                    <input value={path} onChange={(e) => setPath(e.target.value)} placeholder="~/code/meu-projeto" autoComplete="off" spellCheck={false} className={`${field} h-9 bg-bg font-mono`} />
+                    <span>A pasta precisa existir e estar dentro das raízes permitidas. O servidor confere ao criar.</span>
+                  </label>
+                ) : (
+                  <GitOriginForm origin={origin} value={git} onChange={setGit} />
+                )}
+                {error && step === 1 && (
+                  <p role="alert" className="m-0 text-[13px] text-danger">
+                    {error}
+                  </p>
+                )}
               </>
             )}
 
@@ -159,6 +206,7 @@ export function NewProjectModal({ onClose, onCreated, onOpen }: Props) {
                 <div className="flex flex-col gap-1.5">
                   <span className="text-xl font-semibold">{created.nome} está no OWL</span>
                   <span className="text-muted">Quadro vazio, memória vazia.</span>
+                  {publishNote && <span role="status" className="mx-auto max-w-[460px] text-xs leading-normal text-muted">{publishNote}</span>}
                 </div>
                 <Button type="button" variant="primary" size="lg" icon={MessageSquare} onClick={() => onOpen(created.id)}>
                   Abrir projeto
@@ -179,7 +227,7 @@ export function NewProjectModal({ onClose, onCreated, onOpen }: Props) {
                 </Button>
               )}
               <Button type="submit" variant="primary" disabled={disabled} loading={busy}>
-                {step === 2 ? 'Criar projeto' : 'Continuar'}
+                {step === 2 ? 'Criar projeto' : origin === 'folder' ? 'Continuar' : origin === 'empty' ? 'Criar pasta e continuar' : 'Clonar e continuar'}
                 <ArrowRight size={14} aria-hidden="true" />
               </Button>
             </div>

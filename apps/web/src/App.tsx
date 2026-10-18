@@ -1,3 +1,4 @@
+import { useTabStatus } from './lib/tab-status';
 import { useCallback, useEffect, useState } from 'react';
 import { parseHash, pushView } from './lib/nav';
 import { AgentLibrary } from './components/AgentLibrary';
@@ -314,6 +315,7 @@ function Workspace() {
       ? [{ id: activeRun.id, agent: activeRun.etapa ?? 'agente', provider: activeRun.provedor || null, label: selectedSession?.titulo ?? 'Nova conversa', startedAt: Date.parse(activeRun.inicio) || Date.now(), status: 'running', onOpen: () => setView('chat') }]
       : [];
   const live: LiveRun[] = [...serverLive.map(toLive), ...ownLive];
+  useTabStatus(pending, live.map((r) => ({ agent: r.agent, label: r.label })));
 
   return (
     <div className="relative flex h-full flex-col">

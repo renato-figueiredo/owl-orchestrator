@@ -4,6 +4,7 @@ import { fmtClock } from '../../lib/format';
 import { useNow } from '../../lib/useNow';
 import { Logo } from '../Logo';
 import { MonitorToggle } from './MonitorToggle';
+import { OllamaToggle } from './OllamaToggle';
 
 export interface LiveRun {
   id: string;
@@ -64,6 +65,7 @@ export function Vigia({ project, onOpenSwitcher, switcherOpen, live, pending, on
         ))}
       </div>
       <MonitorToggle />
+      <OllamaToggle />
       {pending > 0 ? (
         <button
           type="button"

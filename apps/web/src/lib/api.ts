@@ -1,4 +1,4 @@
-import type { LiveRunInfo, TicketApproval, RelationType, Label, DayUsage, LocalStatus, Metrics, RouterSettings, AgentFact, AgentLibrary, AgentProject, ProjectView, Team, BoardData, TicketDetail, TicketStatus, BackupInfo, BackupSettings, BackupStatus, Fact, MemorySettings, PurgeResult, SweepReport, TrashSettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './types';
+import type { LiveRunInfo, TicketApproval, RelationType, Label, DayUsage, GhRepo, GhState, GitStatus, LocalStatus, OllamaState, Metrics, RouterSettings, AgentFact, AgentLibrary, AgentProject, ProjectView, Team, BoardData, TicketDetail, TicketStatus, BackupInfo, BackupSettings, BackupStatus, Fact, MemorySettings, PurgeResult, SweepReport, TrashSettings, Project, ProviderInfo, RefinerInfo, Session, SessionDetail, SummarizeResult } from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -62,6 +62,17 @@ export const api = {
   projects: () => call<{ projects: Project[] }>('GET', '/projects').then((r) => r.projects),
   createProject: (input: { nome: string; pasta: string; instrucoes?: string }) =>
     call<{ project: Project }>('POST', '/projects', input).then((r) => r.project),
+  ghState: () => call<GhState>('GET', '/git/gh'),
+  ghRepos: () => call<{ repositorios: GhRepo[] }>('GET', '/git/repos').then((r) => r.repositorios),
+  gitRoots: () => call<{ raizes: string[] }>('GET', '/git/roots').then((r) => r.raizes),
+  gitDirs: (pasta?: string) => call<{ pasta: string; pai: string | null; pastas: Array<{ nome: string; caminho: string }> }>('GET', `/git/dirs${pasta ? `?pasta=${encodeURIComponent(pasta)}` : ''}`),
+  gitClone: (input: { origem: 'github'; repo: string; pasta: string; nome?: string } | { origem: 'url'; url: string; pasta: string; nome?: string }) =>
+    call<{ pasta: string; nome: string }>('POST', '/git/clone', input),
+  gitInit: (pasta: string, nome: string) => call<{ pasta: string; nome: string }>('POST', '/git/init', { pasta, nome }),
+  projectGit: (id: string) => call<GitStatus>('GET', `/projects/${encodeURIComponent(id)}/git`),
+  projectGitRemote: (id: string, url: string) => call<GitStatus>('POST', `/projects/${encodeURIComponent(id)}/git/remote`, { url }),
+  projectGitPublish: (id: string, input: { nome: string; visibilidade: 'privado' | 'publico'; descricao?: string }) =>
+    call<{ ticket: { id: string; identificador: string; titulo: string }; approval: { id: string } }>('POST', `/projects/${encodeURIComponent(id)}/git/publish`, input),
   sessions: () => call<{ sessions: Session[] }>('GET', '/sessions').then((r) => r.sessions),
   createSession: (input: { projectId?: string; titulo?: string }) =>
     call<{ session: Session }>('POST', '/sessions', input).then((r) => r.session),
@@ -140,8 +151,8 @@ export const api = {
   /** Pending ticket approvals (gates) of one project. */
   projectApprovals: (projectId: string) =>
     call<{ aprovacoes: TicketApproval[] }>('GET', `/projects/${encodeURIComponent(projectId)}/approvals`).then((r) => r.aprovacoes),
-  decideApproval: (id: string, decisao: 'aprovado' | 'rejeitado', comentario?: string, confirmacao?: string) =>
-    call<unknown>('POST', `/approvals/${encodeURIComponent(id)}/decide`, { decisao, ...(comentario ? { comentario } : {}), ...(confirmacao ? { confirmacao } : {}) }),
+  decideApproval: (id: string, decisao: 'aprovado' | 'rejeitado', comentario?: string, confirmacao?: string, lembrar?: 'sessao' | 'projeto') =>
+    call<unknown>('POST', `/approvals/${encodeURIComponent(id)}/decide`, { decisao, ...(comentario ? { comentario } : {}), ...(confirmacao ? { confirmacao } : {}), ...(lembrar ? { lembrar } : {}) }),
   projectView: (id: string) => call<ProjectView>('GET', `/projects/${encodeURIComponent(id)}`),
   updateProject: (id: string, patch: { nome?: string; instrucoes?: string | null; maxConcorrencia?: number | null; branchBase?: string | null }) =>
     call<{ project: Project }>('PATCH', `/projects/${encodeURIComponent(id)}`, patch).then((r) => r.project),
@@ -169,6 +180,9 @@ export const api = {
   monitor: () => call<MonitorStatus>('GET', '/monitor'),
   monitorStop: () => call<MonitorStatus>('POST', '/monitor/stop'),
   monitorStart: () => call<MonitorStatus>('POST', '/monitor/start'),
+  monitorConfig: (patch: { autoSequencia?: boolean }) => call<MonitorStatus>('PUT', '/monitor', patch),
+  ollama: () => call<OllamaState>('GET', '/router/ollama'),
+  ollamaStart: () => call<OllamaState>('POST', '/router/ollama/start'),
   router: () => call<{ router: RouterSettings; dia: DayUsage; local?: LocalStatus }>('GET', '/router'),
   saveRouter: (patch: { tiers?: Partial<RouterSettings['tiers']>; localPequeno?: RouterSettings['localPequeno']; limiarConfianca?: number; orcamentoDiaTokens?: number | null }) =>
     call<{ router: RouterSettings; dia: DayUsage; local?: LocalStatus }>('PUT', '/router', patch),
@@ -190,7 +204,7 @@ export const pipelinesApi = () =>
 export const authStatusApi = () => call<{ required: boolean; authenticated: boolean }>('GET', '/auth/status');
 
 export interface MonitorStatus {
-  config: { ativo: boolean; intervaloMin: number; avisoPct: number; paradaPct: number };
+  config: { ativo: boolean; intervaloMin: number; avisoPct: number; paradaPct: number; autoSequencia?: boolean };
   estado: { ultimoCiclo: string | null; parado: string | null; iniciados: number; planoErro?: string | null; planoLidoEm?: string | null; olhando?: MonitorActivity | null; atividade?: MonitorActivity[]; avisos: Array<{ em: string; nivel: 'aviso' | 'parada' | 'info'; texto: string }> };
   dia: { limite: number | null; usado: number; percentual: number | null };
   plano?: { sessao: number; semana: number } | null;

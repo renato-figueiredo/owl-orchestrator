@@ -4,6 +4,8 @@ import { SYSTEM } from '@owl/board';
 import type { createRepos, Ticket } from '@owl/db';
 import { z } from 'zod';
 import type { BoardFlow } from './board-flow.js';
+import { MERGE_PREFIX } from './board-flow.js';
+import { SESSION_HOURS } from './grants.js';
 import type { RouterService } from './router.js';
 import { triage } from './triage.js';
 import type { LocalBoard } from '@owl/board';
@@ -24,6 +26,18 @@ const CYCLE_DAYS = 14;
 const LABEL_COLORS: Record<string, string> = { frontend: '#6d8cff', backend: '#4fb286', banco: '#d49a3a', núcleo: '#a78bfa', memória: '#e08aa8', roteador: '#5ab4c5', ollama: '#9aa86a', segurança: '#e5605a', docs: '#8b8b99', testes: '#c7a14a' };
 /** Title of the ticket the monitor opens when it sits idle; the triage and the starter leave it alone. */
 export const IDLE_TITLE = 'Monitor ocioso: autorizar para prosseguir';
+/** A command approved this many times within this many days is offered as a standing permission. */
+const SUGGEST_AFTER = 3;
+const SUGGEST_DAYS = 14;
+/** Opened by the monitor to ask whether to clear backlog tickets nobody has touched for a long time. */
+export const REVIEW_TITLE = 'Revisão do backlog';
+const STALE_BACKLOG_DAYS = 14;
+const MIN_STALE = 5;
+const REVIEW_COOLDOWN_DAYS = 30;
+const LIST_MAX = 40;
+/** A gate this long without an answer is reported (the queue is the bottleneck, not the agents). */
+const GATE_WAIT_MS = 4 * 3_600_000;
+const MERGE_WAIT_MS = 60 * 60_000;
 const TASK = 'Trabalhe neste ticket conforme a descrição e os critérios de aceite.';
 
 export interface PlanUsage {
@@ -67,9 +81,11 @@ export const monitorSchema = z.strictObject({
   maxPortoesPendentes: z.number().int().min(1).max(50),
   /** Project ids; empty means every project. */
   projetos: z.array(z.string()).max(100),
+  /** A follow-up ticket an agent proposes starts by itself once the ticket it follows is done (otherwise it waits in the backlog). */
+  autoSequencia: z.boolean(),
 });
 export type MonitorConfig = z.infer<typeof monitorSchema>;
-export const DEFAULT_MONITOR: MonitorConfig = { ativo: false, intervaloMin: 5, triagem: true, avisoPct: 0.7, paradaPct: 0.9, maxPortoesPendentes: 3, projetos: [] };
+export const DEFAULT_MONITOR: MonitorConfig = { ativo: false, intervaloMin: 5, triagem: true, avisoPct: 0.7, paradaPct: 0.9, maxPortoesPendentes: 3, projetos: [], autoSequencia: false };
 export const monitorPatchSchema = monitorSchema.partial();
 
 export interface MonitorNotice {
@@ -234,8 +250,11 @@ export class Monitor {
           }
         }
       }
+      this.suggestGrant(project.id, project.nome, now);
+      this.watch(project.id, project.nome, tickets, now);
       if (!cfg.ativo) continue;
       if (this.releaseBlocked(project.nome, tickets, now)) tickets = repos.tickets.list(project.id);
+      if (this.reviewBacklog(project.id, project.nome, tickets, now)) tickets = repos.tickets.list(project.id);
       if (cfg.triagem) {
         this.triageProject(project.id, tickets, now);
         tickets = repos.tickets.list(project.id); // the triage changed assignees and cycles
@@ -256,7 +275,7 @@ export class Monitor {
       }
       if (this.state().parado) this.setState({ parado: null });
 
-      const gates = repos.approvals.pendingByProject(project.id).length;
+      const gates = repos.approvals.pendingByProject(project.id).filter((a) => !a.retomar?.conceder && a.retomar?.acao !== 'limpar_backlog').length; // a suggestion to stop asking is not work waiting on a person
       const idleTicket = tickets.find((t) => t.titulo === IDLE_TITLE && t.status !== 'concluido');
       const authorized = this.state().autorizados.includes(project.id);
       const live = tickets.filter((t) => repos.tickets.runs(t.id).some((r) => r.status === 'rodando')).length;
@@ -271,6 +290,11 @@ export class Monitor {
       if (gates >= cfg.maxPortoesPendentes && !go) {
         this.see(project.nome, null, `não inicia nada: ${gates} portão(ões) esperando você`, now);
         if (!working) this.askToProceed(project.id, tickets, `${gates} portão(ões) esperando decisão`, now);
+        continue;
+      }
+      // A merge waiting for a decision moves the base under every ticket: nothing new starts until it is decided.
+      if (tickets.some((t) => t.titulo.startsWith(MERGE_PREFIX) && t.status !== 'concluido')) {
+        this.see(project.nome, null, 'não inicia nada: há uma mesclagem esperando decisão', now);
         continue;
       }
       const room = (repos.projects.get(project.id)?.maxConcorrencia ?? 1) - live;
@@ -372,6 +396,110 @@ export class Monitor {
       moved = true;
     }
     return moved;
+  }
+
+  /**
+   * A command the person keeps approving is a candidate for the project's standing permissions: the monitor opens one
+   * card asking whether to stop asking (for good or for a session). It never grants by itself, asks about one command at
+   * a time, and does not ask again about one that was refused.
+   */
+  private suggestGrant(projectId: string, projeto: string, now: Date): void {
+    const { repos, board, flow } = this.deps;
+    const history = repos.approvals.permissionsSince(projectId, stamp(new Date(now.getTime() - SUGGEST_DAYS * 86_400_000)));
+    if (history.some((a) => a.retomar?.conceder && (a.status === 'pendente' || a.status === 'rejeitado'))) return;
+    const counts = new Map<string, number>();
+    for (const a of history) {
+      if (a.status !== 'aprovado' || a.retomar?.conceder || a.retomar?.confirmar !== undefined) continue;
+      for (const regra of new Set(a.retomar?.ferramentas ?? [])) if (regra.includes('*')) counts.set(regra, (counts.get(regra) ?? 0) + 1);
+    }
+    const [regra, vezes] = [...counts].filter(([r]) => !flow.grants.covers(projectId, r)).sort((a, b) => b[1] - a[1])[0] ?? [];
+    if (!regra || !vezes || vezes < SUGGEST_AFTER) return;
+    const comando = regra.replace(/^Bash\(/, '').replace(/\)$/, '').replace(/:\*$/, ' …');
+    const t = board.createTicket(
+      {
+        projectId,
+        titulo: `Parar de perguntar sobre \`${comando}\`?`,
+        descricao: `Você aprovou \`${comando}\` ${vezes} vezes nos últimos ${SUGGEST_DAYS} dias. Posso liberar esse comando (e variações de argumentos) para os agentes deste projeto, para eles não pararem mais para pedir.\n\n- **Neste projeto:** vale até você remover em Permissões.\n- **Esta sessão:** vale por ${SESSION_HOURS}h.\n- **Agora não:** o monitor não sugere este de novo.\n\nComandos perigosos (instalar pacotes, sudo, apagar, push) nunca entram aqui.`,
+        status: 'bloqueado',
+      },
+      SYSTEM,
+    );
+    board.requestGate(
+      t.id,
+      { tipo: 'permissao', motivo: `Liberar de vez: ${regra}`, retomar: { conceder: { regra }, statusAnterior: 'bloqueado' } },
+      SYSTEM,
+    );
+    this.tag(projectId, t.id);
+    this.see(projeto, t.identificador, `sugeriu liberar ${regra} (aprovado ${vezes}×)`, now);
+  }
+
+  /** Says it once: true the first time `key` is reported, so a cycle that sees the same thing again stays quiet. */
+  private reportOnce(key: string, texto: string, nivel: MonitorNotice['nivel'] = 'aviso'): void {
+    if (this.state().avisos.some((a) => a.texto.includes(key))) return;
+    this.notice(nivel, texto);
+  }
+
+  /**
+   * Looks for what keeps the board from moving without anyone noticing: a merge ticket whose gate is gone (closed), a
+   * merge or a gate waiting for a person for hours, and tickets a rule stopped after the agent looped. It only reports
+   * (and closes a merge ticket nothing waits on): it decides nothing.
+   */
+  private watch(projectId: string, projeto: string, tickets: Ticket[], now: Date): void {
+    const { repos, board } = this.deps;
+    const pending = repos.approvals.pendingByProject(projectId);
+    for (const t of tickets) {
+      if (t.titulo.startsWith(MERGE_PREFIX) && t.status !== 'concluido') {
+        if (!pending.some((a) => a.retomar?.acompanha === t.id)) {
+          board.updateStatus(t.id, 'concluido', SYSTEM, { comentario: 'O portão desta mesclagem não está mais aberto: liberei o que ela segurava.' });
+          this.see(projeto, t.identificador, 'fechou a mesclagem órfã e liberou os tickets que ela segurava', now);
+        } else if (now.getTime() - parseDb(t.criadoEm) > MERGE_WAIT_MS) {
+          const held = tickets.filter((x) => board.openBlockers(x.id).some((b) => b.id === t.id)).length;
+          this.reportOnce(`${t.identificador}: mesclagem`, `${t.identificador}: mesclagem esperando você há mais de 1 h; ${held} ticket(s) em andamento seguram nela e nada novo começa.`);
+        }
+      }
+      if (t.status === 'bloqueado' && t.titulo !== IDLE_TITLE) {
+        const last = repos.tickets.comments(t.id).at(-1);
+        if (last?.autor === SYSTEM.nome && /Parei de perguntar|execuções seguidas sem alterar/.test(last.texto)) {
+          this.reportOnce(`${t.identificador} travou`, `${t.identificador} travou: ${last.texto.replace(/^Falha ao executar "[^"]*": /, '').slice(0, 160)}`);
+        }
+      }
+    }
+    for (const a of pending) {
+      if (a.retomar?.conceder || a.retomar?.acao === 'limpar_backlog' || !a.criadoEm || now.getTime() - parseDb(a.criadoEm) < GATE_WAIT_MS) continue;
+      this.reportOnce(`(${a.id.slice(0, 8)})`, `${a.ticketIdentificador}: ${a.tipo ?? 'aprovação'} esperando você há mais de 4 h (${a.id.slice(0, 8)}).`);
+    }
+  }
+
+  /**
+   * A backlog nobody remembers is a cost: tickets untouched for two weeks are listed on one card whose gate, if approved,
+   * deletes them (a person decides; deleting is never automatic). Asked again only after a refusal has aged a month.
+   */
+  private reviewBacklog(projectId: string, projeto: string, tickets: Ticket[], now: Date): boolean {
+    const { repos, board } = this.deps;
+    const old = now.getTime() - STALE_BACKLOG_DAYS * 86_400_000;
+    const stale = tickets
+      .filter((t) => t.status === 'backlog' && !t.worktree && !t.titulo.startsWith(REVIEW_TITLE) && !t.titulo.startsWith(MERGE_PREFIX) && t.titulo !== IDLE_TITLE)
+      .filter((t) => parseDb(t.atualizadoEm) < old && repos.tickets.runs(t.id).length === 0 && repos.tickets.children(t.id).length === 0)
+      .sort((a, b) => parseDb(a.atualizadoEm) - parseDb(b.atualizadoEm));
+    if (stale.length < MIN_STALE) return false;
+    if (tickets.some((t) => t.titulo.startsWith(REVIEW_TITLE) && t.status !== 'concluido')) return false;
+    const recent = repos.approvals.gatesSince(projectId, 'destrutiva', stamp(new Date(now.getTime() - REVIEW_COOLDOWN_DAYS * 86_400_000)));
+    if (recent.some((a) => a.retomar?.acao === 'limpar_backlog')) return false;
+    const days = (t: Ticket) => Math.floor((now.getTime() - parseDb(t.atualizadoEm)) / 86_400_000);
+    const lista = stale.slice(0, LIST_MAX).map((t) => `- ${t.identificador}: ${t.titulo} (parado há ${days(t)} d)`);
+    const card = board.createTicket(
+      {
+        projectId,
+        titulo: `${REVIEW_TITLE}: ${stale.length} tickets parados`,
+        descricao: `Estes tickets estão no backlog sem nenhuma execução e sem mudança há mais de ${STALE_BACKLOG_DAYS} dias:\n\n${lista.join('\n')}${stale.length > LIST_MAX ? `\n- … e mais ${stale.length - LIST_MAX}` : ''}\n\n**Aprovar** apaga todos (só os que continuarem parados no backlog quando você decidir). **Recusar** mantém tudo e o monitor só volta a perguntar daqui a ${REVIEW_COOLDOWN_DAYS} dias.`,
+        status: 'bloqueado',
+      },
+      SYSTEM,
+    );
+    board.requestGate(card.id, { tipo: 'destrutiva', motivo: `Apagar ${stale.length} ticket(s) parados do backlog (apagar)`, retomar: { acao: 'limpar_backlog', ids: stale.map((t) => t.id), statusAnterior: 'bloqueado' } }, SYSTEM);
+    this.tag(projectId, card.id);
+    this.see(projeto, card.identificador, `abriu a revisão do backlog: ${stale.length} ticket(s) parados`, now);
+    return true;
   }
 
   /** Opens (once) the ticket that asks a person to let the monitor go on, so it never sits idle without anyone knowing. */

@@ -1,10 +1,10 @@
 import { agentActor, BoardError, HUMAN, TICKET_STATUSES, validDate, type LocalBoard } from '@owl/board';
 import { RELATION_TYPES } from '@owl/db';
-import { isSafeName } from '@owl/core';
+import { BASELINE_BASH, isSafeName } from '@owl/core';
 import type { createRepos } from '@owl/db';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { BoardFlow } from './board-flow.js';
+import { grantHours, type BoardFlow } from './board-flow.js';
 import type { Library } from './library.js';
 import type { WorktreeService } from './worktrees.js';
 
@@ -60,7 +60,7 @@ const runBody = z.object({
 });
 const goal = z.object({ objetivo: z.string().trim().min(1).max(20_000) });
 const asAgentBody = z.object(asAgent);
-const decide = z.object({ decisao: z.enum(['aprovado', 'rejeitado']), comentario: z.string().trim().max(20_000).optional(), confirmacao: z.string().max(2000).optional() });
+const decide = z.object({ decisao: z.enum(['aprovado', 'rejeitado']), comentario: z.string().trim().max(20_000).optional(), confirmacao: z.string().max(2000).optional(), lembrar: z.enum(['sessao', 'projeto']).optional() });
 
 /** Routes of the local board (prompt 13). Everything is scoped by project; the board is the agents' message bus. */
 export function registerBoardRoutes(
@@ -91,6 +91,20 @@ export function registerBoardRoutes(
     const labels = repos.quadro.labels.ofProject(pid);
     const tickets = board.listTickets(pid).map((t) => ({ ...t, uso: repos.tickets.usage(t.id), etiquetas: labels.get(t.id) ?? [], bloqueadoPor: board.openBlockers(t.id).map((b) => b.identificador) }));
     return { estados: TICKET_STATUSES, tickets, aprovacoes: repos.approvals.pendingByProject(pid), etiquetas: repos.quadro.labels.list(pid), ciclos: repos.quadro.cycles.list(pid) };
+  });
+
+  // What the project's agents may run without asking: the baseline and what a person let through (only a decision adds one).
+  app.get('/projects/:id/permissions', async (req) => {
+    const { id: pid } = id.parse(req.params);
+    project(pid);
+    return { basicas: BASELINE_BASH, concedidas: flow.grants.list(pid) };
+  });
+  app.delete('/projects/:id/permissions', async (req) => {
+    const { id: pid } = id.parse(req.params);
+    project(pid);
+    const { regra } = z.object({ regra: z.string().min(1).max(500) }).parse(req.query);
+    if (!flow.grants.remove(pid, regra)) throw new BoardError(404, 'permission_not_found', 'Essa permissão não está concedida');
+    return { concedidas: flow.grants.list(pid) };
   });
 
   app.get('/projects/:id/approvals', async (req) => {
@@ -302,7 +316,18 @@ export function registerBoardRoutes(
     if (needed !== undefined && body.confirmacao?.trim() !== needed.trim()) {
       throw new BoardError(400, 'confirmation_required', 'Este comando é perigoso: digite-o exatamente como aparece para aprovar');
     }
+    const before = repos.approvals.get(aid);
+    // "Remember" is for ordinary commands: a dangerous one is asked about every time, and only a suggestion or a permission carries rules.
+    if (body.lembrar && before?.retomar?.confirmar !== undefined) {
+      throw new BoardError(400, 'not_rememberable', 'Um comando perigoso não pode ser lembrado: ele é perguntado a cada vez');
+    }
+    if (body.lembrar && before?.retomar?.conceder) repos.approvals.setRetomar(aid, { ...before.retomar, conceder: { ...before.retomar.conceder, lembrar: body.lembrar } });
     const decision = board.decide(aid, body.decisao, body.comentario, HUMAN);
+    if (body.decisao === 'aprovado' && body.lembrar && decision.approval.tipo === 'permissao') {
+      for (const regra of decision.approval.retomar?.ferramentas ?? []) {
+        if (regra.includes('*')) flow.grants.add(decision.ticket.projectId, regra, grantHours(body.lembrar), 'pessoa');
+      }
+    }
     const run = flow.onDecision(decision, body.decisao);
     return { aprovacao: decision.approval, ticket: repos.tickets.get(decision.ticket.id), runId: run?.id ?? null };
   });

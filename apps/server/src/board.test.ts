@@ -8,7 +8,7 @@ import { createRepos, migrate, openDb } from '@owl/db';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from './app.js';
-import { PO_GOAL_TASK, extractJson, parseMemoryOutput, parsePoMarkdown, parseVerdict } from './board-flow.js';
+import { PO_GOAL_TASK, REPLY_FORMAT, extractJson, parseMemoryOutput, parsePoMarkdown, parseVerdict } from './board-flow.js';
 import { Executor } from './executor.js';
 
 let dir: string;
@@ -287,6 +287,48 @@ describe('API rules', () => {
     await settle();
     expect(repos.tickets.get(id)!.sessionId).toBeTruthy();
     expect((await get('/sessions')).sessions).toEqual([]);
+  });
+});
+
+describe('reply format follows every task of a parsed role', () => {
+  const GENERIC = 'Trabalhe neste ticket conforme a descrição e os critérios de aceite.';
+  const runAs = async (agente: string, tarefa: string) => {
+    const pid = await mkProject();
+    const id = ((await (await post(`/projects/${pid}/tickets`, { titulo: 'X', descricao: 'Algo a fazer', status: 'pronto' })).json()) as any).ticket.id as string;
+    const r = await post(`/tickets/${id}/run`, { agente, tarefa });
+    expect(r.status).toBe(202);
+    await settle();
+    return { pid, id, sent: requests.find((q) => who(q) === agente)!.prompt };
+  };
+
+  it('a product owner run with the generic task still asks for the JSON, once, and the answer is read', async () => {
+    const { id, sent } = await runAs('po', GENERIC);
+    expect(sent).toContain('"criterios_aceite"');
+    expect(sent.split(REPLY_FORMAT.po!).length - 1).toBe(1);
+    expect(repos.tickets.get(id)).toMatchObject({ titulo: 'Login com e-mail' }); // afterPo parsed it instead of blocking the ticket
+    expect(repos.tickets.get(id)!.status).not.toBe('bloqueado');
+    // the task recorded in the history is the one that was sent, format included (the event keeps its first 300 characters)
+    const ran = repos.tickets.events(id).find((e) => e.tipo === 'execucao');
+    expect(ran?.detalhe).toContain('Responda SOMENTE com um bloco json');
+  });
+
+  it('a tech lead run with the generic task still asks for the subtasks JSON', async () => {
+    const { sent } = await runAs('tech-lead', GENERIC);
+    expect(sent).toContain('"subtarefas"');
+    expect(sent.split(REPLY_FORMAT.techlead!).length - 1).toBe(1);
+  });
+
+  it('other roles are left alone, and the goal task does not get the format twice', async () => {
+    const { sent } = await runAs('dev-back', GENERIC);
+    expect(sent).not.toContain('"criterios_aceite"');
+    expect(sent).not.toContain('"subtarefas"');
+    requests = [];
+    const pid = await mkProject();
+    await post(`/projects/${pid}/board/goals`, { objetivo: 'Quero login com e-mail' });
+    await settle();
+    const po = requests.find((q) => who(q) === 'po')!.prompt;
+    expect(po.split('"criterios_aceite"').length - 1).toBe(1);
+    expect(PO_GOAL_TASK.split(REPLY_FORMAT.po!).length - 1).toBe(1);
   });
 });
 

@@ -10,6 +10,9 @@ import { AccessKeys, registerAuth, type SessionAuth } from './auth.js';
 import { BoardFlow } from './board-flow.js';
 import { registerBoardRoutes } from './board-routes.js';
 import type { LocalModels } from './local-models.js';
+import { GitManager } from './git-manager.js';
+import { registerGitRoutes } from './git-routes.js';
+import { OllamaControl } from './ollama-control.js';
 import { RouterService } from './router.js';
 import { Monitor, monitorPatchSchema } from './monitor.js';
 import { registerRouterRoutes } from './router-routes.js';
@@ -58,6 +61,8 @@ export interface AppDeps {
   mcpMemory?: McpMemoryLaunch;
   /** Last known state of the local model server; lets the router send `pequeno` steps to it. Without it the router never does. */
   localModels?: LocalModels;
+  /** The git/GitHub manager (tests pass one with a fake `gh`). */
+  git?: GitManager;
   /** Run the backlog monitor's periodic cycle (the server does; tests call `POST /monitor/tick`). */
   startMonitor?: boolean;
   /** When set, every route but /health and /auth/* needs a paired browser session (see `SessionAuth`). */
@@ -157,7 +162,9 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   const worktrees = new WorktreeService({ repos, dir: deps.worktreesDir ?? mkdtempSync(join(tmpdir(), 'owl-worktrees-')) });
   const router = new RouterService({ repos, ...(deps.localModels ? { local: deps.localModels } : {}) });
   executor.attach({ localMemoria: () => router.settings().localPequeno.memoria });
+  const git = deps.git ?? new GitManager({ roots: deps.workspaceRoots });
   const flow = new BoardFlow({
+    git,
     repos,
     router,
     executor,
@@ -250,7 +257,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.get('/projects', async () => ({ projects: repos.projects.list() }));
 
   registerBoardRoutes(app, { repos, board, flow, library, worktrees });
-  registerRouterRoutes(app, { repos, router });
+  registerGitRoutes(app, { repos, flow, git });
+  registerRouterRoutes(app, { repos, router, ...(deps.localModels ? { ollama: new OllamaControl(deps.localModels) } : {}) });
   const monitor = new Monitor({ repos, board, flow, router });
   if (deps.startMonitor) {
     app.addHook('onReady', async () => monitor.start());

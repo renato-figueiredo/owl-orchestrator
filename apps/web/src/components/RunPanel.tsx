@@ -1,3 +1,4 @@
+import { isOllamaDown, OllamaPanel } from './OllamaPanel';
 import { Button, IconButton, ProviderDot, RunStep, StatusPill, Tabs, type RunStatus } from '@owl/ui';
 import { PanelRightClose, PanelRightOpen, Square } from 'lucide-react';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
@@ -226,6 +227,12 @@ export function RunPanel({ runs, stream, open, onToggle, memory, onCancel }: Pan
           </div>
         )}
       </div>
+
+      {!onMemory && !live && (isOllamaDown(stream?.phase === 'error' ? stream.error : undefined) || (current?.status === 'erro' && isOllamaDown(current.erro))) && (
+        <div className="flex-none border-b border-line px-4 py-3">
+          <OllamaPanel quiet reason="esta execução não conseguiu falar com ele" />
+        </div>
+      )}
 
       {onMemory ? (
         <div role="tabpanel" aria-label="Memória" className="min-h-0 flex-1 overflow-y-auto">

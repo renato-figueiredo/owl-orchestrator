@@ -1,8 +1,11 @@
 import { agentActor, BoardError, type Decision, HUMAN, LocalBoard, SYSTEM, ticketBrief, ticketContext, estimateTokens } from '@owl/board';
-import { analyzeTools, isDangerous, CLASSIFIER_PROMPT, complexityOf, fromClassification, needsApproval, routeByRules, withEscalation, type AgentDefinition, type RouteDecision, type Tier } from '@owl/core';
-import type { Actor, createRepos, Project, Run, Ticket } from '@owl/db';
+import { analyzeTools, askFor, isRisky, riskWord, CLASSIFIER_PROMPT, complexityOf, fromClassification, needsApproval, routeByRules, withEscalation, type AgentDefinition, type RouteDecision, type Tier } from '@owl/core';
+import type { Actor, Approval, createRepos, Project, ResumeInfo, Run, Ticket } from '@owl/db';
 import { z } from 'zod';
 import type { Executor, StepOutcome } from './executor.js';
+import { MAX_SEQ_DEPTH, parseNext, seqDepth, seqMarker } from './continuation.js';
+import type { GitManager } from './git-manager.js';
+import { Grants, SESSION_HOURS } from './grants.js';
 import type { Library } from './library.js';
 import { WARN_AT, type RouterService } from './router.js';
 import { WorktreeError, type WorktreeService } from './worktrees.js';
@@ -50,9 +53,16 @@ const routeDecisionSchema = z.object({
 });
 
 /** The last fenced ```json block, else the outermost {...} of the text. Undefined when neither parses. */
-/** What the product owner is asked for when a goal arrives; the reply is read by `afterPo`, so the format is part of the request. */
-export const PO_GOAL_TASK =
-  'Transforme este objetivo em um ticket claro, com critérios de aceite verificáveis. Responda SOMENTE com um bloco json: {"titulo":"...","descricao":"...","criterios_aceite":["...","..."]}. Perguntas e o que fica de fora entram dentro da descrição.';
+/**
+ * How the product owner and the tech lead must answer. `afterPo` / `afterLead` read these replies, so the format goes with
+ * every task given to those roles (a monitor or a manual run included), not only the first one.
+ */
+export const REPLY_FORMAT: Record<string, string> = {
+  po: 'Responda SOMENTE com um bloco json: {"titulo":"...","descricao":"...","criterios_aceite":["...","..."]}. Perguntas e o que fica de fora entram dentro da descrição.',
+  techlead: `Quebre este ticket em até ${MAX_SUBTASKS} subtarefas pequenas, cada uma com o agente que deve executar ("dev-front", "dev-back"...). Responda SOMENTE com um bloco json: {"subtarefas":[{"titulo":"...","descricao":"...","criterios_aceite":["..."],"agente":"dev-back"}]}`,
+};
+/** What the product owner is asked for when a goal arrives. */
+export const PO_GOAL_TASK = `Transforme este objetivo em um ticket claro, com critérios de aceite verificáveis. ${REPLY_FORMAT.po}`;
 
 const section = (text: string, name: RegExp): string | undefined => {
   const m = text.match(new RegExp(`^#{2,3}\\s*${name.source}[^\\n]*\\n([\\s\\S]*?)(?=^#{1,3}\\s|$(?![\\s\\S]))`, 'im'));
@@ -127,6 +137,8 @@ export interface BoardFlowDeps {
   router: RouterService;
   /** Working folder of a project's runs (already checked against the allowed roots). */
   cwdOf: (project: Project) => string;
+  /** Creates and reads git repositories for projects (publishing one to GitHub waits for a person's approval). */
+  git?: GitManager;
   /** Agent names of the example flow (override to use other ones). */
   agentes?: Partial<Record<'po' | 'techlead' | 'memoria' | 'qa' | 'dev', string>>;
 }
@@ -163,15 +175,31 @@ type Role = 'po' | 'techlead' | 'dev' | 'qa' | 'revisor' | 'memoria' | string;
 const AGENT_PROTOCOL = `
 
 ## Quando precisar de algo que só a pessoa pode dar
+- Prefira as ferramentas Read, Grep e Glob a \`cat\`, \`grep\` e \`ls\` no shell, e não encadeie vários comandos num só: cada comando fora da lista libera uma pergunta para a pessoa.
 - Se um comando for recusado por falta de permissão, **não tente contornar**: diga qual comando precisa e por quê, em uma frase, e pare. O OWL mostra o pedido à pessoa; se ela aprovar, você roda de novo com o comando liberado.
-- Se tiver uma dúvida que só a pessoa resolve (escopo, decisão de produto, algo ambíguo), termine a resposta com uma linha \`PERGUNTA: <a pergunta>\` e pare. A resposta dela volta como comentário do ticket.`;
+- Se tiver uma dúvida que só a pessoa resolve (escopo, decisão de produto, algo ambíguo), termine a resposta com uma linha \`PERGUNTA: <a pergunta>\` e pare. Se houver respostas prováveis, acrescente depois uma linha \`OPCOES: <opção 1> | <opção 2>\` (até 4, curtas): viram botões de resposta rápida. A resposta dela volta como comentário do ticket.\n- Se ao terminar ficou trabalho para depois (um passo seguinte, algo que você não deveria fazer neste ticket), termine com até 3 linhas \`PROXIMO: <título> | <descrição curta>\`. O OWL abre um ticket de continuação; não faça esse trabalho agora.`;
+/** Title prefix of the ticket that tracks a pending merge and holds the other work on the project meanwhile. */
+export const MERGE_PREFIX = 'Mesclar ';
+export const PUBLISH_PREFIX = 'Publicar no GitHub: ';
 const QUESTION = /^\s*PERGUNTA:\s*([\s\S]{3,1500})$/m;
-const MAX_PERMISSION_GATES = 5;
+/** The same command asked this many times on a ticket means asking is not getting anywhere: a person looks at it instead. */
+const MAX_ASKS_PER_COMMAND = 3;
+const MAX_PERMISSION_GATES = 20;
+/** Developer runs in a row that change nothing before the ticket is handed to a person. */
+const MAX_IDLE_RUNS = 3;
+const NO_CHANGE = 'O agente não alterou nenhum arquivo.';
+/** How long a permission a person approved on a ticket keeps applying to its later runs. */
+const TICKET_GRANT_HOURS = 24;
+/** Hours a "remember for this session" grant lasts; null (the project) has no end. */
+export const grantHours = (lembrar: 'sessao' | 'projeto' | undefined): number | null => (lembrar === 'sessao' ? SESSION_HOURS : null);
 
 export class BoardFlow {
+  /** What a project's agents may run without asking: the baseline plus what a person let through. */
+  readonly grants: Grants;
   private readonly names: Required<NonNullable<BoardFlowDeps['agentes']>>;
 
   constructor(private readonly deps: BoardFlowDeps) {
+    this.grants = new Grants(deps.repos);
     this.names = { po: 'po', techlead: 'tech-lead', memoria: 'memoria', qa: 'qa', dev: 'dev-back', ...deps.agentes };
   }
 
@@ -239,6 +267,11 @@ export class BoardFlow {
       cwd = this.deps.worktrees.existingCwd(ticket, project) ?? projectCwd;
     }
 
+    const role = teamRole ?? def.papel ?? '';
+    // Whatever asked for this run, a role whose reply is parsed gets its format appended once.
+    const format = REPLY_FORMAT[role];
+    if (format && !tarefa.includes(format)) tarefa = `${tarefa}\n\n${format}`;
+
     const parent = ticket.parentId ? (repos.tickets.get(ticket.parentId) ?? null) : null;
     const brief = ticketBrief({ ticket, comments: repos.tickets.comments(ticketId), parent, children: repos.tickets.children(ticketId), tarefa });
     // What the project knows, then what THIS agent remembers in THIS project (never its memory in another project).
@@ -278,7 +311,6 @@ export class BoardFlow {
       return undefined;
     }
 
-    const role = teamRole ?? def.papel ?? '';
     // Tier routing: only for agents that ask for it (`roteamento: auto`); the others always run on their own provider.
     let provider = def.provedor;
     let model = def.modelo;
@@ -320,7 +352,7 @@ export class BoardFlow {
       stateless: true,
       recordUserMessage: false,
       storeAs: false,
-      ...(def.ferramentas.length ? { allowedTools: [...def.ferramentas, ...(opts.ferramentasExtras ?? [])] } : {}),
+      ...(def.ferramentas.length ? { allowedTools: [...def.ferramentas, ...(opts.ferramentasExtras ?? []), ...this.grants.list(`ticket:${ticket.id}`).map((g) => g.regra), ...(def.ferramentas.some((t) => t.startsWith('Bash(')) ? this.grants.rules(ticket.projectId) : [])] } : {}),
       noTools: def.ferramentas.length === 0,
       confineReads: true,
       after: (outcome) => this.afterRun(ticketId, agente, role, expected, outcome, tools.writes, tarefa),
@@ -439,8 +471,24 @@ export class BoardFlow {
   /** Continues after a person decided a gate: resumes the paused step, or re-runs the author after a rejection. */
   onDecision(decision: Decision, decisao: 'aprovado' | 'rejeitado'): Run | undefined {
     const { ticket, approval } = decision;
-    if (decision.approval.retomar?.acao) {
-      this.branchAction(ticket, decision.approval.retomar.acao, decisao);
+    // The monitor's suggestion to stop asking about a command: it only grants (or not) and closes its own card.
+    if (approval.retomar?.conceder) {
+      if (decisao === 'aprovado') this.grants.add(ticket.projectId, approval.retomar.conceder.regra, grantHours(approval.retomar.conceder.lembrar), 'monitor');
+      this.deps.board.updateStatus(ticket.id, 'concluido', SYSTEM);
+      return undefined;
+    }
+    if (approval.retomar?.acao === 'criar_repo' && approval.retomar.repo) {
+      this.publishRepo(ticket, approval.retomar.repo, decisao);
+      return undefined;
+    }
+    if (approval.retomar?.acao === 'limpar_backlog') {
+      this.cleanBacklog(ticket, approval.retomar.ids ?? [], decisao);
+      return undefined;
+    }
+    const acao = decision.approval.retomar?.acao;
+    if (acao) {
+      if (acao === 'merge' || acao === 'descartar') this.branchAction(ticket, acao, decisao);
+      this.closeTracker(approval.retomar?.acompanha);
       return undefined;
     }
     if (decisao === 'aprovado') {
@@ -449,6 +497,8 @@ export class BoardFlow {
         return this.run(ticket.id, this.names.memoria, MEMORY_TASK);
       }
       const r = decision.retomar;
+      // What a person approved for this ticket keeps applying to its later runs (a question or a rework would lose it).
+      if (approval.tipo === 'permissao') for (const regra of r?.ferramentas ?? []) this.grants.add(`ticket:${ticket.id}`, regra, TICKET_GRANT_HOURS, 'pessoa');
       // The paused step goes on; an approved cost gate lets exactly this step past the ceiling.
       if (r?.agente && r.tarefa) {
         const tier = approval.tipo === 'confianca' && TIER_NAMES.has(r.tier ?? '') ? (r.tier as Tier) : undefined;
@@ -494,7 +544,123 @@ export class BoardFlow {
       acao === 'merge'
         ? `Mesclar a branch ${t.branch} em ${base} (merge)`
         : `Descartar o trabalho: apagar o worktree e a branch ${t.branch} (apagar)`;
-    return this.deps.board.requestGate(t.id, { tipo: 'destrutiva', motivo, retomar: { acao, statusAnterior: t.status } }, who);
+    const tracker = acao === 'merge' ? this.openMergeTicket(t, base) : undefined;
+    return this.deps.board.requestGate(t.id, { tipo: 'destrutiva', motivo, retomar: { acao, statusAnterior: t.status, ...(tracker ? { acompanha: tracker.id } : {}) } }, who);
+  }
+
+  /**
+   * A pending merge becomes a ticket of its own that blocks the work still in progress on the project: merging moves
+   * the base branch under it, and a ticket that keeps going meanwhile would be merged on a stale base. It closes when
+   * the merge is decided. Backlog and ready tickets are left free (the monitor just does not start them meanwhile).
+   */
+  private openMergeTicket(source: Ticket, base: string): Ticket {
+    const { repos, board } = this.deps;
+    const title = `${MERGE_PREFIX}${source.branch} em ${base}`;
+    const open = repos.tickets.list(source.projectId).find((x) => x.titulo === title && x.status !== 'concluido');
+    if (open) return open;
+    const holds = repos.tickets.list(source.projectId).filter((x) => x.id !== source.id && x.worktree && (x.status === 'em_andamento' || x.status === 'em_revisao'));
+    const ticket = board.createTicket(
+      {
+        projectId: source.projectId,
+        titulo: title,
+        descricao: `Mescla pedida em ${source.identificador} (${source.titulo}). Enquanto ela não for decidida, estes tickets em andamento ficam bloqueados para não seguirem sobre uma base que vai mudar:\n${holds.map((h) => `- ${h.identificador}: ${h.titulo}`).join('\n') || '- (nenhum)'}\n\nDecida o portão em ${source.identificador}; este ticket fecha sozinho.`,
+        status: 'bloqueado',
+      },
+      SYSTEM,
+    );
+    for (const h of holds) {
+      try {
+        board.addRelation(ticket.id, h.id, 'bloqueia', SYSTEM);
+      } catch (e) {
+        if (!(e instanceof BoardError)) throw e; // a loop or a duplicate: the others are still held
+      }
+    }
+    return ticket;
+  }
+
+  /** The merge was decided (either way): its tracking ticket has done its job and releases what it held. */
+  private closeTracker(id: string | undefined): void {
+    if (!id || !this.deps.repos.tickets.get(id)) return;
+    try {
+      this.deps.board.updateStatus(id, 'concluido', SYSTEM);
+    } catch (e) {
+      if (!(e instanceof BoardError)) throw e;
+    }
+  }
+
+  /**
+   * Opens the card and the gate that ask a person before a project's folder is published: a new GitHub repository (private
+   * or public, named as shown) and the push of what is in the folder. Nothing leaves the machine until it is approved.
+   */
+  requestPublish(projectId: string, repo: { nome: string; visibilidade: 'privado' | 'publico'; descricao?: string }, who: Actor = HUMAN): { ticket: Ticket; approval: Approval } {
+    const { repos, board } = this.deps;
+    const project = repos.projects.get(projectId);
+    if (!project) throw new BoardError(404, 'project_not_found', `Project not found: ${projectId}`);
+    const open = repos.tickets.list(projectId).find((t) => t.titulo.startsWith(PUBLISH_PREFIX) && t.status !== 'concluido');
+    if (open) throw new BoardError(409, 'publish_pending', `Já há um pedido de publicação aberto (${open.identificador})`);
+    const quem = repo.visibilidade === 'publico' ? 'PÚBLICO' : 'privado';
+    const ticket = board.createTicket(
+      {
+        projectId,
+        titulo: `${PUBLISH_PREFIX}${repo.nome} (${quem})`,
+        descricao: `Criar o repositório ${quem} "${repo.nome}" na sua conta do GitHub e enviar (push) o conteúdo de ${project.pasta}.${repo.descricao ? `\n\nDescrição: ${repo.descricao}` : ''}\n\nNada sai da máquina até você aprovar o portão deste ticket.`,
+        status: 'bloqueado',
+      },
+      who,
+    );
+    board.requestGate(ticket.id, { tipo: 'destrutiva', motivo: `Criar o repositório ${quem} "${repo.nome}" no GitHub e enviar o projeto (push)`, retomar: { acao: 'criar_repo', repo, statusAnterior: 'bloqueado' } }, who);
+    return { ticket: this.need(ticket.id), approval: repos.approvals.pendingByTicket(ticket.id)[0]! };
+  }
+
+  /** Approved: `gh repo create` and push, then the card closes with the link; refused: it just closes. A failure stays on the card. */
+  private publishRepo(card: Ticket, repo: NonNullable<ResumeInfo['repo']>, decisao: 'aprovado' | 'rejeitado'): void {
+    const { repos, board, git } = this.deps;
+    const conclude = () => {
+      try {
+        board.updateStatus(card.id, 'concluido', SYSTEM);
+      } catch (e) {
+        if (!(e instanceof BoardError)) throw e;
+      }
+    };
+    if (decisao === 'rejeitado') return conclude();
+    const pasta = repos.projects.get(card.projectId)?.pasta;
+    if (!git || !pasta) {
+      board.comment(card.id, SYSTEM, 'Não consegui publicar: o gerenciador de git não está disponível neste servidor.');
+      return;
+    }
+    this.publishing = git
+      .publish(pasta, repo)
+      .then((r) => {
+        board.comment(card.id, SYSTEM, `Repositório criado e enviado: ${r.url}`);
+        conclude();
+      })
+      .catch((e: unknown) => {
+        board.comment(card.id, SYSTEM, `Não consegui publicar: ${e instanceof Error ? e.message : String(e)}`);
+      });
+  }
+
+  /** The publication in flight, if any (tests and shutdown wait for it). */
+  publishing: Promise<void> | undefined;
+
+  /** The person approved clearing the stale backlog the monitor listed: deletes what is still backlog and untouched, and closes the card. */
+  private cleanBacklog(card: Ticket, ids: string[], decisao: 'aprovado' | 'rejeitado'): void {
+    const { repos, board } = this.deps;
+    if (decisao === 'aprovado') {
+      let removed = 0;
+      for (const id of ids) {
+        const t = repos.tickets.get(id);
+        // Only what is still waiting in the backlog with no work behind it: anything started since was not part of the decision.
+        if (!t || t.id === card.id || t.status !== 'backlog' || t.worktree || repos.tickets.runs(t.id).length > 0) continue;
+        repos.tickets.delete(t.id);
+        removed++;
+      }
+      board.comment(card.id, SYSTEM, `Apaguei ${removed} de ${ids.length} ticket(s) do backlog.`);
+    }
+    try {
+      board.updateStatus(card.id, 'concluido', SYSTEM);
+    } catch (e) {
+      if (!(e instanceof BoardError)) throw e;
+    }
   }
 
   /** Runs the approved action (and only that), or just records that it was refused. */
@@ -550,7 +716,11 @@ export class BoardFlow {
     if (wrote) {
       try {
         const done = this.deps.worktrees.commitAll(ticket, `${ticket.identificador}: ${ticket.titulo} (${agente})`, repos.projects.get(ticket.projectId)!);
-        if (done || !STAYS.has(role)) board.comment(ticketId, SYSTEM, done ? `Alterações commitadas na branch ${repos.tickets.get(ticketId)?.branch}.` : 'O agente não alterou nenhum arquivo.');
+        if (done || !STAYS.has(role)) board.comment(ticketId, SYSTEM, done ? `Alterações commitadas na branch ${repos.tickets.get(ticketId)?.branch}.` : NO_CHANGE);
+        if (!done && !STAYS.has(role) && this.idleRuns(ticketId) >= MAX_IDLE_RUNS) {
+          this.fail(ticket, agente, `${MAX_IDLE_RUNS} execuções seguidas sem alterar nenhum arquivo: algo impede o agente (veja o último comentário dele). Parei para você decidir.`, outcome.run.id);
+          return;
+        }
       } catch (e) {
         this.fail(ticket, agente, e instanceof Error ? e.message : String(e), outcome.run.id);
         return;
@@ -561,7 +731,10 @@ export class BoardFlow {
 
     // A refused command becomes a request to the person, and a question ends the step at a gate: neither is a failure.
     if (this.askPermission(ticket, agente, tarefa, outcome)) return;
-    const question = QUESTION.exec(text)?.[1]?.trim();
+    const asked = QUESTION.exec(text)?.[1]?.trim();
+    const optionsLine = asked ? /^\s*OP[CÇ][OÕ]ES:\s*(.+)$/im.exec(asked) : null;
+    const question = asked && optionsLine ? asked.replace(optionsLine[0], '').trim() : asked;
+    const opcoes = (optionsLine?.[1] ?? '').split('|').map((o) => o.trim().slice(0, 120)).filter(Boolean).slice(0, 4);
     if (question) {
       board.requestGate(
         ticketId,
@@ -569,13 +742,14 @@ export class BoardFlow {
           tipo: 'pergunta',
           motivo: question.slice(0, 1500),
           runId: outcome.run.id,
-          retomar: { agente, tarefa: `${tarefa}\n\nA pessoa respondeu à sua pergunta nos últimos comentários do ticket; continue a partir da resposta.`, statusAnterior: ticket.status === 'aguardando_aprovacao' ? 'em_andamento' : ticket.status },
+          retomar: { ...(opcoes.length ? { opcoes } : {}), agente, tarefa: `${tarefa}\n\nA pessoa respondeu à sua pergunta nos últimos comentários do ticket; continue a partir da resposta.`, statusAnterior: ticket.status === 'aguardando_aprovacao' ? 'em_andamento' : ticket.status },
         },
         who,
       );
       return;
     }
 
+    if (role !== 'po' && role !== 'techlead' && role !== 'memoria') this.proposeNext(ticket, text);
     switch (role) {
       case 'po':
         return this.afterPo(ticket, text, who);
@@ -601,15 +775,26 @@ export class BoardFlow {
     const { repos, board } = this.deps;
     const asked = (outcome.denied ?? []).filter((d) => d.name === 'Bash' && d.command);
     if (asked.length === 0) return false;
-    if (repos.approvals.byTicket(ticket.id).filter((a) => a.tipo === 'permissao').length >= MAX_PERMISSION_GATES) return false;
+    const before = repos.approvals.byTicket(ticket.id).filter((a) => a.tipo === 'permissao');
+    if (before.length >= MAX_PERMISSION_GATES) return false;
     // A rule is `Bash(<exact command>)`: a command with parentheses or line breaks cannot be written as one, so it is not offered.
     const offered = [...new Map(asked.filter((d) => !/[()\n\r\0]/.test(d.command!)).map((d) => [d.command!, d])).values()];
     if (offered.length === 0) return false;
     // A dangerous command (install, publish, sudo, remote code...) is asked for alone and approved only by typing it: the
     // others come back as their own request if the agent still needs them.
-    const risky = offered.find((d) => isDangerous(d.command!));
-    const shown = risky ? [risky] : offered;
-    const lines = shown.map((d) => `${d.command}${d.descricao ? ` — ${d.descricao}` : ''}`);
+    const risky = offered.find((d) => isRisky(d.command!));
+    const shown = (risky ? [risky] : offered).map((d) => ({ d, ask: askFor(d.command!) }));
+    // Approved and asked again and again: the permission is not what is missing. Say so on the ticket instead of looping.
+    const stuck = shown.find(({ ask }) => before.filter((a) => a.motivo.includes(ask.mostrar)).length >= MAX_ASKS_PER_COMMAND);
+    if (stuck) {
+      board.comment(ticket.id, SYSTEM, `O agente pediu \`${stuck.ask.mostrar}\` ${MAX_ASKS_PER_COMMAND} vezes e continua sem conseguir rodar. Parei de perguntar: veja a resposta dele e decida (rode você, ou ajuste o ticket).`);
+      this.block(this.need(ticket.id), SYSTEM);
+      return true;
+    }
+    const lines = shown.map(({ d, ask }) => {
+      const note = ask.reduzido ? 'só esta parte do comando precisa de você; o resto já está liberado' : d.descricao;
+      return `${ask.mostrar}${note ? ` — ${note}` : ''}`;
+    });
     board.requestGate(
       ticket.id,
       {
@@ -620,8 +805,8 @@ export class BoardFlow {
           agente,
           tarefa,
           statusAnterior: ticket.status === 'aguardando_aprovacao' ? 'em_andamento' : ticket.status,
-          ferramentas: shown.map((d) => `Bash(${d.command})`),
-          ...(risky ? { confirmar: risky.command! } : {}),
+          ferramentas: [...new Set(shown.flatMap(({ ask }) => ask.regras))],
+          ...(risky ? { confirmar: riskWord(shown[0]!.ask.mostrar) ?? shown[0]!.ask.mostrar } : {}),
         },
       },
       agentActor(agente),
@@ -636,7 +821,7 @@ export class BoardFlow {
     if (!o) return this.unreadable(ticket, who, 'o product owner não devolveu o ticket no formato esperado (JSON com titulo, descricao e criterios_aceite)');
     repos.tickets.update(ticket.id, { titulo: o.titulo, descricao: o.descricao ?? ticket.descricao, criteriosAceite: bullets(o.criterios_aceite) ?? null });
     board.updateStatus(ticket.id, 'pronto', who);
-    this.run(ticket.id, this.names.techlead, `Quebre este ticket em até ${MAX_SUBTASKS} subtarefas pequenas, cada uma com o agente que deve executar ("dev-front", "dev-back"...). Responda SOMENTE com um bloco json: {"subtarefas":[{"titulo":"...","descricao":"...","criterios_aceite":["..."],"agente":"dev-back"}]}`);
+    this.run(ticket.id, this.names.techlead, REPLY_FORMAT.techlead!);
   }
 
   private afterLead(ticket: Ticket, text: string, who: Actor): void {
@@ -711,6 +896,62 @@ export class BoardFlow {
   private unreadable(ticket: Ticket, who: Actor, why: string): void {
     this.deps.board.comment(ticket.id, SYSTEM, `Não consegui seguir: ${why}. O texto está nos comentários acima; ajuste o ticket e rode o agente de novo.`);
     this.block(ticket, who);
+  }
+
+  /** Whether the monitor was told to go on by itself: continuations it is handed start without waiting for a person. */
+  private autoSequence(): boolean {
+    return (this.deps.repos.settings.get('monitor') as { autoSequencia?: boolean } | undefined)?.autoSequencia === true;
+  }
+
+  /**
+   * The agent ended with `PROXIMO:` lines: each becomes a continuation ticket that waits for this one (it blocks them)
+   * and keeps its agent. With auto-sequence on they are `pronto`, so the monitor starts them; otherwise they wait in the
+   * backlog for a person. A chain stops after a few levels, and a title that is already open is not opened twice.
+   */
+  private proposeNext(ticket: Ticket, text: string): void {
+    const { repos, board } = this.deps;
+    const next = parseNext(text);
+    if (next.length === 0) return;
+    const level = seqDepth(ticket.descricao) + 1;
+    if (level > MAX_SEQ_DEPTH) {
+      board.comment(ticket.id, SYSTEM, `O agente propôs continuação, mas esta já é a ${MAX_SEQ_DEPTH}ª seguida: abra você o próximo ticket se fizer sentido.`);
+      return;
+    }
+    const auto = this.autoSequence();
+    const open = new Set(repos.tickets.list(ticket.projectId).filter((x) => x.status !== 'concluido').map((x) => x.titulo.toLowerCase()));
+    const made: string[] = [];
+    for (const n of next) {
+      if (open.has(n.titulo.toLowerCase())) continue;
+      const child = board.createTicket(
+        {
+          projectId: ticket.projectId,
+          titulo: n.titulo,
+          descricao: `${n.descricao ? `${n.descricao}\n\n` : ''}${seqMarker(level, ticket.identificador)}`,
+          status: auto && ticket.responsavelAgentId ? 'pronto' : 'backlog',
+          requerAprovacao: ticket.requerAprovacao,
+          ...(ticket.responsavelAgentId ? { responsavelAgentId: ticket.responsavelAgentId } : {}),
+          ...(ticket.orcamentoTokens != null ? { orcamentoTokens: ticket.orcamentoTokens } : {}),
+        },
+        SYSTEM,
+      );
+      try {
+        board.addRelation(ticket.id, child.id, 'bloqueia', SYSTEM);
+      } catch (e) {
+        if (!(e instanceof BoardError)) throw e;
+      }
+      made.push(`${child.identificador} ${child.titulo}`);
+    }
+    if (made.length > 0) board.comment(ticket.id, SYSTEM, `Continuação aberta${auto ? ' (auto-sequência: o monitor inicia quando este fechar)' : ' no backlog'}:\n${made.map((m) => `- ${m}`).join('\n')}`);
+  }
+
+  /** Developer runs in a row, ending now, that left the branch as it was. */
+  private idleRuns(ticketId: string): number {
+    let n = 0;
+    for (const c of this.deps.repos.tickets.comments(ticketId).filter((x) => x.autor === SYSTEM.nome && (x.texto === NO_CHANGE || x.texto.startsWith('Alterações commitadas'))).reverse()) {
+      if (c.texto !== NO_CHANGE) break;
+      n++;
+    }
+    return n;
   }
 
   private fail(ticket: Ticket, agente: string, why: string, runId?: string): void {

@@ -19,6 +19,9 @@ const KEY_DENIED: Array<[RegExp, string[]]> = [
   [/^\/auth\/keys/, ['POST', 'PUT', 'DELETE', 'GET']],
   [/^\/agents(\/|$)/, ['PUT', 'POST', 'DELETE']],
   [/^\/router$/, ['PUT']],
+  [/^\/router\/ollama\/start$/, ['POST']],
+  [/^\/git\/(clone|init)$/, ['POST']],
+  [/^\/projects\/[^/]+\/git\/(remote|publish)$/, ['POST']],
 ];
 
 interface StoredKey {

@@ -279,8 +279,8 @@ export interface TicketApproval {
   status: 'pendente' | 'aprovado' | 'rejeitado';
   comentario: string | null;
   criadoEm: string | null;
-  /** What approving resumes; `confirmar` is a dangerous command the person must type to approve. */
-  retomar?: { confirmar?: string } | null;
+  /** What approving resumes; `confirmar` is the short word of a dangerous command the person must type to approve; `ferramentas` are the rules approving lets through; `conceder` marks the monitor's suggestion to stop asking. */
+  retomar?: { opcoes?: string[]; confirmar?: string; ferramentas?: string[]; conceder?: { regra: string } } | null;
   ticketIdentificador?: string;
   ticketTitulo?: string;
 }
@@ -348,9 +348,36 @@ export interface RouterSettings {
   limiarConfianca: number;
   orcamentoDiaTokens: number | null;
 }
+/** `gh` on the server's machine: installed, logged in, and as whom. */
+export interface GhState {
+  instalado: boolean;
+  logado: boolean;
+  usuario: string | null;
+}
+export interface GhRepo {
+  nomeCompleto: string;
+  descricao: string | null;
+  privado: boolean;
+  atualizadoEm: string | null;
+}
+export interface GitStatus {
+  repositorio: boolean;
+  branch: string | null;
+  remoto: string | null;
+  alteracoes: number;
+  adiante: number | null;
+  atras: number | null;
+  branches: string[];
+  ultimoCommit: string | null;
+}
 export interface LocalStatus {
   disponivel: boolean;
   modelos: string[];
+}
+/** The local model server as the control sees it: how OWL can turn it on (`via`), or why it cannot (`dica`). */
+export interface OllamaState extends LocalStatus {
+  via: 'container' | 'programa' | null;
+  dica: string | null;
 }
 export interface DayUsage {
   limite: number | null;

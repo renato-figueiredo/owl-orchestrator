@@ -1,4 +1,6 @@
 import { DangerGate, needsTyping } from './DangerGate';
+import { isQuestion, QuestionGate } from './QuestionGate';
+import { canRemember, RememberButtons } from './RememberButtons';
 import { Button, GateCard } from '@owl/ui';
 import { Check, ShieldAlert, X } from 'lucide-react';
 import { useState } from 'react';
@@ -21,7 +23,7 @@ export const GATE_KIND_HINT: Record<GateKind, string> = {
   destrutiva: 'Uma ação que apaga, mescla ou publica espera sua decisão.',
   reprovacao: 'O revisor reprovou a entrega; o autor refaz de qualquer jeito.',
   confianca: 'O roteador não teve confiança na escolha do modelo.',
-  permissao: 'O agente precisa rodar um comando que não está liberado. Aprovar libera só esse comando, nesta tentativa; recusar manda o agente seguir sem ele.',
+  permissao: 'O agente precisa rodar um comando que não está liberado. Aprovar libera só esse comando, nesta tentativa; "por 4 h" ou "lembrar" deixam de perguntar sobre ele; recusar manda o agente seguir sem ele.',
   pergunta: 'O agente parou porque precisa de uma resposta sua. Escreva a resposta no comentário; ele continua a partir dela.',
 };
 /** Risk bars by kind. The backend has no risk score, so this is a fixed reading of the kind. */
@@ -47,7 +49,7 @@ export function fmtAgo(criadoEm: string | null | undefined, now = Date.now()): s
   return `há ${Math.floor(min / 1440)} d`;
 }
 
-export type Decide = (decisao: 'aprovado' | 'rejeitado', comentario?: string, confirmacao?: string) => Promise<unknown> | void;
+export type Decide = (decisao: 'aprovado' | 'rejeitado', comentario?: string, confirmacao?: string, lembrar?: 'sessao' | 'projeto') => Promise<unknown> | void;
 
 interface Props {
   approval: TicketApproval;
@@ -61,8 +63,9 @@ interface Props {
 export function ApprovalGate({ approval: a, stats, requester, provider, onDecide }: Props) {
   if (a.tipo === 'reprovacao') return <ReworkGate approval={a} onDecide={onDecide} />;
   if (needsTyping(a)) return <DangerGate approval={a} onDecide={onDecide} />;
+  if (isQuestion(a)) return <QuestionGate approval={a} onDecide={onDecide} />;
   const action = gateAction(a);
-  return (
+  const card = (
     <GateCard
       kind={kindLabel(a)}
       ticket={a.ticketIdentificador ?? ''}
@@ -75,6 +78,16 @@ export function ApprovalGate({ approval: a, stats, requester, provider, onDecide
       onApprove={() => void onDecide('aprovado')}
       onReject={(m) => void onDecide('rejeitado', m)}
     />
+  );
+  if (!canRemember(a)) return card;
+  return (
+    <div className="flex flex-col gap-2">
+      {card}
+      <div className="flex flex-wrap items-center gap-2">
+        <RememberButtons approval={a} onDecide={onDecide} />
+        <span className="text-xs text-muted">Lembrar só vale para este tipo de comando; o que é perigoso sempre pergunta.</span>
+      </div>
+    </div>
   );
 }
 
